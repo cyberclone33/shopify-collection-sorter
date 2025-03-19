@@ -168,7 +168,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const updateResponse = await admin.graphql(
         `#graphql
           mutation CollectionReorder($collectionId: ID!, $productIds: [ID!]!) {
-            collectionReorder(id: $collectionId, products: $productIds) {
+            collectionReorderProducts(id: $collectionId, productsOrder: $productIds) {
               collection {
                 id
                 title
@@ -190,8 +190,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const updateData = await updateResponse.json();
       
-      if (updateData.data.collectionReorder.userErrors.length > 0) {
-        const errors = updateData.data.collectionReorder.userErrors.map((err: any) => err.message).join(", ");
+      if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+        const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
         return json({ success: false, message: `Error reordering collection: ${errors}` });
       }
 
