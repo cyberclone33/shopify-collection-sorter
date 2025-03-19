@@ -22,7 +22,9 @@ import { authenticate } from "../shopify.server";
 interface Collection {
   id: string;
   title: string;
-  productsCount: number;
+  productsCount: {
+    count: number;
+  };
   sortOrder: string;
 }
 
@@ -46,7 +48,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             node {
               id
               title
-              productsCount
+              productsCount {
+                count
+              }
               sortOrder
             }
           }
@@ -200,11 +204,11 @@ export default function CollectionsPage() {
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
   
-  const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
 
   // Handle sort button click
-  const handleSort = (collectionId: string) => {
-    setSelectedCollection(collectionId);
+  const handleSortClick = (collectionId: string) => {
+    setSelectedCollectionId(collectionId);
     submit(
       { collectionId },
       { method: "POST" }
@@ -214,19 +218,19 @@ export default function CollectionsPage() {
   // Create table rows from collections data
   const rows = collections.map((collection: Collection) => [
     collection.title,
-    collection.productsCount.toString(),
+    collection.productsCount.count.toString(),
     collection.sortOrder,
     <span key={`sort-button-${collection.id}`}>
       <Button
-        key={`sort-${collection.id}`}
+        disabled={isLoading}
+        onClick={() => handleSortClick(collection.id)}
         size="slim"
-        onClick={() => handleSort(collection.id)}
-        disabled={isLoading && selectedCollection === collection.id}
+        variant="primary"
       >
-        {isLoading && selectedCollection === collection.id ? <Spinner size="small" /> : "Sort"}
+        {isLoading && selectedCollectionId === collection.id ? <Spinner size="small" /> : "Sort"}
       </Button>
-    </span>,
-  ]);
+    </span>
+  ] as [string, string, string, JSX.Element]);
 
   return (
     <Page>
