@@ -161,6 +161,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Different approach based on sort order
     if (outOfStockProducts.length > 0) {
+      // For non-MANUAL collections, we must first update the sort order to MANUAL
+      if (sortOrder !== "MANUAL") {
+        console.log(`Collection ${collection.title} has sort order ${sortOrder}. Updating to MANUAL first...`);
+        // Update collection to MANUAL sort order first
+        const updateSortOrderResponse = await admin.graphql(
+          `#graphql
+            mutation UpdateCollectionSortOrder($collectionId: ID!) {
+              collectionUpdate(input: {id: $collectionId, sortOrder: MANUAL}) {
+                collection {
+                  id
+                  sortOrder
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+          { 
+            variables: { 
+              collectionId
+            } 
+          }
+        );
+
+        const updateSortOrderData = await updateSortOrderResponse.json();
+        console.log('Sort order update response:', JSON.stringify(updateSortOrderData, null, 2));
+        
+        if (updateSortOrderData.data?.collectionUpdate?.userErrors?.length > 0) {
+          const errors = updateSortOrderData.data.collectionUpdate.userErrors.map((err: any) => err.message).join(", ");
+          return json({ success: false, message: `Error updating collection sort order: ${errors}` });
+        }
+        
+        // If there are GraphQL-level errors
+        if ('errors' in updateSortOrderData && Array.isArray(updateSortOrderData.errors)) {
+          const errors = updateSortOrderData.errors.map((err: any) => err.message).join(", ");
+          return json({ success: false, message: `GraphQL error in sort order update: ${errors}` });
+        }
+
+        // Small delay to ensure sort order update is processed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('Collection sort order updated to MANUAL');
+      }
+      
       // For all collections, we can reorder products
       // Note: For non-manual collections, this will change their sort order to MANUAL
       
@@ -187,6 +232,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 field
                 message
               }
+              reorderedCollection {
+                id
+                sortOrder
+              }
             }
           }
         `,
@@ -200,9 +249,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const updateData = await updateResponse.json();
       
-      if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+      // Log the entire GraphQL response for debugging
+      console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
+      
+      if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
         const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
         return json({ success: false, message: `Error reordering collection: ${errors}` });
+      }
+      
+      // If there are GraphQL-level errors
+      if ('errors' in updateData && Array.isArray(updateData.errors)) {
+        const errors = updateData.errors.map((err: any) => err.message).join(", ");
+        return json({ success: false, message: `GraphQL error: ${errors}` });
       }
 
       // Prepare the success message based on whether the sort order was changed
@@ -315,9 +373,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
           // Different approach based on sort order
           if (remainingOutOfStockProducts.length > 0) {
-            // For all collections, we can reorder products
-            // Note: For non-manual collections, this will change their sort order to MANUAL
+            // For non-MANUAL collections, we must first update the sort order to MANUAL
+            if (remainingSortOrder !== "MANUAL") {
+              console.log(`Collection ${remainingCollection.title} has sort order ${remainingSortOrder}. Updating to MANUAL first...`);
+              // Update collection to MANUAL sort order first
+              const updateSortOrderResponse = await admin.graphql(
+                `#graphql
+                  mutation UpdateCollectionSortOrder($collectionId: ID!) {
+                    collectionUpdate(input: {id: $collectionId, sortOrder: MANUAL}) {
+                      collection {
+                        id
+                        sortOrder
+                      }
+                      userErrors {
+                        field
+                        message
+                      }
+                    }
+                  }
+                `,
+                { 
+                  variables: { 
+                    collectionId: remainingCollectionId
+                  } 
+                }
+              );
+
+              const updateSortOrderData = await updateSortOrderResponse.json();
+              console.log('Sort order update response:', JSON.stringify(updateSortOrderData, null, 2));
+              
+              if (updateSortOrderData.data?.collectionUpdate?.userErrors?.length > 0) {
+                const errors = updateSortOrderData.data.collectionUpdate.userErrors.map((err: any) => err.message).join(", ");
+                return json({ success: false, message: `Error updating collection sort order: ${errors}` });
+              }
+              
+              // If there are GraphQL-level errors
+              if ('errors' in updateSortOrderData && Array.isArray(updateSortOrderData.errors)) {
+                const errors = updateSortOrderData.errors.map((err: any) => err.message).join(", ");
+                return json({ success: false, message: `GraphQL error in sort order update: ${errors}` });
+              }
+
+              // Small delay to ensure sort order update is processed
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              console.log('Collection sort order updated to MANUAL');
+            }
             
+            // Now the collection is MANUAL, we can proceed with reordering
             // For each product, we need its ID in the desired order
             const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
               (product: any) => product.id
@@ -341,6 +442,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                       field
                       message
                     }
+                    reorderedCollection {
+                      id
+                      sortOrder
+                    }
                   }
                 }
               `,
@@ -354,13 +459,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
             const updateData = await updateResponse.json();
             
-            if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+            // Log the entire GraphQL response for debugging
+            console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
+            
+            if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
               const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
               return json({ success: false, message: `Error reordering collection: ${errors}` });
+            }
+            
+            // If there are GraphQL-level errors
+            if ('errors' in updateData && Array.isArray(updateData.errors)) {
+              const errors = updateData.errors.map((err: any) => err.message).join(", ");
+              return json({ success: false, message: `GraphQL error: ${errors}` });
             }
 
             // Prepare success message
             let successMessage = `${remainingCollection.title}: ${remainingInStockProducts.length} in-stock products, ${remainingOutOfStockProducts.length} out-of-stock products`;
+            
+            // If the collection wasn't manually sorted before, add a note about the sort order change
             if (remainingSortOrder !== "MANUAL") {
               successMessage += ` (sort order changed from ${remainingSortOrder} to MANUAL)`;
             }
