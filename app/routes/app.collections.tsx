@@ -178,10 +178,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               job {
                 id
               }
-              reorderedCollection {
-                id
-                title
-              }
               userErrors {
                 field
                 message
@@ -203,7 +199,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
         return json({ success: false, message: `Error reordering collection: ${errors}` });
       }
-
+      
       return json({ 
         success: true, 
         message: `Successfully moved ${outOfStockProducts.length} out-of-stock products to the end of "${collection.title}"`,
