@@ -164,11 +164,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         (product: any) => product.id
       );
 
+      // Create proper "moves" input format for the reordering mutation
+      const moves = newOrder.map((productId, index) => ({
+        id: productId,
+        position: index
+      }));
+
       // Update the collection's sort order
       const updateResponse = await admin.graphql(
         `#graphql
-          mutation CollectionReorder($collectionId: ID!, $productIds: [ID!]!) {
-            collectionReorderProducts(id: $collectionId, productsOrder: $productIds) {
+          mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+            collectionReorderProducts(id: $collectionId, moves: $moves) {
               collection {
                 id
                 title
@@ -183,7 +189,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { 
           variables: { 
             collectionId,
-            productIds: newOrder
+            moves: moves
           } 
         }
       );
