@@ -103,7 +103,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   title
                   handle
                   totalInventory
-                  availableForSale
+                  status
                 }
                 cursor
               }
@@ -127,8 +127,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }));
 
     // 2. Separate in-stock and out-of-stock products
-    const inStockProducts = products.filter((product: any) => product.availableForSale);
-    const outOfStockProducts = products.filter((product: any) => !product.availableForSale);
+    const inStockProducts = products.filter((product: any) => 
+      product.status === "ACTIVE" && product.totalInventory > 0
+    );
+    const outOfStockProducts = products.filter((product: any) => 
+      product.status !== "ACTIVE" || product.totalInventory <= 0
+    );
 
     // 3. Get collection's manual sort order if it's manually sorted
     const collectionResponse = await admin.graphql(
