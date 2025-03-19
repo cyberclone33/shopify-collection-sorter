@@ -14,19 +14,19 @@ datasource db {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
+  id            String    @id @db.Text
+  shop          String    @db.Text
+  state         String    @db.Text
   isOnline      Boolean   @default(false)
-  scope         String?
+  scope         String?   @db.Text
   expires       DateTime?
-  accessToken   String
+  accessToken   String    @db.Text
   userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
+  firstName     String?   @db.Text
+  lastName      String?   @db.Text
+  email         String?   @db.Text
   accountOwner  Boolean   @default(false)
-  locale        String?
+  locale        String?   @db.Text
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }

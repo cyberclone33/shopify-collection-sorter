@@ -3,16 +3,18 @@ services:
     name: shopify-collection-sorter
     env: node
     plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm run setup && npm run start
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm run start
     healthCheckPath: /
     disk:
-      name: data
+      name: prisma-data
       mountPath: /opt/render/project/src/prisma
       sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        value: file:/opt/render/project/src/prisma/prod.db
       - key: SHOPIFY_API_KEY
         sync: false
       - key: SHOPIFY_API_SECRET
