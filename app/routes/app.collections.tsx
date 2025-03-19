@@ -19,6 +19,7 @@ import {
   Box,
   Pagination,
   Badge,
+  Checkbox
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -85,6 +86,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const collectionId = formData.get("collectionId")?.toString();
   const productLimit = formData.get("productLimit")?.toString() || "250";
+  const bulkSort = formData.get("bulkSort")?.toString() || "false";
+  const remainingCollections = formData.get("remainingCollections")?.toString() || "";
 
   if (!collectionId) {
     return json({ success: false, message: "Collection ID is required" });
@@ -235,6 +238,156 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       });
       
+      if (bulkSort === "true" && remainingCollections) {
+        const remainingCollectionIds = remainingCollections.split(",");
+        for (const remainingCollectionId of remainingCollectionIds) {
+          // Fetch products from the collection
+          const remainingProductsResponse = await admin.graphql(
+            `#graphql
+              query GetCollectionProducts($collectionId: ID!, $first: Int!) {
+                collection(id: $collectionId) {
+                  title
+                  products(first: $first) {
+                    edges {
+                      node {
+                        id
+                        title
+                        handle
+                        totalInventory
+                        status
+                      }
+                      cursor
+                    }
+                  }
+                }
+              }
+            `,
+            { 
+              variables: { 
+                collectionId: remainingCollectionId,
+                first: parseInt(productLimit, 10)
+              } 
+            }
+          );
+
+          const remainingProductsData = await remainingProductsResponse.json();
+          const remainingCollection = remainingProductsData.data.collection;
+          const remainingProducts = remainingCollection.products.edges.map((edge: any) => ({
+            ...edge.node,
+            cursor: edge.cursor
+          }));
+
+          // Separate in-stock and out-of-stock products
+          const remainingInStockProducts = remainingProducts.filter((product: any) => 
+            product.status === "ACTIVE" && product.totalInventory > 0
+          );
+          const remainingOutOfStockProducts = remainingProducts.filter((product: any) => 
+            product.status !== "ACTIVE" || product.totalInventory <= 0
+          );
+
+          // Get collection's manual sort order if it's manually sorted
+          const remainingCollectionResponse = await admin.graphql(
+            `#graphql
+              query GetCollectionSortOrder($collectionId: ID!) {
+                collection(id: $collectionId) {
+                  sortOrder
+                }
+              }
+            `,
+            { variables: { collectionId: remainingCollectionId } }
+          );
+
+          const remainingCollectionData = await remainingCollectionResponse.json();
+          const remainingSortOrder = remainingCollectionData.data.collection.sortOrder;
+
+          // Only proceed with manual sorting
+          if (remainingSortOrder !== "MANUAL") {
+            return json({ 
+              success: false, 
+              message: "Cannot sort this collection. Only manually sorted collections can be reordered." 
+            });
+          }
+
+          // Reorder the collection with in-stock products first, then out-of-stock
+          if (remainingOutOfStockProducts.length > 0) {
+            // For each product, we need its ID in the desired order
+            const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
+              (product: any) => product.id
+            );
+
+            // Create proper "moves" input format for the reordering mutation
+            const moves = newOrder.map((productId, index) => ({
+              id: productId,
+              newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+            }));
+
+            // Update the collection's sort order
+            const updateResponse = await admin.graphql(
+              `#graphql
+                mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                  collectionReorderProducts(id: $collectionId, moves: $moves) {
+                    job {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }
+              `,
+              { 
+                variables: { 
+                  collectionId: remainingCollectionId,
+                  moves: moves
+                } 
+              }
+            );
+
+            const updateData = await updateResponse.json();
+            
+            if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+              const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+              return json({ success: false, message: `Error reordering collection: ${errors}` });
+            }
+            
+            // Save the sorted collection to the database
+            await prisma.$transaction(async (tx) => {
+              // First, ensure the table exists
+              await tx.$executeRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "SortedCollection" (
+                  "id" TEXT NOT NULL PRIMARY KEY,
+                  "shop" TEXT NOT NULL,
+                  "collectionId" TEXT NOT NULL,
+                  "collectionTitle" TEXT NOT NULL,
+                  "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+              `);
+              
+              await tx.$executeRawUnsafe(`
+                CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
+              `);
+              
+              // Using raw queries since the model might not be fully recognized by TypeScript yet
+              await tx.$executeRawUnsafe(`
+                INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt")
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT ("shop", "collectionId") 
+                DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?
+              `, 
+              `cuid-${Date.now()}`, 
+              session.shop, 
+              remainingCollectionId, 
+              remainingCollection.title, 
+              new Date().toISOString(),
+              remainingCollection.title,
+              new Date().toISOString()
+              );
+            });
+          }
+        }
+      }
+
       return json({ 
         success: true, 
         message: `Successfully moved ${outOfStockProducts.length} out-of-stock products to the end of "${collection.title}"`,
@@ -272,6 +425,22 @@ export default function CollectionsPage() {
   const [productLimit, setProductLimit] = useState("250");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+  
+  // Add state for tracking selected collections
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
+  const [isBulkSorting, setIsBulkSorting] = useState(false);
+
+  // Filter collections based on search query
+  const filteredCollections = collections.filter((collection: Collection) => 
+    collection.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Paginate filtered collections
+  const totalPages = Math.ceil(filteredCollections.length / itemsPerPage);
+  const paginatedCollections = filteredCollections.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   // Handle search input change
   const handleSearchChange = useCallback((value: string) => {
@@ -292,18 +461,59 @@ export default function CollectionsPage() {
       { method: "POST" }
     );
   };
-
-  // Filter collections based on search query
-  const filteredCollections = collections.filter((collection: Collection) => 
-    collection.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Paginate filtered collections
-  const totalPages = Math.ceil(filteredCollections.length / itemsPerPage);
-  const paginatedCollections = filteredCollections.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  
+  // Handle toggling collection selection
+  const handleCollectionSelect = useCallback((collectionId: string, checked: boolean) => {
+    setSelectedCollections(prev => {
+      if (checked) {
+        return [...prev, collectionId];
+      } else {
+        return prev.filter(id => id !== collectionId);
+      }
+    });
+  }, []);
+  
+  // Handle bulk sort button click
+  const handleBulkSort = useCallback(() => {
+    if (selectedCollections.length === 0) return;
+    
+    setIsBulkSorting(true);
+    
+    // Process the first collection right away
+    const firstCollection = selectedCollections[0];
+    const remainingCollections = selectedCollections.slice(1).join(',');
+    
+    submit(
+      { 
+        collectionId: firstCollection, 
+        productLimit,
+        bulkSort: "true",
+        remainingCollections
+      },
+      { method: "POST" }
+    );
+  }, [submit, selectedCollections, productLimit]);
+  
+  // Handle select/deselect all collections on current page
+  const handleSelectAllPage = useCallback((checked: boolean) => {
+    if (checked) {
+      // Add all collections from current page that aren't already selected
+      const pageCollectionIds = paginatedCollections.map((collection: Collection) => collection.id);
+      setSelectedCollections(prev => {
+        const newSelections = [...prev];
+        pageCollectionIds.forEach((id: string) => {
+          if (!newSelections.includes(id)) {
+            newSelections.push(id);
+          }
+        });
+        return newSelections;
+      });
+    } else {
+      // Remove all collections from current page
+      const pageCollectionIds = paginatedCollections.map((collection: Collection) => collection.id);
+      setSelectedCollections(prev => prev.filter((id: string) => !pageCollectionIds.includes(id)));
+    }
+  }, [paginatedCollections]);
 
   return (
     <Page>
@@ -378,6 +588,27 @@ export default function CollectionsPage() {
                 <Text as="p" variant="bodyMd">
                   Showing {paginatedCollections.length} of {filteredCollections.length} collections
                 </Text>
+                
+                {/* Add bulk actions section */}
+                {paginatedCollections.length > 0 && (
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Checkbox
+                      label="Select all on this page"
+                      checked={paginatedCollections.length > 0 && paginatedCollections.every(
+                        (collection: Collection) => selectedCollections.includes(collection.id)
+                      )}
+                      onChange={handleSelectAllPage}
+                      disabled={isLoading || isBulkSorting}
+                    />
+                    <Button
+                      disabled={selectedCollections.length === 0 || isLoading || isBulkSorting}
+                      onClick={handleBulkSort}
+                      variant="primary"
+                    >
+                      {`${isBulkSorting ? "Sorting" : "Sort"} ${selectedCollections.length} ${isBulkSorting ? "collections..." : "selected collections"}`}
+                    </Button>
+                  </InlineStack>
+                )}
               </BlockStack>
             </Card>
           </Layout.Section>
@@ -389,11 +620,20 @@ export default function CollectionsPage() {
                   {paginatedCollections.map((collection: Collection) => {
                     const { id, title, productsCount, sortOrder } = collection;
                     const isCurrentCollection = selectedCollectionId === id && isLoading;
+                    const isSorting = isCurrentCollection || (isBulkSorting && selectedCollections.includes(id));
                     
                     return (
                       <Box key={id} padding="400" borderBlockEndWidth="025">
                         <InlineStack gap="500" align="space-between" blockAlign="center">
-                          <Box width="30%">
+                          <Box>
+                            <Checkbox
+                              label=""
+                              checked={selectedCollections.includes(id)}
+                              onChange={(checked) => handleCollectionSelect(id, checked)}
+                              disabled={isLoading || isBulkSorting}
+                            />
+                          </Box>
+                          <Box width="25%">
                             <Text variant="bodyMd" fontWeight="bold" as="span">
                               {title}
                             </Text>
@@ -406,12 +646,12 @@ export default function CollectionsPage() {
                           </Box>
                           <Box>
                             <Button
-                              disabled={isLoading}
+                              disabled={isLoading || isBulkSorting}
                               onClick={() => handleSortClick(id)}
                               size="slim"
                               variant="primary"
                             >
-                              {isCurrentCollection ? <><Spinner size="small" /> <span>Sorting</span></> : "Sort"}
+                              {isSorting ? "Sorting..." : "Sort"}
                             </Button>
                           </Box>
                         </InlineStack>
