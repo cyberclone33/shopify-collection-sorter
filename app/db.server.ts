@@ -14,56 +14,74 @@ async function initializeDatabase() {
   try {
     // Make sure we're in production before running migrations
     if (process.env.NODE_ENV === "production") {
-      // Check if migrations directory exists
-      const migrationsPath = path.resolve(process.cwd(), "./prisma/migrations");
-      const schemaPath = path.resolve(process.cwd(), "./prisma/schema.prisma");
+      // Ensure the prisma directory exists
+      const prismaDir = path.resolve(process.cwd(), "./prisma");
+      if (!fs.existsSync(prismaDir)) {
+        console.log("📁 Creating prisma directory...");
+        fs.mkdirSync(prismaDir, { recursive: true });
+      }
       
-      if (fs.existsSync(schemaPath)) {
-        console.log("✅ Found schema.prisma");
+      // Create empty database file if it doesn't exist
+      const dbPath = path.resolve(prismaDir, "./prod.db");
+      if (!fs.existsSync(dbPath)) {
+        console.log("📄 Creating database file at", dbPath);
+        fs.writeFileSync(dbPath, "");
+        console.log("✅ Database file created");
+      }
+      
+      try {
+        // Try to run migrations directly
+        console.log("🔄 Running database migrations...");
+        execSync("npx prisma migrate deploy", { 
+          stdio: "inherit",
+          env: {
+            ...process.env,
+            DATABASE_URL: `file:${dbPath}`
+          }
+        });
+        console.log("✅ Database migrations completed");
+      } catch (error) {
+        console.error("⚠️ Error during migration, trying alternative approaches...");
         
         try {
-          // Try to run a simple Prisma command to check if database exists
-          console.log("🔍 Checking database connection...");
-          execSync("npx prisma validate", { stdio: "inherit" });
+          // Try manually creating the Session table
+          console.log("🔄 Manually creating Session table...");
           
-          // Directly try to run the migration
-          console.log("🔄 Running database migrations...");
-          execSync("npx prisma migrate deploy", { stdio: "inherit" });
-          console.log("✅ Database migrations completed");
-        } catch (error) {
-          console.error("⚠️ Error during migration:", error);
-          
-          // If migration fails, try reset as a fallback
-          try {
-            console.log("🔄 Attempting database reset...");
-            execSync("npx prisma migrate reset --force", { stdio: "inherit" });
-            console.log("✅ Database reset completed");
-          } catch (resetError) {
-            console.error("❌ Database reset failed:", resetError);
-            
-            // Last resort: create SQLite file directly
-            try {
-              console.log("🔄 Creating SQLite database file directly...");
-              const dbPath = process.env.DATABASE_URL?.replace("file:", "") || "./prisma/dev.sqlite";
-              const dbDir = path.dirname(dbPath);
-              
-              if (!fs.existsSync(dbDir)) {
-                fs.mkdirSync(dbDir, { recursive: true });
+          // Create an instance of PrismaClient with the correct database URL
+          const tempPrisma = new PrismaClient({
+            datasources: {
+              db: {
+                url: `file:${dbPath}`
               }
-              
-              if (!fs.existsSync(dbPath)) {
-                fs.writeFileSync(dbPath, "");
-              }
-              
-              execSync("npx prisma db push --force-reset", { stdio: "inherit" });
-              console.log("✅ Database created and schema pushed");
-            } catch (createError) {
-              console.error("❌ Failed to create database directly:", createError);
             }
-          }
+          });
+          
+          // Execute raw SQL to create the Session table
+          await tempPrisma.$executeRaw`
+            CREATE TABLE IF NOT EXISTS "Session" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "shop" TEXT NOT NULL,
+              "state" TEXT NOT NULL,
+              "isOnline" BOOLEAN NOT NULL DEFAULT false,
+              "scope" TEXT,
+              "expires" DATETIME,
+              "accessToken" TEXT NOT NULL,
+              "userId" BIGINT,
+              "firstName" TEXT,
+              "lastName" TEXT,
+              "email" TEXT,
+              "accountOwner" BOOLEAN NOT NULL DEFAULT false,
+              "locale" TEXT,
+              "collaborator" BOOLEAN DEFAULT false,
+              "emailVerified" BOOLEAN DEFAULT false
+            );
+          `;
+          
+          console.log("✅ Session table created manually");
+          await tempPrisma.$disconnect();
+        } catch (sqlError) {
+          console.error("❌ Failed to create table manually:", sqlError);
         }
-      } else {
-        console.error("❌ schema.prisma not found");
       }
     }
   } catch (error) {
@@ -74,18 +92,28 @@ async function initializeDatabase() {
 // Initialize database before creating the client
 if (process.env.NODE_ENV === "production") {
   console.log("🚀 Running database initialization in production mode");
-  initializeDatabase();
+  // Run initialization
+  initializeDatabase().catch(e => {
+    console.error("Failed to initialize database:", e);
+  });
 }
 
+// Create Prisma client
 let prisma: PrismaClient;
 
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV === "production") {
+  prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL || "file:./prisma/prod.db"
+      }
+    }
+  });
+} else {
   if (!global.prisma) {
     global.prisma = new PrismaClient();
   }
   prisma = global.prisma;
-} else {
-  prisma = new PrismaClient();
 }
 
 export default prisma;

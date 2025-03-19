@@ -10,23 +10,23 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
-  url      = "file:dev.sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
-  id            String    @id @db.Text
-  shop          String    @db.Text
-  state         String    @db.Text
+  id            String    @id
+  shop          String    
+  state         String    
   isOnline      Boolean   @default(false)
-  scope         String?   @db.Text
+  scope         String?   
   expires       DateTime?
-  accessToken   String    @db.Text
+  accessToken   String    
   userId        BigInt?
-  firstName     String?   @db.Text
-  lastName      String?   @db.Text
-  email         String?   @db.Text
+  firstName     String?   
+  lastName      String?   
+  email         String?   
   accountOwner  Boolean   @default(false)
-  locale        String?   @db.Text
+  locale        String?   
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
