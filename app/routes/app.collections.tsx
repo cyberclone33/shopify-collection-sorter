@@ -161,66 +161,56 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Different approach based on sort order
     if (outOfStockProducts.length > 0) {
-      if (sortOrder === "MANUAL") {
-        // For manually sorted collections, directly reorder products
-        // For each product, we need its ID in the desired order
-        const newOrder = [...inStockProducts, ...outOfStockProducts].map(
-          (product: any) => product.id
-        );
+      // For all collections, we can reorder products
+      // Note: For non-manual collections, this will change their sort order to MANUAL
+      
+      // For each product, we need its ID in the desired order
+      const newOrder = [...inStockProducts, ...outOfStockProducts].map(
+        (product: any) => product.id
+      );
 
-        // Create proper "moves" input format for the reordering mutation
-        const moves = newOrder.map((productId, index) => ({
-          id: productId,
-          newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-        }));
+      // Create proper "moves" input format for the reordering mutation
+      const moves = newOrder.map((productId, index) => ({
+        id: productId,
+        newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+      }));
 
-        // Update the collection's sort order
-        const updateResponse = await admin.graphql(
-          `#graphql
-            mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-              collectionReorderProducts(id: $collectionId, moves: $moves) {
-                job {
-                  id
-                }
-                userErrors {
-                  field
-                  message
-                }
+      // Update the collection's sort order
+      const updateResponse = await admin.graphql(
+        `#graphql
+          mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+            collectionReorderProducts(id: $collectionId, moves: $moves) {
+              job {
+                id
+              }
+              userErrors {
+                field
+                message
               }
             }
-          `,
-          { 
-            variables: { 
-              collectionId,
-              moves: moves
-            } 
           }
-        );
-
-        const updateData = await updateResponse.json();
-        
-        if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
-          const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-          return json({ success: false, message: `Error reordering collection: ${errors}` });
+        `,
+        { 
+          variables: { 
+            collectionId,
+            moves: moves
+          } 
         }
-      } else if (sortOrder === "CREATED_DESC" || sortOrder === "BEST_SELLING" || sortOrder === "CREATED" || sortOrder === "PRICE_DESC" || sortOrder === "PRICE_ASC" || sortOrder === "TITLE" || sortOrder === "TITLE_DESC" || sortOrder === "UPDATED") {
-        // For non-manual sort orders, we can't directly reorder but we can:
-        // 1. Create a new smart collection that mimics the original but puts out-of-stock at the end
-        // 2. Or provide info about what products would be affected
-        
-        // For now, we'll simply acknowledge the sort was attempted and provide counts
-        return json({ 
-          success: true, 
-          message: `Collection '${collection.title}' analyzed. ${inStockProducts.length} in-stock products and ${outOfStockProducts.length} out-of-stock products found. This collection uses '${sortOrder}' sort order which cannot be directly reordered. Consider creating a manual collection instead.`,
-          inStockCount: inStockProducts.length,
-          outOfStockCount: outOfStockProducts.length,
-          collectionTitle: collection.title
-        });
-      } else {
-        return json({ 
-          success: false, 
-          message: `Sort order '${sortOrder}' is not supported for reorganizing out-of-stock products.` 
-        });
+      );
+
+      const updateData = await updateResponse.json();
+      
+      if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+        const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+        return json({ success: false, message: `Error reordering collection: ${errors}` });
+      }
+
+      // Prepare the success message based on whether the sort order was changed
+      let message = `Collection '${collection.title}' has been sorted with ${inStockProducts.length} in-stock products listed first, followed by ${outOfStockProducts.length} out-of-stock products.`;
+      
+      // If the collection wasn't manually sorted before, add a note about the sort order change
+      if (sortOrder !== "MANUAL") {
+        message += ` Note: The collection's sort order has been changed from ${sortOrder} to MANUAL.`;
       }
       
       // Save the sorted collection to the database
@@ -253,10 +243,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         collectionId, 
         collection.title, 
         new Date().toISOString(),
-        sortOrder,
+        "MANUAL",
         collection.title,
         new Date().toISOString(),
-        sortOrder
+        "MANUAL"
         );
       });
       
@@ -325,66 +315,62 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
           // Different approach based on sort order
           if (remainingOutOfStockProducts.length > 0) {
-            if (remainingSortOrder === "MANUAL") {
-              // For manually sorted collections, directly reorder products
-              // For each product, we need its ID in the desired order
-              const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
-                (product: any) => product.id
-              );
+            // For all collections, we can reorder products
+            // Note: For non-manual collections, this will change their sort order to MANUAL
+            
+            // For each product, we need its ID in the desired order
+            const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
+              (product: any) => product.id
+            );
 
-              // Create proper "moves" input format for the reordering mutation
-              const moves = newOrder.map((productId, index) => ({
-                id: productId,
-                newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-              }));
+            // Create proper "moves" input format for the reordering mutation
+            const moves = newOrder.map((productId, index) => ({
+              id: productId,
+              newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+            }));
 
-              // Update the collection's sort order
-              const updateResponse = await admin.graphql(
-                `#graphql
-                  mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-                    collectionReorderProducts(id: $collectionId, moves: $moves) {
-                      job {
-                        id
-                      }
-                      userErrors {
-                        field
-                        message
-                      }
+            // Update the collection's sort order
+            const updateResponse = await admin.graphql(
+              `#graphql
+                mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                  collectionReorderProducts(id: $collectionId, moves: $moves) {
+                    job {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
                     }
                   }
-                `,
-                { 
-                  variables: { 
-                    collectionId: remainingCollectionId,
-                    moves: moves
-                  } 
                 }
-              );
-
-              const updateData = await updateResponse.json();
-              
-              if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
-                const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-                return json({ success: false, message: `Error reordering collection: ${errors}` });
+              `,
+              { 
+                variables: { 
+                  collectionId: remainingCollectionId,
+                  moves: moves
+                } 
               }
-            } else if (remainingSortOrder === "CREATED_DESC" || remainingSortOrder === "BEST_SELLING" || remainingSortOrder === "CREATED" || remainingSortOrder === "PRICE_DESC" || remainingSortOrder === "PRICE_ASC" || remainingSortOrder === "TITLE" || remainingSortOrder === "TITLE_DESC" || remainingSortOrder === "UPDATED") {
-              // For non-manual sort orders, we can't directly reorder but we can:
-              // 1. Create a new smart collection that mimics the original but puts out-of-stock at the end
-              // 2. Or provide info about what products would be affected
-              
-              // For now, we'll simply acknowledge the sort was attempted and provide counts
-              successfulSorts.push({
-                title: remainingCollection.title,
-                inStockCount: remainingInStockProducts.length,
-                outOfStockCount: remainingOutOfStockProducts.length,
-                message: `Collection '${remainingCollection.title}' analyzed. ${remainingInStockProducts.length} in-stock products and ${remainingOutOfStockProducts.length} out-of-stock products found. This collection uses '${remainingSortOrder}' sort order which cannot be directly reordered.`
-              });
-            } else {
-              return json({ 
-                success: false, 
-                message: `Sort order '${remainingSortOrder}' is not supported for reorganizing out-of-stock products.` 
-              });
+            );
+
+            const updateData = await updateResponse.json();
+            
+            if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+              const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+              return json({ success: false, message: `Error reordering collection: ${errors}` });
             }
+
+            // Prepare success message
+            let successMessage = `${remainingCollection.title}: ${remainingInStockProducts.length} in-stock products, ${remainingOutOfStockProducts.length} out-of-stock products`;
+            if (remainingSortOrder !== "MANUAL") {
+              successMessage += ` (sort order changed from ${remainingSortOrder} to MANUAL)`;
+            }
+            
+            successfulSorts.push({
+              title: remainingCollection.title,
+              inStockCount: remainingInStockProducts.length,
+              outOfStockCount: remainingOutOfStockProducts.length,
+              message: successMessage
+            });
             
             // Save the sorted collection to the database
             await prisma.$transaction(async (tx) => {
@@ -416,10 +402,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               remainingCollectionId, 
               remainingCollection.title, 
               new Date().toISOString(),
-              remainingSortOrder,
+              "MANUAL", // Always MANUAL after sorting
               remainingCollection.title,
               new Date().toISOString(),
-              remainingSortOrder
+              "MANUAL"  // Always MANUAL after sorting
               );
             });
           }
@@ -433,7 +419,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       return json({ 
         success: true, 
-        message: `Successfully moved ${outOfStockProducts.length} out-of-stock products to the end of "${collection.title}"`,
+        message: message,
         inStockCount: inStockProducts.length,
         outOfStockCount: outOfStockProducts.length,
         collectionTitle: collection.title
@@ -705,7 +691,7 @@ export default function CollectionsPage() {
                               </Text>
                               {sortOrder !== "MANUAL" && (
                                 <Text as="span" variant="bodySm" tone="subdued">
-                                  (Will count products but won't reorder directly)
+                                  (Will be changed to MANUAL when sorted)
                                 </Text>
                               )}
                             </InlineStack>
