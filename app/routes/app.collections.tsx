@@ -175,7 +175,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         `#graphql
           mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
             collectionReorderProducts(id: $collectionId, moves: $moves) {
-              collection {
+              job {
+                id
+              }
+              reorderedCollection {
                 id
                 title
               }
