@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import {
@@ -10,10 +10,15 @@ import {
   Banner,
   List,
   BlockStack,
-  DataTable,
   Spinner,
   EmptyState,
   Link,
+  TextField,
+  Select,
+  InlineStack,
+  Box,
+  Pagination,
+  Badge,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -38,12 +43,15 @@ interface ActionData {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  // Default to 250 collections to ensure we get all of them for most stores
+  const first = 250;
 
   // Fetch all collections
   const collectionsResponse = await admin.graphql(
     `#graphql
-      query GetCollections {
-        collections(first: 50) {
+      query GetCollections($first: Int!) {
+        collections(first: $first) {
           edges {
             node {
               id
@@ -56,7 +64,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           }
         }
       }
-    `
+    `,
+    {
+      variables: {
+        first,
+      },
+    }
   );
 
   const collectionsData = await collectionsResponse.json();
@@ -70,6 +83,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const collectionId = formData.get("collectionId")?.toString();
+  const productLimit = formData.get("productLimit")?.toString() || "250";
 
   if (!collectionId) {
     return json({ success: false, message: "Collection ID is required" });
@@ -79,10 +93,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // 1. Fetch products from the collection
     const productsResponse = await admin.graphql(
       `#graphql
-        query GetCollectionProducts($collectionId: ID!) {
+        query GetCollectionProducts($collectionId: ID!, $first: Int!) {
           collection(id: $collectionId) {
             title
-            products(first: 250) {
+            products(first: $first) {
               edges {
                 node {
                   id
@@ -97,7 +111,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           }
         }
       `,
-      { variables: { collectionId } }
+      { 
+        variables: { 
+          collectionId,
+          first: parseInt(productLimit, 10)
+        } 
+      }
     );
 
     const productsData = await productsResponse.json();
@@ -205,32 +224,42 @@ export default function CollectionsPage() {
   const isLoading = navigation.state === "submitting";
   
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [productLimit, setProductLimit] = useState("250");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  // Handle search input change
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1); // Reset to first page on new search
+  }, []);
+
+  // Handle product limit change
+  const handleProductLimitChange = useCallback((value: string) => {
+    setProductLimit(value);
+  }, []);
 
   // Handle sort button click
   const handleSortClick = (collectionId: string) => {
     setSelectedCollectionId(collectionId);
     submit(
-      { collectionId },
+      { collectionId, productLimit },
       { method: "POST" }
     );
   };
 
-  // Create table rows from collections data
-  const rows = collections.map((collection: Collection) => [
-    collection.title,
-    collection.productsCount.count.toString(),
-    collection.sortOrder,
-    <span key={`sort-button-${collection.id}`}>
-      <Button
-        disabled={isLoading}
-        onClick={() => handleSortClick(collection.id)}
-        size="slim"
-        variant="primary"
-      >
-        {isLoading && selectedCollectionId === collection.id ? <Spinner size="small" /> : "Sort"}
-      </Button>
-    </span>
-  ] as [string, string, string, JSX.Element]);
+  // Filter collections based on search query
+  const filteredCollections = collections.filter((collection: Collection) => 
+    collection.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Paginate filtered collections
+  const totalPages = Math.ceil(filteredCollections.length / itemsPerPage);
+  const paginatedCollections = filteredCollections.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   return (
     <Page>
@@ -274,13 +303,88 @@ export default function CollectionsPage() {
           </Layout.Section>
 
           <Layout.Section>
-            <Card padding="0">
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack gap="300" align="space-between">
+                  <Box width="66%">
+                    <TextField
+                      label="Search collections"
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      autoComplete="off"
+                      placeholder="Enter collection name"
+                      clearButton
+                      onClearButtonClick={() => handleSearchChange("")}
+                    />
+                  </Box>
+                  <Box width="33%">
+                    <Select
+                      label="Products per collection"
+                      options={[
+                        { label: '50 products', value: '50' },
+                        { label: '100 products', value: '100' },
+                        { label: '250 products', value: '250' },
+                      ]}
+                      onChange={handleProductLimitChange}
+                      value={productLimit}
+                    />
+                  </Box>
+                </InlineStack>
+                
+                <Text as="p" variant="bodyMd">
+                  Showing {paginatedCollections.length} of {filteredCollections.length} collections
+                </Text>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
               {collections.length > 0 ? (
-                <DataTable
-                  columnContentTypes={["text", "numeric", "text", "text"]}
-                  headings={["Collection", "Products", "Sort Order", "Actions"]}
-                  rows={rows}
-                />
+                <>
+                  {paginatedCollections.map((collection: Collection) => {
+                    const { id, title, productsCount, sortOrder } = collection;
+                    const isCurrentCollection = selectedCollectionId === id && isLoading;
+                    
+                    return (
+                      <Box key={id} padding="400" borderBlockEndWidth="025">
+                        <InlineStack gap="500" align="space-between" blockAlign="center">
+                          <Box width="30%">
+                            <Text variant="bodyMd" fontWeight="bold" as="span">
+                              {title}
+                            </Text>
+                          </Box>
+                          <Box>
+                            <Text variant="bodyMd" as="span">{productsCount.count} products</Text>
+                          </Box>
+                          <Box>
+                            <Text variant="bodyMd" as="span">Sort: {sortOrder}</Text>
+                          </Box>
+                          <Box>
+                            <Button
+                              disabled={isLoading}
+                              onClick={() => handleSortClick(id)}
+                              size="slim"
+                              variant="primary"
+                            >
+                              {isCurrentCollection ? <Spinner size="small" /> : "Sort"}
+                            </Button>
+                          </Box>
+                        </InlineStack>
+                      </Box>
+                    );
+                  })}
+                  {totalPages > 1 && (
+                    <Box padding="400">
+                      <Pagination
+                        hasPrevious={currentPage > 1}
+                        onPrevious={() => setCurrentPage(currentPage => Math.max(1, currentPage - 1))}
+                        hasNext={currentPage < totalPages}
+                        onNext={() => setCurrentPage(currentPage => Math.min(totalPages, currentPage + 1))}
+                      />
+                    </Box>
+                  )}
+                </>
               ) : (
                 <EmptyState
                   heading="No collections found"
