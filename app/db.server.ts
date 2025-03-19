@@ -96,6 +96,16 @@ async function initializeDatabase() {
               "collaborator" BOOLEAN DEFAULT 0,
               "emailVerified" BOOLEAN DEFAULT 0
             );
+            
+            CREATE TABLE IF NOT EXISTS "SortedCollection" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "shop" TEXT NOT NULL,
+              "collectionId" TEXT NOT NULL,
+              "collectionTitle" TEXT NOT NULL,
+              "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId");
           `;
           
           try {
