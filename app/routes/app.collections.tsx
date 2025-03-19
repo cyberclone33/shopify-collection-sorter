@@ -203,6 +203,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       // Save the sorted collection to the database
       await prisma.$transaction(async (tx) => {
+        // First, ensure the table exists
+        await tx.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "SortedCollection" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "collectionId" TEXT NOT NULL,
+            "collectionTitle" TEXT NOT NULL,
+            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        
+        await tx.$executeRawUnsafe(`
+          CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
+        `);
+        
         // Using raw queries since the model might not be fully recognized by TypeScript yet
         await tx.$executeRawUnsafe(`
           INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt")
