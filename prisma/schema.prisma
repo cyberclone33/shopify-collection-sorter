@@ -30,3 +30,13 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model SortedCollection {
+  id            String   @id @default(cuid())
+  shop          String
+  collectionId  String
+  collectionTitle String
+  sortedAt      DateTime @default(now())
+
+  @@unique([shop, collectionId], name: "shop_collectionId")
+}

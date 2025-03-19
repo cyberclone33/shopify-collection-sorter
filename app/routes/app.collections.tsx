@@ -22,6 +22,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
 
 // Define types for our data
 interface Collection {
@@ -80,7 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const collectionId = formData.get("collectionId")?.toString();
   const productLimit = formData.get("productLimit")?.toString() || "250";
@@ -199,6 +200,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
         return json({ success: false, message: `Error reordering collection: ${errors}` });
       }
+      
+      // Save the sorted collection to the database
+      await prisma.$transaction(async (tx) => {
+        // Using raw queries since the model might not be fully recognized by TypeScript yet
+        await tx.$executeRawUnsafe(`
+          INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt")
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT ("shop", "collectionId") 
+          DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?
+        `, 
+        `cuid-${Date.now()}`, 
+        session.shop, 
+        collectionId, 
+        collection.title, 
+        new Date().toISOString(),
+        collection.title,
+        new Date().toISOString()
+        );
+      });
       
       return json({ 
         success: true, 
@@ -376,7 +396,7 @@ export default function CollectionsPage() {
                               size="slim"
                               variant="primary"
                             >
-                              {isCurrentCollection ? <Spinner size="small" /> : "Sort"}
+                              {isCurrentCollection ? <><Spinner size="small" /> <span>Sorting</span></> : "Sort"}
                             </Button>
                           </Box>
                         </InlineStack>

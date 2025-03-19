@@ -25,6 +25,7 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/collections">Collection Sorter</Link>
+        <Link to="/app/sorted">Sorted Collections</Link>
         <Link to="/app/additional">Additional page</Link>
       </NavMenu>
       <Outlet />
