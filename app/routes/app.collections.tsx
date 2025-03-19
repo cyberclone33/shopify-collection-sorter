@@ -167,7 +167,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Create proper "moves" input format for the reordering mutation
       const moves = newOrder.map((productId, index) => ({
         id: productId,
-        newPosition: index
+        newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
       }));
 
       // Update the collection's sort order
