@@ -3,9 +3,13 @@ services:
     name: shopify-collection-sorter
     env: node
     plan: free
-    buildCommand: npm ci && npm run build && npm run setup
-    startCommand: npm run start
+    buildCommand: npm ci && npm run build
+    startCommand: npm run setup && npm run start
     healthCheckPath: /
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/prisma
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
