@@ -232,10 +232,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 field
                 message
               }
-              reorderedCollection {
-                id
-                sortOrder
-              }
             }
           }
         `,
@@ -441,10 +437,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     userErrors {
                       field
                       message
-                    }
-                    reorderedCollection {
-                      id
-                      sortOrder
                     }
                   }
                 }
