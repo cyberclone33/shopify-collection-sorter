@@ -37,16 +37,39 @@ interface ActionData {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   
-  // Using raw query instead of Prisma model for compatibility
-  const sortedCollections = await prisma.$queryRaw<SortedCollection[]>`
-    SELECT * FROM "SortedCollection" 
-    WHERE "shop" = ${session.shop}
-    ORDER BY "sortedAt" DESC
-  `;
-  
-  return json({
-    sortedCollections
-  });
+  try {
+    // First, ensure the table exists
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "SortedCollection" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "shop" TEXT NOT NULL,
+        "collectionId" TEXT NOT NULL,
+        "collectionTitle" TEXT NOT NULL,
+        "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    
+    await prisma.$executeRaw`
+      CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
+    `;
+    
+    // Using raw query instead of Prisma model for compatibility
+    const sortedCollections = await prisma.$queryRaw<SortedCollection[]>`
+      SELECT * FROM "SortedCollection" 
+      WHERE "shop" = ${session.shop}
+      ORDER BY "sortedAt" DESC
+    `;
+    
+    return json({
+      sortedCollections
+    });
+  } catch (error) {
+    console.error("Error loading sorted collections:", error);
+    return json({
+      sortedCollections: [],
+      error: `Error loading sorted collections: ${error instanceof Error ? error.message : "Unknown error"}`
+    });
+  }
 };
 
 // Handle the revert action
