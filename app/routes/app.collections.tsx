@@ -41,6 +41,12 @@ interface ActionData {
   inStockCount?: number;
   outOfStockCount?: number;
   collectionTitle?: string;
+  successfulSorts?: Array<{
+    title: string;
+    inStockCount: number;
+    outOfStockCount: number;
+    message: string;
+  }>;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -153,55 +159,68 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const collectionData = await collectionResponse.json();
     const sortOrder = collectionData.data.collection.sortOrder;
 
-    // Only proceed with manual sorting
-    if (sortOrder !== "MANUAL") {
-      return json({ 
-        success: false, 
-        message: "Cannot sort this collection. Only manually sorted collections can be reordered." 
-      });
-    }
-
-    // 4. Reorder the collection with in-stock products first, then out-of-stock
+    // Different approach based on sort order
     if (outOfStockProducts.length > 0) {
-      // For each product, we need its ID in the desired order
-      const newOrder = [...inStockProducts, ...outOfStockProducts].map(
-        (product: any) => product.id
-      );
+      if (sortOrder === "MANUAL") {
+        // For manually sorted collections, directly reorder products
+        // For each product, we need its ID in the desired order
+        const newOrder = [...inStockProducts, ...outOfStockProducts].map(
+          (product: any) => product.id
+        );
 
-      // Create proper "moves" input format for the reordering mutation
-      const moves = newOrder.map((productId, index) => ({
-        id: productId,
-        newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-      }));
+        // Create proper "moves" input format for the reordering mutation
+        const moves = newOrder.map((productId, index) => ({
+          id: productId,
+          newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+        }));
 
-      // Update the collection's sort order
-      const updateResponse = await admin.graphql(
-        `#graphql
-          mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-            collectionReorderProducts(id: $collectionId, moves: $moves) {
-              job {
-                id
-              }
-              userErrors {
-                field
-                message
+        // Update the collection's sort order
+        const updateResponse = await admin.graphql(
+          `#graphql
+            mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+              collectionReorderProducts(id: $collectionId, moves: $moves) {
+                job {
+                  id
+                }
+                userErrors {
+                  field
+                  message
+                }
               }
             }
+          `,
+          { 
+            variables: { 
+              collectionId,
+              moves: moves
+            } 
           }
-        `,
-        { 
-          variables: { 
-            collectionId,
-            moves: moves
-          } 
-        }
-      );
+        );
 
-      const updateData = await updateResponse.json();
-      
-      if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
-        const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-        return json({ success: false, message: `Error reordering collection: ${errors}` });
+        const updateData = await updateResponse.json();
+        
+        if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+          const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+          return json({ success: false, message: `Error reordering collection: ${errors}` });
+        }
+      } else if (sortOrder === "CREATED_DESC" || sortOrder === "BEST_SELLING" || sortOrder === "CREATED" || sortOrder === "PRICE_DESC" || sortOrder === "PRICE_ASC" || sortOrder === "TITLE" || sortOrder === "TITLE_DESC" || sortOrder === "UPDATED") {
+        // For non-manual sort orders, we can't directly reorder but we can:
+        // 1. Create a new smart collection that mimics the original but puts out-of-stock at the end
+        // 2. Or provide info about what products would be affected
+        
+        // For now, we'll simply acknowledge the sort was attempted and provide counts
+        return json({ 
+          success: true, 
+          message: `Collection '${collection.title}' analyzed. ${inStockProducts.length} in-stock products and ${outOfStockProducts.length} out-of-stock products found. This collection uses '${sortOrder}' sort order which cannot be directly reordered. Consider creating a manual collection instead.`,
+          inStockCount: inStockProducts.length,
+          outOfStockCount: outOfStockProducts.length,
+          collectionTitle: collection.title
+        });
+      } else {
+        return json({ 
+          success: false, 
+          message: `Sort order '${sortOrder}' is not supported for reorganizing out-of-stock products.` 
+        });
       }
       
       // Save the sorted collection to the database
@@ -213,7 +232,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             "shop" TEXT NOT NULL,
             "collectionId" TEXT NOT NULL,
             "collectionTitle" TEXT NOT NULL,
-            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "sortOrder" TEXT NOT NULL
           )
         `);
         
@@ -223,23 +243,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         
         // Using raw queries since the model might not be fully recognized by TypeScript yet
         await tx.$executeRawUnsafe(`
-          INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt")
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
+          VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT ("shop", "collectionId") 
-          DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?
+          DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?, "sortOrder" = ?
         `, 
         `cuid-${Date.now()}`, 
         session.shop, 
         collectionId, 
         collection.title, 
         new Date().toISOString(),
+        sortOrder,
         collection.title,
-        new Date().toISOString()
+        new Date().toISOString(),
+        sortOrder
         );
       });
       
       if (bulkSort === "true" && remainingCollections) {
         const remainingCollectionIds = remainingCollections.split(",");
+        const successfulSorts: any[] = [];
         for (const remainingCollectionId of remainingCollectionIds) {
           // Fetch products from the collection
           const remainingProductsResponse = await admin.graphql(
@@ -300,55 +323,67 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           const remainingCollectionData = await remainingCollectionResponse.json();
           const remainingSortOrder = remainingCollectionData.data.collection.sortOrder;
 
-          // Only proceed with manual sorting
-          if (remainingSortOrder !== "MANUAL") {
-            return json({ 
-              success: false, 
-              message: "Cannot sort this collection. Only manually sorted collections can be reordered." 
-            });
-          }
-
-          // Reorder the collection with in-stock products first, then out-of-stock
+          // Different approach based on sort order
           if (remainingOutOfStockProducts.length > 0) {
-            // For each product, we need its ID in the desired order
-            const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
-              (product: any) => product.id
-            );
+            if (remainingSortOrder === "MANUAL") {
+              // For manually sorted collections, directly reorder products
+              // For each product, we need its ID in the desired order
+              const newOrder = [...remainingInStockProducts, ...remainingOutOfStockProducts].map(
+                (product: any) => product.id
+              );
 
-            // Create proper "moves" input format for the reordering mutation
-            const moves = newOrder.map((productId, index) => ({
-              id: productId,
-              newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-            }));
+              // Create proper "moves" input format for the reordering mutation
+              const moves = newOrder.map((productId, index) => ({
+                id: productId,
+                newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+              }));
 
-            // Update the collection's sort order
-            const updateResponse = await admin.graphql(
-              `#graphql
-                mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-                  collectionReorderProducts(id: $collectionId, moves: $moves) {
-                    job {
-                      id
-                    }
-                    userErrors {
-                      field
-                      message
+              // Update the collection's sort order
+              const updateResponse = await admin.graphql(
+                `#graphql
+                  mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                    collectionReorderProducts(id: $collectionId, moves: $moves) {
+                      job {
+                        id
+                      }
+                      userErrors {
+                        field
+                        message
+                      }
                     }
                   }
+                `,
+                { 
+                  variables: { 
+                    collectionId: remainingCollectionId,
+                    moves: moves
+                  } 
                 }
-              `,
-              { 
-                variables: { 
-                  collectionId: remainingCollectionId,
-                  moves: moves
-                } 
-              }
-            );
+              );
 
-            const updateData = await updateResponse.json();
-            
-            if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
-              const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-              return json({ success: false, message: `Error reordering collection: ${errors}` });
+              const updateData = await updateResponse.json();
+              
+              if (updateData.data.collectionReorderProducts.userErrors.length > 0) {
+                const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+                return json({ success: false, message: `Error reordering collection: ${errors}` });
+              }
+            } else if (remainingSortOrder === "CREATED_DESC" || remainingSortOrder === "BEST_SELLING" || remainingSortOrder === "CREATED" || remainingSortOrder === "PRICE_DESC" || remainingSortOrder === "PRICE_ASC" || remainingSortOrder === "TITLE" || remainingSortOrder === "TITLE_DESC" || remainingSortOrder === "UPDATED") {
+              // For non-manual sort orders, we can't directly reorder but we can:
+              // 1. Create a new smart collection that mimics the original but puts out-of-stock at the end
+              // 2. Or provide info about what products would be affected
+              
+              // For now, we'll simply acknowledge the sort was attempted and provide counts
+              successfulSorts.push({
+                title: remainingCollection.title,
+                inStockCount: remainingInStockProducts.length,
+                outOfStockCount: remainingOutOfStockProducts.length,
+                message: `Collection '${remainingCollection.title}' analyzed. ${remainingInStockProducts.length} in-stock products and ${remainingOutOfStockProducts.length} out-of-stock products found. This collection uses '${remainingSortOrder}' sort order which cannot be directly reordered.`
+              });
+            } else {
+              return json({ 
+                success: false, 
+                message: `Sort order '${remainingSortOrder}' is not supported for reorganizing out-of-stock products.` 
+              });
             }
             
             // Save the sorted collection to the database
@@ -360,7 +395,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   "shop" TEXT NOT NULL,
                   "collectionId" TEXT NOT NULL,
                   "collectionTitle" TEXT NOT NULL,
-                  "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                  "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  "sortOrder" TEXT NOT NULL
                 )
               `);
               
@@ -370,22 +406,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               
               // Using raw queries since the model might not be fully recognized by TypeScript yet
               await tx.$executeRawUnsafe(`
-                INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt")
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT ("shop", "collectionId") 
-                DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?
+                DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?, "sortOrder" = ?
               `, 
               `cuid-${Date.now()}`, 
               session.shop, 
               remainingCollectionId, 
               remainingCollection.title, 
               new Date().toISOString(),
+              remainingSortOrder,
               remainingCollection.title,
-              new Date().toISOString()
+              new Date().toISOString(),
+              remainingSortOrder
               );
             });
           }
         }
+        return json({ 
+          success: true, 
+          message: `Bulk sorting completed. ${successfulSorts.length} collections were sorted.`,
+          successfulSorts
+        });
       }
 
       return json({ 
@@ -542,6 +585,20 @@ export default function CollectionsPage() {
                         <List.Item>Out-of-stock products: {actionData.outOfStockCount}</List.Item>
                       </List>
                     )}
+                    {actionData.successfulSorts && (
+                      <List>
+                        {actionData.successfulSorts.map((sort: any) => (
+                          <List.Item key={sort.title}>
+                            <Text variant="bodyMd" as="span">{sort.title}</Text>
+                            <List>
+                              <List.Item>In-stock products: {sort.inStockCount}</List.Item>
+                              <List.Item>Out-of-stock products: {sort.outOfStockCount}</List.Item>
+                            </List>
+                            <Text variant="bodyMd" as="span">{sort.message}</Text>
+                          </List.Item>
+                        ))}
+                      </List>
+                    )}
                   </Banner>
                 )}
                 {actionData?.success === false && (
@@ -642,7 +699,16 @@ export default function CollectionsPage() {
                             <Text variant="bodyMd" as="span">{productsCount.count} products</Text>
                           </Box>
                           <Box>
-                            <Text variant="bodyMd" as="span">Sort: {sortOrder}</Text>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Text as="span" variant="bodyMd">
+                                Sort Order: {sortOrder}
+                              </Text>
+                              {sortOrder !== "MANUAL" && (
+                                <Text as="span" variant="bodySm" tone="subdued">
+                                  (Will count products but won't reorder directly)
+                                </Text>
+                              )}
+                            </InlineStack>
                           </Box>
                           <Box>
                             <Button

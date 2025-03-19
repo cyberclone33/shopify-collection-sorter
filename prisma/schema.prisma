@@ -37,6 +37,7 @@ model SortedCollection {
   collectionId  String
   collectionTitle String
   sortedAt      DateTime @default(now())
+  sortOrder     String   @default("MANUAL")
 
   @@unique([shop, collectionId], name: "shop_collectionId")
 }

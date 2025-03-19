@@ -25,6 +25,7 @@ interface SortedCollection {
   collectionId: string;
   collectionTitle: string;
   sortedAt: string;
+  sortOrder: string;
 }
 
 interface ActionData {
@@ -45,7 +46,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         "shop" TEXT NOT NULL,
         "collectionId" TEXT NOT NULL,
         "collectionTitle" TEXT NOT NULL,
-        "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
       )
     `;
     
@@ -262,6 +264,11 @@ export default function SortedCollectionsPage() {
                             </Text>
                           </Box>
                           <Box>
+                            <Text variant="bodyMd" as="span">
+                              Sort order: {collection.sortOrder}
+                            </Text>
+                          </Box>
+                          <Box>
                             <Button
                               disabled={isLoading}
                               onClick={() => handleRevertClick(collection.collectionId, collection.id)}
@@ -269,7 +276,7 @@ export default function SortedCollectionsPage() {
                               size="slim"
                             >
                               {isLoading && navigation.formData?.get("sortedCollectionId") === collection.id 
-                                ? <><Spinner size="small" /> <span>Reverting</span></>
+                                ? `Reverting...`
                                 : "Revert"
                               }
                             </Button>
