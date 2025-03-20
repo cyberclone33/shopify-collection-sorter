@@ -52,14 +52,19 @@ interface ActionData {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
-  // Default to 400 collections to support stores with larger collection counts
-  const first = 400;
+  // Shopify has a hard limit of 250 items per query
+  const maxCollectionsPerPage = 250;
+  const maxCollections = 400;
 
-  // Fetch all collections
+  // First query to get the first 250 collections
   const collectionsResponse = await admin.graphql(
     `#graphql
-      query GetCollections($first: Int!) {
-        collections(first: $first) {
+      query GetCollections($first: Int!, $after: String) {
+        collections(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           edges {
             node {
               id
@@ -69,21 +74,67 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               }
               sortOrder
             }
+            cursor
           }
         }
       }
     `,
     {
       variables: {
-        first,
+        first: maxCollectionsPerPage,
       },
     }
   );
 
   const collectionsData = await collectionsResponse.json();
+  let collections = collectionsData.data.collections.edges.map((edge: any) => edge.node);
+  
+  // If there are more collections and we haven't reached our limit, fetch the next page
+  if (
+    collectionsData.data.collections.pageInfo.hasNextPage && 
+    collections.length < maxCollections
+  ) {
+    const remainingToFetch = Math.min(maxCollectionsPerPage, maxCollections - collections.length);
+    const cursor = collectionsData.data.collections.pageInfo.endCursor;
+    
+    try {
+      const nextPageResponse = await admin.graphql(
+        `#graphql
+          query GetCollections($first: Int!, $after: String) {
+            collections(first: $first, after: $after) {
+              edges {
+                node {
+                  id
+                  title
+                  productsCount {
+                    count
+                  }
+                  sortOrder
+                }
+              }
+            }
+          }
+        `,
+        {
+          variables: {
+            first: remainingToFetch,
+            after: cursor
+          },
+        }
+      );
+
+      const nextPageData = await nextPageResponse.json();
+      const nextPageCollections = nextPageData.data.collections.edges.map((edge: any) => edge.node);
+      
+      // Combine results
+      collections = [...collections, ...nextPageCollections];
+    } catch (error) {
+      console.error("Error fetching additional collections:", error);
+    }
+  }
   
   return json({
-    collections: collectionsData.data.collections.edges.map((edge: any) => edge.node)
+    collections
   });
 };
 
