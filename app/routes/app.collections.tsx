@@ -52,8 +52,8 @@ interface ActionData {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const url = new URL(request.url);
-  // Default to 250 collections to ensure we get all of them for most stores
-  const first = 250;
+  // Default to 400 collections to support stores with larger collection counts
+  const first = 400;
 
   // Fetch all collections
   const collectionsResponse = await admin.graphql(
@@ -559,7 +559,7 @@ export default function CollectionsPage() {
   
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [productLimit, setProductLimit] = useState("250");
+  const [productLimit, setProductLimit] = useState("400");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
   
@@ -729,6 +729,7 @@ export default function CollectionsPage() {
                         { label: '50 products', value: '50' },
                         { label: '100 products', value: '100' },
                         { label: '250 products', value: '250' },
+                        { label: '400 products', value: '400' },
                       ]}
                       onChange={handleProductLimitChange}
                       value={productLimit}
