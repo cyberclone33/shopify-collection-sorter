@@ -152,46 +152,97 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     // 1. Fetch products from the collection
-    const productsResponse = await admin.graphql(
-      `#graphql
-        query GetCollectionProducts($collectionId: ID!, $first: Int!) {
-          collection(id: $collectionId) {
-            title
-            products(first: $first) {
-              edges {
-                node {
-                  id
-                  title
-                  handle
-                  totalInventory
-                  status
+    const maxProductsPerPage = 250; // Shopify's limit per API call
+    const maxTotalProducts = parseInt(productLimit, 10);
+    let allProducts: any[] = [];
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let collectionTitle = "";
+    
+    // Fetch products with pagination
+    while (hasNextPage && allProducts.length < maxTotalProducts) {
+      const remainingLimit = Math.min(maxProductsPerPage, maxTotalProducts - allProducts.length);
+      
+      // Skip additional queries if we don't need more products
+      if (remainingLimit <= 0) break;
+      
+      const productsResponse: Response = await admin.graphql(
+        `#graphql
+          query GetCollectionProducts($collectionId: ID!, $first: Int!, $after: String) {
+            collection(id: $collectionId) {
+              title
+              products(first: $first, after: $after) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
                 }
-                cursor
+                edges {
+                  node {
+                    id
+                    title
+                    handle
+                    totalInventory
+                    status
+                  }
+                  cursor
+                }
               }
             }
           }
+        `,
+        { 
+          variables: { 
+            collectionId,
+            first: remainingLimit,
+            after: cursor
+          } 
         }
-      `,
-      { 
-        variables: { 
-          collectionId,
-          first: parseInt(productLimit, 10)
-        } 
+      );
+
+      const productsData: any = await productsResponse.json();
+      
+      // Check for GraphQL errors
+      if (productsData.errors) {
+        const errorMessage = productsData.errors.map((err: any) => err.message).join(", ");
+        return json({ success: false, message: `Error fetching products: ${errorMessage}` });
       }
-    );
+      
+      const collection: any = productsData.data.collection;
+      if (!collection) {
+        return json({ success: false, message: "Collection not found" });
+      }
+      
+      const pageInfo: any = collection.products.pageInfo;
+      const products = collection.products.edges.map((edge: any) => ({
+        ...edge.node,
+        cursor: edge.cursor
+      }));
+      
+      allProducts = [...allProducts, ...products];
+      hasNextPage = pageInfo.hasNextPage;
+      cursor = pageInfo.endCursor;
+      
+      // Save the collection title on first iteration
+      if (allProducts.length === 0) {
+        collectionTitle = collection.title;
+      }
+      
+      // If we've reached our product limit, stop fetching
+      if (allProducts.length >= maxTotalProducts) {
+        hasNextPage = false;
+      }
+    }
 
-    const productsData = await productsResponse.json();
-    const collection = productsData.data.collection;
-    const products = collection.products.edges.map((edge: any) => ({
-      ...edge.node,
-      cursor: edge.cursor
-    }));
-
+    // Use the collection title from the queries
+    const collection = {
+      title: collectionTitle
+    };
+    
     // 2. Separate in-stock and out-of-stock products
-    const inStockProducts = products.filter((product: any) => 
+    const inStockProducts = allProducts.filter((product: any) => 
       product.status === "ACTIVE" && product.totalInventory > 0
     );
-    const outOfStockProducts = products.filter((product: any) => 
+    const outOfStockProducts = allProducts.filter((product: any) => 
       product.status !== "ACTIVE" || product.totalInventory <= 0
     );
 
@@ -265,51 +316,162 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         (product: any) => product.id
       );
 
-      // Create proper "moves" input format for the reordering mutation
-      const moves = newOrder.map((productId, index) => ({
-        id: productId,
-        newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-      }));
+      // Check if the collection has too many products for a single API call
+      if (newOrder.length > 250) {
+        console.log(`Collection ${collection.title} has ${newOrder.length} products, which exceeds Shopify's limit. Using a batched approach.`);
+        
+        // Process in batches of 250 products max
+        let success = true;
+        const batchSize = 250;
+        
+        // First, only reorder the first 250 products
+        // This places all in-stock products at the start, and as many out-of-stock products as will fit
+        const firstBatchMoves = newOrder.slice(0, batchSize).map((productId, index) => ({
+          id: productId,
+          newPosition: index.toString()
+        }));
+        
+        try {
+          const firstBatchResponse = await admin.graphql(
+            `#graphql
+              mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                collectionReorderProducts(id: $collectionId, moves: $moves) {
+                  job {
+                    id
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }
+            `,
+            { 
+              variables: { 
+                collectionId,
+                moves: firstBatchMoves
+              } 
+            }
+          );
 
-      // Update the collection's sort order
-      const updateResponse = await admin.graphql(
-        `#graphql
-          mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-            collectionReorderProducts(id: $collectionId, moves: $moves) {
-              job {
-                id
+          const firstBatchData = await firstBatchResponse.json();
+          
+          if (firstBatchData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+            const errors = firstBatchData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+            console.error(`Error in first batch reordering: ${errors}`);
+            success = false;
+          }
+          
+          if ('errors' in firstBatchData && Array.isArray(firstBatchData.errors)) {
+            const errors = firstBatchData.errors.map((err: any) => err.message).join(", ");
+            console.error(`GraphQL error in first batch: ${errors}`);
+            success = false;
+          }
+          
+          // Small delay to let Shopify process the first batch
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // If there are more products, handle them in a second batch
+          if (success && newOrder.length > batchSize) {
+            // For the second batch, we're now placing the remaining out-of-stock products at the end
+            const secondBatchMoves = newOrder.slice(batchSize).map((productId, index) => ({
+              id: productId,
+              newPosition: (batchSize + index).toString()
+            }));
+            
+            const secondBatchResponse = await admin.graphql(
+              `#graphql
+                mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                  collectionReorderProducts(id: $collectionId, moves: $moves) {
+                    job {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }
+              `,
+              { 
+                variables: { 
+                  collectionId,
+                  moves: secondBatchMoves
+                } 
               }
-              userErrors {
-                field
-                message
-              }
+            );
+            
+            const secondBatchData = await secondBatchResponse.json();
+            
+            if (secondBatchData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+              const errors = secondBatchData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+              console.error(`Error in second batch reordering: ${errors}`);
+              success = false;
+            }
+            
+            if ('errors' in secondBatchData && Array.isArray(secondBatchData.errors)) {
+              const errors = secondBatchData.errors.map((err: any) => err.message).join(", ");
+              console.error(`GraphQL error in second batch: ${errors}`);
+              success = false;
             }
           }
-        `,
-        { 
-          variables: { 
-            collectionId,
-            moves: moves
-          } 
+          
+          if (!success) {
+            return json({ success: false, message: `Error reordering collection: Some batches failed. The collection may only be partially sorted.` });
+          }
+          
+        } catch (error) {
+          console.error("Error in batched reordering:", error);
+          return json({ success: false, message: `Error reordering collection: ${error instanceof Error ? error.message : String(error)}` });
         }
-      );
+      } else {
+        // For collections with fewer than 250 products, use the original approach
+        // Create proper "moves" input format for the reordering mutation
+        const moves = newOrder.map((productId, index) => ({
+          id: productId,
+          newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+        }));
 
-      const updateData = await updateResponse.json();
-      
-      // Log the entire GraphQL response for debugging
-      console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
-      
-      if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
-        const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-        return json({ success: false, message: `Error reordering collection: ${errors}` });
+        // Update the collection's sort order
+        const updateResponse = await admin.graphql(
+          `#graphql
+            mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+              collectionReorderProducts(id: $collectionId, moves: $moves) {
+                job {
+                  id
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+          { 
+            variables: { 
+              collectionId,
+              moves: moves
+            } 
+          }
+        );
+
+        const updateData = await updateResponse.json();
+        
+        // Log the entire GraphQL response for debugging
+        console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
+        
+        if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+          const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+          return json({ success: false, message: `Error reordering collection: ${errors}` });
+        }
+        
+        // If there are GraphQL-level errors
+        if ('errors' in updateData && Array.isArray(updateData.errors)) {
+          const errors = updateData.errors.map((err: any) => err.message).join(", ");
+          return json({ success: false, message: `GraphQL error: ${errors}` });
+        }
       }
       
-      // If there are GraphQL-level errors
-      if ('errors' in updateData && Array.isArray(updateData.errors)) {
-        const errors = updateData.errors.map((err: any) => err.message).join(", ");
-        return json({ success: false, message: `GraphQL error: ${errors}` });
-      }
-
       // Prepare the success message based on whether the sort order was changed
       let message = `Collection '${collection.title}' has been sorted with ${inStockProducts.length} in-stock products listed first, followed by ${outOfStockProducts.length} out-of-stock products.`;
       
@@ -360,49 +522,103 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const successfulSorts: any[] = [];
         for (const remainingCollectionId of remainingCollectionIds) {
           // Fetch products from the collection
-          const remainingProductsResponse = await admin.graphql(
-            `#graphql
-              query GetCollectionProducts($collectionId: ID!, $first: Int!) {
-                collection(id: $collectionId) {
-                  title
-                  products(first: $first) {
-                    edges {
-                      node {
-                        id
-                        title
-                        handle
-                        totalInventory
-                        status
+          const maxProductsPerPage = 250; // Shopify's limit per API call
+          let remainingInStockProducts: any[] = [];
+          let remainingOutOfStockProducts: any[] = [];
+          let allRemainingProducts: any[] = [];
+          let hasNextPage = true;
+          let cursor: string | null = null;
+          let remainingCollectionTitle = "";
+          
+          // Fetch products with pagination
+          while (hasNextPage && allRemainingProducts.length < parseInt(productLimit, 10)) {
+            const remainingLimit = Math.min(maxProductsPerPage, parseInt(productLimit, 10) - allRemainingProducts.length);
+            
+            // Skip additional queries if we don't need more products
+            if (remainingLimit <= 0) break;
+            
+            const remainingProductsResponse: Response = await admin.graphql(
+              `#graphql
+                query GetCollectionProducts($collectionId: ID!, $first: Int!, $after: String) {
+                  collection(id: $collectionId) {
+                    title
+                    products(first: $first, after: $after) {
+                      pageInfo {
+                        hasNextPage
+                        endCursor
                       }
-                      cursor
+                      edges {
+                        node {
+                          id
+                          title
+                          handle
+                          totalInventory
+                          status
+                        }
+                        cursor
+                      }
                     }
                   }
                 }
+              `,
+              { 
+                variables: { 
+                  collectionId: remainingCollectionId,
+                  first: remainingLimit,
+                  after: cursor
+                } 
               }
-            `,
-            { 
-              variables: { 
-                collectionId: remainingCollectionId,
-                first: parseInt(productLimit, 10)
-              } 
-            }
-          );
+            );
 
-          const remainingProductsData = await remainingProductsResponse.json();
-          const remainingCollection = remainingProductsData.data.collection;
-          const remainingProducts = remainingCollection.products.edges.map((edge: any) => ({
-            ...edge.node,
-            cursor: edge.cursor
-          }));
+            const remainingProductsData: any = await remainingProductsResponse.json();
+            
+            // Check for GraphQL errors
+            if (remainingProductsData.errors) {
+              console.error("Error in bulk sorting collection:", JSON.stringify(remainingProductsData.errors, null, 2));
+              continue; // Skip this collection if there's an error
+            }
+            
+            const remainingCollection: any = remainingProductsData.data.collection;
+            if (!remainingCollection) {
+              console.error("Collection not found:", remainingCollectionId);
+              continue; // Skip if collection not found
+            }
+            
+            const pageInfo: any = remainingCollection.products.pageInfo;
+            const fetchedProducts = remainingCollection.products.edges.map((edge: any) => ({
+              ...edge.node,
+              cursor: edge.cursor
+            }));
+            
+            allRemainingProducts = [...allRemainingProducts, ...fetchedProducts];
+            hasNextPage = pageInfo.hasNextPage;
+            cursor = pageInfo.endCursor;
+            
+            // Save the collection title on first iteration
+            if (allRemainingProducts.length === 0) {
+              remainingCollectionTitle = remainingCollection.title;
+            }
+            
+            // If we've reached our product limit, stop fetching
+            if (allRemainingProducts.length >= parseInt(productLimit, 10)) {
+              hasNextPage = false;
+            }
+          }
+
+          // Use the collection title from the queries
+          const remainingCollection = {
+            title: remainingCollectionTitle
+          };
 
           // Separate in-stock and out-of-stock products
-          const remainingInStockProducts = remainingProducts.filter((product: any) => 
+          remainingInStockProducts = allRemainingProducts.filter((product: any) => 
             product.status === "ACTIVE" && product.totalInventory > 0
           );
-          const remainingOutOfStockProducts = remainingProducts.filter((product: any) => 
+          
+          remainingOutOfStockProducts = allRemainingProducts.filter((product: any) => 
             product.status !== "ACTIVE" || product.totalInventory <= 0
           );
-
+          
           // Get collection's manual sort order if it's manually sorted
           const remainingCollectionResponse = await admin.graphql(
             `#graphql
@@ -471,51 +687,162 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               (product: any) => product.id
             );
 
-            // Create proper "moves" input format for the reordering mutation
-            const moves = newOrder.map((productId, index) => ({
-              id: productId,
-              newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
-            }));
+            // Check if the collection has too many products for a single API call
+            if (newOrder.length > 250) {
+              console.log(`Collection ${remainingCollection.title} has ${newOrder.length} products, which exceeds Shopify's limit. Using a batched approach.`);
+              
+              // Process in batches of 250 products max
+              let success = true;
+              const batchSize = 250;
+              
+              // First, only reorder the first 250 products
+              // This places all in-stock products at the start, and as many out-of-stock products as will fit
+              const firstBatchMoves = newOrder.slice(0, batchSize).map((productId, index) => ({
+                id: productId,
+                newPosition: index.toString()
+              }));
+              
+              try {
+                const firstBatchResponse = await admin.graphql(
+                  `#graphql
+                    mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                      collectionReorderProducts(id: $collectionId, moves: $moves) {
+                        job {
+                          id
+                        }
+                        userErrors {
+                          field
+                          message
+                        }
+                      }
+                    }
+                  `,
+                  { 
+                    variables: { 
+                      collectionId: remainingCollectionId,
+                      moves: firstBatchMoves
+                    } 
+                  }
+                );
 
-            // Update the collection's sort order
-            const updateResponse = await admin.graphql(
-              `#graphql
-                mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
-                  collectionReorderProducts(id: $collectionId, moves: $moves) {
-                    job {
-                      id
+                const firstBatchData = await firstBatchResponse.json();
+                
+                if (firstBatchData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+                  const errors = firstBatchData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+                  console.error(`Error in first batch reordering: ${errors}`);
+                  success = false;
+                }
+                
+                if ('errors' in firstBatchData && Array.isArray(firstBatchData.errors)) {
+                  const errors = firstBatchData.errors.map((err: any) => err.message).join(", ");
+                  console.error(`GraphQL error in first batch: ${errors}`);
+                  success = false;
+                }
+                
+                // Small delay to let Shopify process the first batch
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // If there are more products, handle them in a second batch
+                if (success && newOrder.length > batchSize) {
+                  // For the second batch, we're now placing the remaining out-of-stock products at the end
+                  const secondBatchMoves = newOrder.slice(batchSize).map((productId, index) => ({
+                    id: productId,
+                    newPosition: (batchSize + index).toString()
+                  }));
+                  
+                  const secondBatchResponse = await admin.graphql(
+                    `#graphql
+                      mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                        collectionReorderProducts(id: $collectionId, moves: $moves) {
+                          job {
+                            id
+                          }
+                          userErrors {
+                            field
+                            message
+                          }
+                        }
+                      }
+                    `,
+                    { 
+                      variables: { 
+                        collectionId: remainingCollectionId,
+                        moves: secondBatchMoves
+                      } 
                     }
-                    userErrors {
-                      field
-                      message
-                    }
+                  );
+                  
+                  const secondBatchData = await secondBatchResponse.json();
+                  
+                  if (secondBatchData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+                    const errors = secondBatchData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+                    console.error(`Error in second batch reordering: ${errors}`);
+                    success = false;
+                  }
+                  
+                  if ('errors' in secondBatchData && Array.isArray(secondBatchData.errors)) {
+                    const errors = secondBatchData.errors.map((err: any) => err.message).join(", ");
+                    console.error(`GraphQL error in second batch: ${errors}`);
+                    success = false;
                   }
                 }
-              `,
-              { 
-                variables: { 
-                  collectionId: remainingCollectionId,
-                  moves: moves
-                } 
+                
+                if (!success) {
+                  return json({ success: false, message: `Error reordering collection: Some batches failed. The collection may only be partially sorted.` });
+                }
+                
+              } catch (error) {
+                console.error("Error in batched reordering:", error);
+                return json({ success: false, message: `Error reordering collection: ${error instanceof Error ? error.message : String(error)}` });
               }
-            );
+            } else {
+              // For collections with fewer than 250 products, use the original approach
+              // Create proper "moves" input format for the reordering mutation
+              const moves = newOrder.map((productId, index) => ({
+                id: productId,
+                newPosition: index.toString() // Convert to string to satisfy UnsignedInt64 type requirement
+              }));
 
-            const updateData = await updateResponse.json();
-            
-            // Log the entire GraphQL response for debugging
-            console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
-            
-            if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
-              const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
-              return json({ success: false, message: `Error reordering collection: ${errors}` });
+              // Update the collection's sort order
+              const updateResponse = await admin.graphql(
+                `#graphql
+                  mutation CollectionReorder($collectionId: ID!, $moves: [MoveInput!]!) {
+                    collectionReorderProducts(id: $collectionId, moves: $moves) {
+                      job {
+                        id
+                      }
+                      userErrors {
+                        field
+                        message
+                      }
+                    }
+                  }
+                `,
+                { 
+                  variables: { 
+                    collectionId: remainingCollectionId,
+                    moves: moves
+                  } 
+                }
+              );
+
+              const updateData = await updateResponse.json();
+              
+              // Log the entire GraphQL response for debugging
+              console.log('Collection reorder response:', JSON.stringify(updateData, null, 2));
+              
+              if (updateData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+                const errors = updateData.data.collectionReorderProducts.userErrors.map((err: any) => err.message).join(", ");
+                return json({ success: false, message: `Error reordering collection: ${errors}` });
+              }
+              
+              // If there are GraphQL-level errors
+              if ('errors' in updateData && Array.isArray(updateData.errors)) {
+                const errors = updateData.errors.map((err: any) => err.message).join(", ");
+                return json({ success: false, message: `GraphQL error: ${errors}` });
+              }
             }
             
-            // If there are GraphQL-level errors
-            if ('errors' in updateData && Array.isArray(updateData.errors)) {
-              const errors = updateData.errors.map((err: any) => err.message).join(", ");
-              return json({ success: false, message: `GraphQL error: ${errors}` });
-            }
-
             // Prepare success message
             let successMessage = `${remainingCollection.title}: ${remainingInStockProducts.length} in-stock products, ${remainingOutOfStockProducts.length} out-of-stock products`;
             
@@ -561,10 +888,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               remainingCollectionId, 
               remainingCollection.title, 
               new Date().toISOString(),
-              "MANUAL", // Always MANUAL after sorting
+              "MANUAL",
               remainingCollection.title,
               new Date().toISOString(),
-              "MANUAL"  // Always MANUAL after sorting
+              "MANUAL"
               );
             });
           }
