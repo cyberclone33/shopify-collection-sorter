@@ -252,38 +252,40 @@ export default function SortedCollectionsPage() {
                   {sortedCollections.map((collection: SortedCollection) => (
                     <React.Fragment key={collection.id}>
                       <Box padding="400">
-                        <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
-                          <Box width="100%" paddingBlockEnd="300">
-                            <Text variant="headingMd" fontWeight="bold" as="h3">
-                              {collection.collectionTitle}
+                        <BlockStack gap="300">
+                          <Box>
+                            <Text variant="headingMd" fontWeight="bold" as="h3" tone="success">
+                              Collection: {collection.collectionTitle}
                             </Text>
                           </Box>
-                          <InlineStack gap="500" wrap={true}>
-                            <Box>
-                              <Text variant="bodyMd" as="span">
-                                Sorted on: {formatDate(collection.sortedAt)}
-                              </Text>
-                            </Box>
-                            <Box>
-                              <Text variant="bodyMd" as="span">
-                                Sort order: {collection.sortOrder}
-                              </Text>
-                            </Box>
-                            <Box>
-                              <Button
-                                disabled={isLoading}
-                                onClick={() => handleRevertClick(collection.collectionId, collection.id)}
-                                tone="critical"
-                                size="slim"
-                              >
-                                {isLoading && navigation.formData?.get("sortedCollectionId") === collection.id 
-                                  ? `Reverting...`
-                                  : "Revert"
-                                }
-                              </Button>
-                            </Box>
+                          <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
+                            <InlineStack gap="500" wrap={true}>
+                              <Box>
+                                <Text variant="bodyMd" as="span">
+                                  Sorted on: {formatDate(collection.sortedAt)}
+                                </Text>
+                              </Box>
+                              <Box>
+                                <Text variant="bodyMd" as="span">
+                                  Sort order: {collection.sortOrder}
+                                </Text>
+                              </Box>
+                              <Box>
+                                <Button
+                                  disabled={isLoading}
+                                  onClick={() => handleRevertClick(collection.collectionId, collection.id)}
+                                  tone="critical"
+                                  size="slim"
+                                >
+                                  {isLoading && navigation.formData?.get("sortedCollectionId") === collection.id 
+                                    ? `Reverting...`
+                                    : "Revert"
+                                  }
+                                </Button>
+                              </Box>
+                            </InlineStack>
                           </InlineStack>
-                        </InlineStack>
+                        </BlockStack>
                       </Box>
                       <Divider />
                     </React.Fragment>
