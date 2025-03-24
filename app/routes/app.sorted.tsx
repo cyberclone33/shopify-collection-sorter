@@ -65,8 +65,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Debug: log collection data
     console.log("Loaded sorted collections:", JSON.stringify(sortedCollections, null, 2));
     
+    // Process collection data to ensure titles are properly formatted
+    const processedCollections = sortedCollections.map(collection => ({
+      ...collection,
+      // Ensure collection title is not null or undefined
+      collectionTitle: collection.collectionTitle || "Unnamed Collection"
+    }));
+    
     return json({
-      sortedCollections
+      sortedCollections: processedCollections
     });
   } catch (error) {
     console.error("Error loading sorted collections:", error);
@@ -261,7 +268,7 @@ export default function SortedCollectionsPage() {
                         <BlockStack gap="300">
                           <Box>
                             <Text variant="headingMd" fontWeight="bold" as="h3" tone="success">
-                              Collection: {collection.collectionTitle || "Unnamed Collection"}
+                              Collection: {collection.collectionTitle}
                             </Text>
                           </Box>
                           <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
