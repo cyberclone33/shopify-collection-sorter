@@ -514,7 +514,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         collection.title, 
         new Date().toISOString(),
         "MANUAL",
-        collection.title,
+        collection.title, // This ensures the title is updated properly
         new Date().toISOString(),
         "MANUAL"
         );
@@ -895,7 +895,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               remainingCollection.title, 
               new Date().toISOString(),
               "MANUAL",
-              remainingCollection.title,
+              remainingCollection.title, // Ensure title is always updated correctly
               new Date().toISOString(),
               "MANUAL"
               );
