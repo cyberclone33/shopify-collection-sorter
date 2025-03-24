@@ -252,8 +252,8 @@ export default function SortedCollectionsPage() {
                   {sortedCollections.map((collection: SortedCollection) => (
                     <React.Fragment key={collection.id}>
                       <Box padding="400">
-                        <InlineStack gap="500" align="space-between" blockAlign="center">
-                          <Box width="40%">
+                        <InlineStack gap="500" align="space-between" blockAlign="center" wrap={false}>
+                          <Box width="30%">
                             <Text variant="bodyMd" fontWeight="bold" as="span">
                               {collection.collectionTitle}
                             </Text>
