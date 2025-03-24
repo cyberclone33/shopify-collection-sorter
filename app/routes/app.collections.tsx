@@ -498,6 +498,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
         `);
         
+        // Using properly formatted UUID instead of custom ID format
+        const uuid = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        
         // Using raw queries since the model might not be fully recognized by TypeScript yet
         await tx.$executeRawUnsafe(`
           INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
@@ -505,7 +508,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           ON CONFLICT ("shop", "collectionId") 
           DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?, "sortOrder" = ?
         `, 
-        `cuid-${Date.now()}`, 
+        uuid, 
         session.shop, 
         collectionId, 
         collection.title, 
@@ -868,13 +871,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   "collectionId" TEXT NOT NULL,
                   "collectionTitle" TEXT NOT NULL,
                   "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  "sortOrder" TEXT NOT NULL
+                  "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
                 )
               `);
               
               await tx.$executeRawUnsafe(`
                 CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
               `);
+              
+              // Using properly formatted UUID instead of custom ID format
+              const uuid = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
               
               // Using raw queries since the model might not be fully recognized by TypeScript yet
               await tx.$executeRawUnsafe(`
@@ -883,7 +889,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ON CONFLICT ("shop", "collectionId") 
                 DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?, "sortOrder" = ?
               `, 
-              `cuid-${Date.now()}`, 
+              uuid, 
               session.shop, 
               remainingCollectionId, 
               remainingCollection.title, 
