@@ -62,6 +62,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ORDER BY "sortedAt" DESC
     `;
     
+    // Debug: log collection data
+    console.log("Loaded sorted collections:", JSON.stringify(sortedCollections, null, 2));
+    
     return json({
       sortedCollections
     });
@@ -197,6 +200,9 @@ export default function SortedCollectionsPage() {
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
   
+  // Debug: log client-side collection data
+  console.log("Client-side sorted collections:", sortedCollections);
+
   const handleRevertClick = (collectionId: string, sortedCollectionId: string) => {
     if (confirm("Are you sure you want to revert this collection's sort order?")) {
       submit(
@@ -255,7 +261,7 @@ export default function SortedCollectionsPage() {
                         <BlockStack gap="300">
                           <Box>
                             <Text variant="headingMd" fontWeight="bold" as="h3" tone="success">
-                              Collection: {collection.collectionTitle}
+                              Collection: {collection.collectionTitle || "Unnamed Collection"}
                             </Text>
                           </Box>
                           <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
