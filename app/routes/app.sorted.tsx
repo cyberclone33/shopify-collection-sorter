@@ -200,120 +200,89 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
+import { useNavigate } from "react-router-dom";
+
 export default function SortedCollectionsPage() {
   const { sortedCollections } = useLoaderData<typeof loader>();
-  const actionData = useActionData<ActionData>();
-  const submit = useSubmit();
-  const navigation = useNavigation();
-  const isLoading = navigation.state === "submitting";
+  const navigate = useNavigate();
   
-  // Debug: log client-side collection data
+  // Debug: log client-side sorted collections
   console.log("Client-side sorted collections:", sortedCollections);
-
-  const handleRevertClick = (collectionId: string, sortedCollectionId: string) => {
-    if (confirm("Are you sure you want to revert this collection's sort order?")) {
-      submit(
-        { collectionId, sortedCollectionId },
-        { method: "POST" }
-      );
-    }
+  
+  const handleBack = () => {
+    navigate("/app");
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  // Function to convert Shopify GID to numeric ID for admin URL
+  const extractShopifyId = (gid: string) => {
+    if (!gid) return '';
+    // Extract the numeric ID from format like "gid://shopify/Collection/285480419482"
+    const parts = gid.split('/');
+    return parts[parts.length - 1];
   };
-
+  
   return (
-    <Page>
-      <TitleBar title="Sorted Collections" />
+    <Page
+      title="Sorted Collections"
+      backAction={{ content: "Back to Collections", onAction: handleBack }}
+    >
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
             <Card>
-              <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Sorted Collections
+              <BlockStack gap="300">
+                <Text variant="headingMd" fontWeight="semibold">
+                  Collections that have been sorted by in-stock status
                 </Text>
-                <Text as="p" variant="bodyMd">
-                  These collections have been sorted to move out-of-stock products to the end.
-                  You can revert any collection to reset its sort order.
+                <Text variant="bodyMd" color="subdued">
+                  This page shows collections that have been sorted with in-stock products at the top.
                 </Text>
-                {actionData?.success === true && (
-                  <Banner 
-                    title="Success!" 
-                    tone="success"
-                  >
-                    <p>{actionData.message}</p>
-                  </Banner>
-                )}
-                {actionData?.success === false && (
-                  <Banner 
-                    title="There was an error" 
-                    tone="critical"
-                  >
-                    <p>{actionData.message}</p>
-                  </Banner>
-                )}
               </BlockStack>
             </Card>
           </Layout.Section>
 
-          <Layout.Section>
-            <Card>
-              {sortedCollections.length > 0 ? (
-                <BlockStack>
-                  {sortedCollections.map((collection: SortedCollection) => (
-                    <React.Fragment key={collection.id}>
-                      <Box padding="400">
-                        <BlockStack gap="300">
-                          <Box>
-                            <Text variant="headingMd" fontWeight="bold" as="h3" tone="success">
-                              Collection: {collection.collectionTitle}
-                            </Text>
-                          </Box>
-                          <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
-                            <InlineStack gap="500" wrap={true}>
-                              <Box>
-                                <Text variant="bodyMd" as="span">
-                                  Sorted on: {formatDate(collection.sortedAt)}
-                                </Text>
-                              </Box>
-                              <Box>
-                                <Text variant="bodyMd" as="span">
-                                  Sort order: {collection.sortOrder}
-                                </Text>
-                              </Box>
-                              <Box>
-                                <Button
-                                  disabled={isLoading}
-                                  onClick={() => handleRevertClick(collection.collectionId, collection.id)}
-                                  tone="critical"
-                                  size="slim"
-                                >
-                                  {isLoading && navigation.formData?.get("sortedCollectionId") === collection.id 
-                                    ? `Reverting...`
-                                    : "Revert"
-                                  }
-                                </Button>
-                              </Box>
-                            </InlineStack>
-                          </InlineStack>
-                        </BlockStack>
+          {sortedCollections.length === 0 ? (
+            <Layout.Section>
+              <EmptyState
+                heading="No sorted collections yet"
+                image="/empty-state.svg"
+              >
+                <p>
+                  When you sort collections using this app, they will appear here.
+                </p>
+              </EmptyState>
+            </Layout.Section>
+          ) : (
+            sortedCollections.map((collection, index) => (
+              <Layout.Section key={collection.id}>
+                <Card>
+                  <BlockStack gap="300">
+                    <Box>
+                      <Text variant="headingMd" fontWeight="bold" as="h3" tone="success">
+                        Collection: {collection.collectionTitle}
+                      </Text>
+                    </Box>
+                    <InlineStack gap="500" align="space-between" blockAlign="center" wrap={true}>
+                      <Box>
+                        <Text variant="bodyMd">
+                          Last sorted: {new Date(collection.sortedAt).toLocaleString()}
+                        </Text>
                       </Box>
-                      <Divider />
-                    </React.Fragment>
-                  ))}
-                </BlockStack>
-              ) : (
-                <EmptyState
-                  heading="No sorted collections"
-                  image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
-                >
-                  <p>You haven't sorted any collections yet.</p>
-                </EmptyState>
-              )}
-            </Card>
-          </Layout.Section>
+                      <Box>
+                        <Button 
+                          primary
+                          url={`https://${collection.shop}/admin/collections/${extractShopifyId(collection.collectionId)}`}
+                          external={true}
+                        >
+                          View in Shopify
+                        </Button>
+                      </Box>
+                    </InlineStack>
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+            ))
+          )}
         </Layout>
       </BlockStack>
     </Page>

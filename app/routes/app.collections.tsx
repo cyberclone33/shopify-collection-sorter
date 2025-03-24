@@ -222,9 +222,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       hasNextPage = pageInfo.hasNextPage;
       cursor = pageInfo.endCursor;
       
-      // Save the collection title on first iteration
-      if (allProducts.length === 0) {
+      // Save the collection title from the first response
+      if (collectionTitle === "") {
         collectionTitle = collection.title;
+        console.log(`Captured collection title: "${collectionTitle}"`);
       }
       
       // If we've reached our product limit, stop fetching
@@ -234,9 +235,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Use the collection title from the queries
-    const collection = {
-      title: collectionTitle
-    };
+    console.log(`Using collection title for sorting: "${collectionTitle}"`);
     
     // 2. Separate in-stock and out-of-stock products
     const inStockProducts = allProducts.filter((product: any) => 
@@ -265,7 +264,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (outOfStockProducts.length > 0) {
       // For non-MANUAL collections, we must first update the sort order to MANUAL
       if (sortOrder !== "MANUAL") {
-        console.log(`Collection ${collection.title} has sort order ${sortOrder}. Updating to MANUAL first...`);
+        console.log(`Collection ${collectionTitle} has sort order ${sortOrder}. Updating to MANUAL first...`);
         // Update collection to MANUAL sort order first
         const updateSortOrderResponse = await admin.graphql(
           `#graphql
@@ -318,7 +317,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       // Check if the collection has too many products for a single API call
       if (newOrder.length > 250) {
-        console.log(`Collection ${collection.title} has ${newOrder.length} products, which exceeds Shopify's limit. Using a batched approach.`);
+        console.log(`Collection ${collectionTitle} has ${newOrder.length} products, which exceeds Shopify's limit. Using a batched approach.`);
         
         // Process in batches of 250 products max
         let success = true;
@@ -473,7 +472,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       
       // Prepare the success message based on whether the sort order was changed
-      let message = `Collection '${collection.title}' has been sorted with ${inStockProducts.length} in-stock products listed first, followed by ${outOfStockProducts.length} out-of-stock products.`;
+      let message = `Collection '${collectionTitle}' has been sorted with ${inStockProducts.length} in-stock products listed first, followed by ${outOfStockProducts.length} out-of-stock products.`;
       
       // If the collection wasn't manually sorted before, add a note about the sort order change
       if (sortOrder !== "MANUAL") {
@@ -501,6 +500,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Using properly formatted UUID instead of custom ID format
         const uuid = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
         
+        // Log the collection title being saved
+        console.log(`Saving collection to database with title: "${collectionTitle}"`);
+        
         // Using raw queries since the model might not be fully recognized by TypeScript yet
         await tx.$executeRawUnsafe(`
           INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
@@ -511,10 +513,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         uuid, 
         session.shop, 
         collectionId, 
-        collection.title, 
+        collectionTitle, 
         new Date().toISOString(),
         "MANUAL",
-        collection.title, // This ensures the title is updated properly
+        collectionTitle, // This ensures the title is updated properly
         new Date().toISOString(),
         "MANUAL"
         );
@@ -914,15 +916,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         message: message,
         inStockCount: inStockProducts.length,
         outOfStockCount: outOfStockProducts.length,
-        collectionTitle: collection.title
+        collectionTitle: collectionTitle
       });
     } else {
       return json({ 
         success: true, 
-        message: `No out-of-stock products found in "${collection.title}"`,
+        message: `No out-of-stock products found in "${collectionTitle}"`,
         inStockCount: inStockProducts.length,
         outOfStockCount: 0,
-        collectionTitle: collection.title
+        collectionTitle: collectionTitle
       });
     }
   } catch (error) {
