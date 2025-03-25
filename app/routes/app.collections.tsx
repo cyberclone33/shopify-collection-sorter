@@ -1105,6 +1105,9 @@ export default function CollectionsPage() {
   const [isBulkSorting, setIsBulkSorting] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
 
+  // Add a state to track collections that should be considered reverted
+  const [revertedCollections, setRevertedCollections] = useState<string[]>([]);
+
   // Filter collections based on search query
   const filteredCollections = collections.filter((collection: Collection) => 
     collection.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -1196,7 +1199,11 @@ export default function CollectionsPage() {
     setIsReverting(true);
     submit(
       { revertCollectionId: collectionId },
-      { method: "POST" }
+      { 
+        method: "POST",
+        replace: true, // Use replace instead of a full navigation
+        preventScrollReset: true // Prevent scroll reset which can trigger a new page load
+      }
     );
   };
 
@@ -1205,14 +1212,12 @@ export default function CollectionsPage() {
       setIsReverting(false);
       setIsBulkSorting(false);
       
-      // If it was a revert action, refresh the page to update the collection status
-      if (actionData.action === "revert" && actionData.success) {
-        // We could do a more elegant solution with client-side state updates,
-        // but a page refresh ensures everything is in sync with the database
-        window.location.reload();
+      // If it was a revert action, update the UI without a full page reload
+      if (actionData.action === "revert" && actionData.success && selectedCollectionId) {
+        setRevertedCollections(prev => [...prev, selectedCollectionId]);
       }
     }
-  }, [actionData]);
+  }, [actionData, selectedCollectionId]);
 
   return (
     <Page>
@@ -1366,7 +1371,7 @@ export default function CollectionsPage() {
                                   (Will be changed to MANUAL when sorted)
                                 </Text>
                               )}
-                              {isSorted && (
+                              {isSorted && !revertedCollections.includes(id) && (
                                 <Text as="span" variant="bodySm" tone="subdued">
                                   (Sorted at {sortedAt ? new Date(sortedAt).toLocaleString() : 'unknown time'})
                                 </Text>
@@ -1375,7 +1380,7 @@ export default function CollectionsPage() {
                           </Box>
                           <Box>
                             <InlineStack gap="200">
-                              {isSorted && (
+                              {isSorted && !revertedCollections.includes(id) && (
                                 <Button
                                   disabled={isLoading || isBulkSorting || isReverting}
                                   onClick={() => handleRevertClick(id)}
