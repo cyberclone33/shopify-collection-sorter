@@ -62,9 +62,11 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     
     // Get all sorted collections from the database
-    const sortedCollections = await prisma.$queryRawUnsafe<SortedCollection[]>(
-      `SELECT * FROM "SortedCollection" ORDER BY "sortedAt" ASC`
-    );
+    const sortedCollections = await prisma.sortedCollection.findMany({
+      orderBy: {
+        sortedAt: 'asc'
+      }
+    });
     
     // If authenticated as a specific shop, only process collections for that shop
     const collectionsToProcess = authenticatedShop 
