@@ -205,7 +205,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const { admin } = await authenticate.admin(request);
       
       // Re-sort the collection using the admin client and session
-      const sortResult = await sortCollection(admin.graphql, dbSession, collectionId, 250);
+      const sortResult = await sortCollection(admin, dbSession, collectionId, 250);
       
       console.log(`Successfully re-sorted collection ${collectionTitle}`);
       results.successful++;
