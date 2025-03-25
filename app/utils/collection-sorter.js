@@ -186,7 +186,7 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
           job {
             id
           }
-          reorderedCollection {
+          collection {
             id
           }
           userErrors {
@@ -211,62 +211,37 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
     }
   }
   
-  // Update the SortedCollection entry in the database
-  await updateSortedCollectionRecord(session.shop, collectionId, collectionTitle);
+  // Log the success and return the result
+  console.log(`Successfully re-sorted collection ${collectionTitle}`);
+  
+  // Store the sorting result in the database
+  try {
+    await prisma.sortedCollection.upsert({
+      where: {
+        shopDomain_collectionId: {
+          shopDomain: session.shop,
+          collectionId
+        }
+      },
+      update: {
+        lastSortedAt: new Date()
+      },
+      create: {
+        id: uuidv4(),
+        shopDomain: session.shop,
+        collectionId,
+        collectionTitle,
+        lastSortedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error(`Error updating database record: ${error.message}`);
+  }
   
   return {
     success: true,
-    message: `Successfully sorted collection "${collectionTitle}" with ${inStockProducts.length} in-stock and ${outOfStockProducts.length} out-of-stock products.`,
+    message: `Successfully re-sorted collection ${collectionTitle}`,
     inStockCount: inStockProducts.length,
     outOfStockCount: outOfStockProducts.length
   };
-}
-
-/**
- * Update or create a SortedCollection record in the database
- */
-async function updateSortedCollectionRecord(shop, collectionId, collectionTitle) {
-  try {
-    // Ensure the table exists
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "SortedCollection" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "shop" TEXT NOT NULL,
-        "collectionId" TEXT NOT NULL,
-        "collectionTitle" TEXT NOT NULL,
-        "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
-      )
-    `);
-    
-    await prisma.$executeRawUnsafe(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId")
-    `);
-    
-    // Generate a UUID for the record
-    const uuid = uuidv4();
-    
-    // Update the record
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT ("shop", "collectionId") 
-      DO UPDATE SET "collectionTitle" = ?, "sortedAt" = ?, "sortOrder" = ?
-    `, 
-    uuid, 
-    shop, 
-    collectionId, 
-    collectionTitle, 
-    new Date().toISOString(),
-    "MANUAL",
-    collectionTitle,
-    new Date().toISOString(),
-    "MANUAL"
-    );
-    
-    console.log(`Updated SortedCollection record for ${collectionTitle}`);
-  } catch (error) {
-    console.error('Error updating SortedCollection record:', error);
-    throw error;
-  }
 }
