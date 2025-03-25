@@ -186,9 +186,6 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
           job {
             id
           }
-          collection {
-            id
-          }
           userErrors {
             field
             message
