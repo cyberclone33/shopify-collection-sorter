@@ -15,13 +15,40 @@ function getDatabaseUrl() {
   }
   
   // Use persistent storage on Render
-  if (process.env.NODE_ENV === "production" && fs.existsSync("/data")) {
-    // Ensure the directory exists
-    const persistentDir = "/data/prisma";
-    if (!fs.existsSync(persistentDir)) {
-      fs.mkdirSync(persistentDir, { recursive: true });
+  const renderDataDir = "/data";
+  const renderPrismaDir = path.join(renderDataDir, "prisma");
+  
+  if (process.env.NODE_ENV === "production") {
+    // Ensure the data directories exist
+    try {
+      if (!fs.existsSync(renderDataDir)) {
+        console.log(` Creating Render data directory at ${renderDataDir}...`);
+        fs.mkdirSync(renderDataDir, { recursive: true });
+      }
+      
+      if (!fs.existsSync(renderPrismaDir)) {
+        console.log(` Creating Render prisma directory at ${renderPrismaDir}...`);
+        fs.mkdirSync(renderPrismaDir, { recursive: true });
+      }
+      
+      // Log the directories for debugging
+      console.log(` Render directories status: data=${fs.existsSync(renderDataDir)}, prisma=${fs.existsSync(renderPrismaDir)}`);
+      
+      // Set permissive permissions
+      try {
+        fs.chmodSync(renderDataDir, 0o777); // rwxrwxrwx
+        fs.chmodSync(renderPrismaDir, 0o777); // rwxrwxrwx
+        console.log(` Directory permissions set for data directories`);
+      } catch (permError) {
+        console.error(` Error setting data directory permissions:`, permError);
+      }
+      
+      return `file:${path.join(renderPrismaDir, "prod.db")}`;
+    } catch (dirError) {
+      console.error(` Error creating data directories:`, dirError);
+      // Fall back to project directory if we can't create the data directory
+      return `file:${path.resolve(process.cwd(), "./prisma/prod.db")}`;
     }
-    return `file:/data/prisma/prod.db`;
   }
   
   // Default fallback for local development
@@ -55,29 +82,36 @@ async function initializeDatabase() {
         fs.mkdirSync(dbDir, { recursive: true });
       }
       
+      // Log the directory contents
+      try {
+        console.log(` Database directory contents:`, fs.readdirSync(dbDir));
+      } catch (readError) {
+        console.error(` Error reading database directory:`, readError);
+      }
+      
       // Create empty database file if it doesn't exist
       if (!fs.existsSync(dbPath)) {
-        console.log(" Creating database file at", dbPath);
+        console.log(` Creating database file at ${dbPath}`);
         fs.writeFileSync(dbPath, "");
-        console.log(" Database file created");
+        console.log(` Database file created`);
       }
       
       // Set permissive file permissions
       try {
-        console.log(" Setting database file permissions...");
+        console.log(` Setting database file permissions...`);
         fs.chmodSync(dbPath, 0o666); // rw-rw-rw-
-        console.log(" File permissions set");
+        console.log(` File permissions set`);
         
         // Also set directory permissions
         fs.chmodSync(dbDir, 0o777); // rwxrwxrwx
-        console.log(" Directory permissions set");
+        console.log(` Directory permissions set`);
       } catch (permError) {
-        console.error(" Error setting permissions:", permError);
+        console.error(` Error setting permissions:`, permError);
       }
       
       try {
         // Try to run migrations directly
-        console.log(" Running database migrations...");
+        console.log(` Running database migrations...`);
         execSync("npx prisma migrate deploy", { 
           stdio: "inherit",
           env: {
@@ -85,7 +119,35 @@ async function initializeDatabase() {
             DATABASE_URL: dbUrl
           }
         });
-        console.log(" Database migrations completed");
+        console.log(` Database migrations completed`);
+        
+        // Explicitly create the SortedCollection table to ensure it exists
+        console.log(` Ensuring SortedCollection table exists...`);
+        const createTableSQL = `
+          CREATE TABLE IF NOT EXISTS "SortedCollection" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "collectionId" TEXT NOT NULL,
+            "collectionTitle" TEXT NOT NULL,
+            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
+          );
+          
+          CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId");
+        `;
+        
+        // Write the SQL to a file
+        fs.writeFileSync(path.join(dbDir, "create-sortedcollection.sql"), createTableSQL);
+        
+        // Execute it with sqlite3
+        try {
+          execSync(`cat ${path.join(dbDir, "create-sortedcollection.sql")} | sqlite3 ${dbPath}`, {
+            stdio: "inherit"
+          });
+          console.log(` SortedCollection table ensured via direct SQL`);
+        } catch (sqliteError) {
+          console.error(` Error with direct SQL:`, sqliteError);
+        }
         
         // Test the database connection immediately
         const testPrisma = new PrismaClient({
@@ -98,17 +160,26 @@ async function initializeDatabase() {
         
         try {
           await testPrisma.$queryRaw`SELECT 1`;
-          console.log(" Database connection test successful");
+          console.log(` Database connection test successful`);
+          
+          // Also test the SortedCollection table
+          try {
+            await testPrisma.$queryRaw`SELECT COUNT(*) FROM SortedCollection`;
+            console.log(` SortedCollection table exists and is accessible`);
+          } catch (tableError) {
+            console.error(` SortedCollection table test failed:`, tableError);
+          }
+          
           await testPrisma.$disconnect();
         } catch (testError) {
-          console.error(" Database connection test failed:", testError);
+          console.error(` Database connection test failed:`, testError);
         }
       } catch (error) {
-        console.error(" Error during migration, trying alternative approaches...");
+        console.error(` Error during migration, trying alternative approaches...`);
         
         try {
-          // Try manually creating the Session table
-          console.log(" Manually creating Session table...");
+          // Try manually creating the Session table and SortedCollection table
+          console.log(` Manually creating required tables...`);
           
           // Use the sqlite3 command line directly
           const createTableSQL = `
@@ -143,17 +214,17 @@ async function initializeDatabase() {
           `;
           
           try {
-            fs.writeFileSync(path.resolve(dbDir, "create-session.sql"), createTableSQL);
-            execSync(`cat ${path.resolve(dbDir, "create-session.sql")} | sqlite3 ${dbPath}`, {
+            fs.writeFileSync(path.join(dbDir, "create-session.sql"), createTableSQL);
+            execSync(`cat ${path.join(dbDir, "create-session.sql")} | sqlite3 ${dbPath}`, {
               stdio: "inherit"
             });
-            console.log(" Session table created using sqlite3 CLI");
+            console.log(` Tables created using sqlite3 CLI`);
           } catch (sqliteError) {
-            console.error(" Failed to create table using sqlite3:", sqliteError);
+            console.error(` Failed to create tables using sqlite3:`, sqliteError);
             
             // Last resort: use node-sqlite3 if available
             try {
-              console.log(" Attempting to create table with raw SQL via Prisma...");
+              console.log(` Attempting to create tables with raw SQL via Prisma...`);
               
               // Create direct database connection
               const directPrisma = new PrismaClient({
@@ -165,19 +236,19 @@ async function initializeDatabase() {
               });
               
               await directPrisma.$executeRawUnsafe(createTableSQL);
-              console.log(" Session table created using Prisma raw SQL");
+              console.log(` Tables created using Prisma raw SQL`);
               await directPrisma.$disconnect();
             } catch (prismaError) {
-              console.error(" All attempts to create database failed:", prismaError);
+              console.error(` All attempts to create database tables failed:`, prismaError);
             }
           }
         } catch (sqlError) {
-          console.error(" Failed to create table manually:", sqlError);
+          console.error(` Failed to create tables manually:`, sqlError);
         }
       }
     }
   } catch (error) {
-    console.error(" Database initialization failed:", error);
+    console.error(` Database initialization failed:`, error);
   }
 }
 
@@ -205,6 +276,33 @@ if (process.env.NODE_ENV === "production") {
       }
     }
   });
+  
+  // Verify the SortedCollection table exists immediately
+  (async () => {
+    try {
+      await prisma.$queryRaw`SELECT count(*) FROM SortedCollection`;
+      console.log(" SortedCollection table verified to exist");
+    } catch (tableError) {
+      console.error(" SortedCollection table verification failed:", tableError);
+      
+      // Try to create it
+      try {
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "SortedCollection" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "collectionId" TEXT NOT NULL,
+            "collectionTitle" TEXT NOT NULL,
+            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
+          )
+        `;
+        console.log(" SortedCollection table created during startup");
+      } catch (createError) {
+        console.error(" Failed to create SortedCollection table:", createError);
+      }
+    }
+  })();
 } else {
   if (!global.prisma) {
     global.prisma = new PrismaClient();
