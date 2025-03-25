@@ -1239,7 +1239,7 @@ export default function Collections() {
     setIsAutoResorting(true);
     
     try {
-      // Call the auto-resort endpoint
+      // Call the auto-resort endpoint with admin authentication
       const response = await fetch(`/api/auto-resort`, {
         method: 'POST',
         headers: {
@@ -1248,22 +1248,22 @@ export default function Collections() {
       });
       
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        throw new Error(`Error: ${response.status} - ${await response.text()}`);
       }
       
-      const result = await response.json();
+      const data = await response.json();
       
-      // Show result with alerts
-      if (result.successful > 0) {
-        alert(`Successfully re-sorted ${result.successful} collections`);
+      // Show success toast
+      if (data.successful > 0) {
+        alert(`Successfully re-sorted ${data.successful} collections`);
         
-        // Refresh the collections data to show updated sort status
-        window.location.reload();
+        // Refresh the page to show updated sorting status
+        submit({}, { method: "get", replace: true });
       } else {
         alert(`No collections were re-sorted`);
       }
     } catch (error) {
-      console.error('Error re-sorting all collections:', error);
+      console.error('Error during auto-resort:', error);
       alert('Error re-sorting collections');
     } finally {
       setIsAutoResorting(false);

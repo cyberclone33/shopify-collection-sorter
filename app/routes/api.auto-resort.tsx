@@ -6,7 +6,7 @@ import { sortCollection } from "../utils/collection-sorter";
 const prisma = new PrismaClient();
 
 // This secure token should be set as an environment variable
-const AUTO_RESORT_SECRET = process.env.AUTO_RESORT_SECRET || "change-me-in-env-vars";
+const AUTO_RESORT_SECRET = process.env.AUTO_RESORT_SECRET || "1adeb562b9fcb7ae80555aa49de318be";
 
 interface SortedCollection {
   shop: string;
@@ -27,46 +27,77 @@ interface SortResult {
 /**
  * API endpoint to trigger automatic collection re-sorting
  * Can be called by an external scheduler service like cron-job.org
+ * or from within the app by an authenticated admin user
  */
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    // Validate the request has the correct secret token
+    let isAuthenticated = false;
+    let authenticatedShop = '';
+    
+    // Check if this is a token-based request (from external scheduler)
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
     
-    if (token !== AUTO_RESORT_SECRET) {
-      console.error(`Unauthorized auto-resort attempt with token: ${token}`);
-      return json({ error: "Unauthorized" }, { status: 401 });
+    if (token === AUTO_RESORT_SECRET) {
+      isAuthenticated = true;
+      console.log(`[${new Date().toISOString()}] Starting automatic collection re-sort via token`);
+    } else {
+      // If not token-based, verify it's from an authenticated admin user
+      try {
+        // This will throw if not authenticated
+        const { admin, session } = await authenticate.admin(request);
+        if (admin && session) {
+          isAuthenticated = true;
+          authenticatedShop = session.shop;
+          console.log(`[${new Date().toISOString()}] Starting automatic collection re-sort via admin user for shop: ${authenticatedShop}`);
+        }
+      } catch (authError) {
+        console.error('Authentication error:', authError);
+        return json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
     
-    console.log(`[${new Date().toISOString()}] Starting automatic collection re-sort`);
+    if (!isAuthenticated) {
+      return json({ error: "Unauthorized" }, { status: 401 });
+    }
     
     // Get all sorted collections from the database
     const sortedCollections = await prisma.$queryRawUnsafe<SortedCollection[]>(
       `SELECT * FROM "SortedCollection" ORDER BY "sortedAt" ASC`
     );
     
+    // If authenticated as a specific shop, only process collections for that shop
+    const collectionsToProcess = authenticatedShop 
+      ? sortedCollections.filter(c => c.shop === authenticatedShop)
+      : sortedCollections;
+    
     const results = {
-      totalCollections: sortedCollections.length,
+      totalCollections: collectionsToProcess.length,
       successful: 0,
       failed: 0,
-      details: [] as SortResult[]
+      details: [] as Array<{
+        collection: string;
+        success: boolean;
+        error?: string;
+        inStockCount?: number;
+        outOfStockCount?: number;
+      }>
     };
     
     // Process each collection
-    for (const collection of sortedCollections) {
-      const { shop, collectionId, collectionTitle } = collection;
+    for (const collection of collectionsToProcess) {
+      const { shop: collectionShop, collectionId, collectionTitle } = collection;
       
       try {
-        console.log(`Re-sorting collection ${collectionTitle} (${collectionId}) for shop ${shop}`);
+        console.log(`Re-sorting collection ${collectionTitle} (${collectionId}) for shop ${collectionShop}`);
         
         // Get session for this shop
-        const session = await prisma.session.findFirst({
-          where: { shop }
+        const dbSession = await prisma.session.findFirst({
+          where: { shop: collectionShop }
         });
         
-        if (!session) {
-          console.log(`No session found for shop ${shop}, skipping collection`);
+        if (!dbSession) {
+          console.log(`No session found for shop ${collectionShop}, skipping collection`);
           results.failed++;
           results.details.push({
             collection: collectionTitle,
@@ -78,7 +109,7 @@ export async function action({ request }: ActionFunctionArgs) {
         
         // Create admin API client for this shop
         const sessionHeaders = new Headers();
-        sessionHeaders.append('X-Shopify-Shop', shop);
+        sessionHeaders.append('X-Shopify-Shop', collectionShop);
         
         // Create a mock request with the session context attached
         const mockRequest = new Request('https://admin.shopify.com', {
@@ -89,7 +120,7 @@ export async function action({ request }: ActionFunctionArgs) {
         const { admin } = await authenticate.admin(mockRequest);
         
         // Re-sort the collection
-        const sortResult = await sortCollection(admin, session, collectionId, 250);
+        const sortResult = await sortCollection(admin, dbSession, collectionId, 250);
         
         console.log(`Successfully re-sorted collection ${collectionTitle}`);
         results.successful++;
@@ -100,7 +131,7 @@ export async function action({ request }: ActionFunctionArgs) {
           outOfStockCount: sortResult.outOfStockCount
         });
       } catch (error) {
-        console.error(`Error re-sorting collection ${collectionId} for shop ${shop}:`, error);
+        console.error(`Error re-sorting collection ${collectionId} for shop ${collectionShop}:`, error);
         results.failed++;
         results.details.push({
           collection: collectionTitle || collectionId,
@@ -110,38 +141,29 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
     
-    console.log(`[${new Date().toISOString()}] Completed automatic collection re-sort`);
+    console.log(`Auto-resort complete. Results: ${results.successful} successful, ${results.failed} failed`);
+    
     return json(results);
   } catch (error) {
-    console.error('Error during automatic re-sort:', error);
-    return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    console.error("Error in auto-resort:", error);
+    return json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// Provide a simple status endpoint for GET requests to check if the service is available
+/**
+ * Provide a simple status endpoint for GET requests to check if the service is available
+ */
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   
   if (token !== AUTO_RESORT_SECRET) {
-    return json({ status: "Endpoint available, token required for operations." });
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
   
-  try {
-    // Count sorted collections
-    const countResult = await prisma.$queryRawUnsafe<[{count: number}]>(
-      `SELECT COUNT(*) as count FROM "SortedCollection"`
-    );
-    
-    return json({
-      status: "Service online",
-      collectionCount: countResult[0]?.count || 0,
-      nextScheduledRun: "Daily at 3:00 AM UTC (configured via external scheduler)"
-    });
-  } catch (error) {
-    return json({ 
-      status: "Service online, database error",
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
+  return json({
+    status: "ok",
+    message: "Auto-resort service is running",
+    timestamp: new Date().toISOString()
+  });
 }
