@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import {
@@ -33,6 +33,8 @@ interface Collection {
     count: number;
   };
   sortOrder: string;
+  isSorted: boolean;
+  sortedAt: Date | null;
 }
 
 interface ActionData {
@@ -47,10 +49,11 @@ interface ActionData {
     outOfStockCount: number;
     message: string;
   }>;
+  action?: string;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   // Shopify has a hard limit of 250 items per query
   const maxCollectionsPerPage = 250;
@@ -133,14 +136,101 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
   
-  return json({
-    collections
+  // Get sorted collections from database
+  let sortedCollections: { collectionId: string; sortedAt: Date }[] = [];
+  try {
+    // Ensure the table exists before querying
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "SortedCollection" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "shop" TEXT NOT NULL,
+        "collectionId" TEXT NOT NULL,
+        "collectionTitle" TEXT NOT NULL,
+        "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
+      )
+    `);
+    
+    // Query for sorted collections for this shop
+    sortedCollections = await prisma.$queryRawUnsafe(
+      `SELECT "collectionId", "sortedAt" FROM "SortedCollection" WHERE "shop" = ?`,
+      session.shop
+    );
+  } catch (error) {
+    console.error("Error fetching sorted collections:", error);
+    // Continue without sorted collections data if there's an error
+  }
+
+  // Create a map of collection IDs to their sorted status
+  const sortedCollectionsMap = new Map();
+  sortedCollections.forEach((item: any) => {
+    sortedCollectionsMap.set(item.collectionId, {
+      isSorted: true,
+      sortedAt: item.sortedAt
+    });
   });
+
+  // Add sorted status to collections
+  collections = collections.map((collection: any) => ({
+    ...collection,
+    isSorted: sortedCollectionsMap.has(collection.id),
+    sortedAt: sortedCollectionsMap.get(collection.id)?.sortedAt || null
+  }));
+
+  return json({ collections });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
+  
+  // Check if this is a revert action
+  const revertCollectionId = formData.get("revertCollectionId");
+  if (revertCollectionId) {
+    try {
+      // Fetch the collection title for the log message
+      const collectionResponse = await admin.graphql(
+        `#graphql
+          query GetCollection($id: ID!) {
+            collection(id: $id) {
+              id
+              title
+            }
+          }
+        `,
+        { 
+          variables: { 
+            id: revertCollectionId.toString()
+          } 
+        }
+      );
+      
+      const collectionData = await collectionResponse.json();
+      const collectionTitle = collectionData.data?.collection?.title || 'Unknown Collection';
+      
+      // Remove the collection from the SortedCollection table
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM "SortedCollection" WHERE "shop" = ? AND "collectionId" = ?`,
+        session.shop,
+        revertCollectionId.toString()
+      );
+      
+      return json({
+        success: true,
+        message: `Successfully reverted collection "${collectionTitle}" to its original state.`,
+        action: "revert"
+      });
+    } catch (error) {
+      console.error("Error reverting collection:", error);
+      return json({
+        success: false,
+        message: `Error reverting collection: ${error instanceof Error ? error.message : String(error)}`,
+        action: "revert"
+      });
+    }
+  }
+  
+  // Original sort action code continues below
   const collectionId = formData.get("collectionId")?.toString();
   const productLimit = formData.get("productLimit")?.toString() || "250";
   const bulkSort = formData.get("bulkSort")?.toString() || "false";
@@ -1013,6 +1103,7 @@ export default function CollectionsPage() {
   // Add state for tracking selected collections
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [isBulkSorting, setIsBulkSorting] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
 
   // Filter collections based on search query
   const filteredCollections = collections.filter((collection: Collection) => 
@@ -1098,6 +1189,30 @@ export default function CollectionsPage() {
       setSelectedCollections(prev => prev.filter((id: string) => !pageCollectionIds.includes(id)));
     }
   }, [paginatedCollections]);
+
+  // Handle revert button click
+  const handleRevertClick = (collectionId: string) => {
+    setSelectedCollectionId(collectionId);
+    setIsReverting(true);
+    submit(
+      { revertCollectionId: collectionId },
+      { method: "POST" }
+    );
+  };
+
+  useEffect(() => {
+    if (actionData) {
+      setIsReverting(false);
+      setIsBulkSorting(false);
+      
+      // If it was a revert action, refresh the page to update the collection status
+      if (actionData.action === "revert" && actionData.success) {
+        // We could do a more elegant solution with client-side state updates,
+        // but a page refresh ensures everything is in sync with the database
+        window.location.reload();
+      }
+    }
+  }, [actionData]);
 
   return (
     <Page>
@@ -1197,10 +1312,10 @@ export default function CollectionsPage() {
                         (collection: Collection) => selectedCollections.includes(collection.id)
                       )}
                       onChange={handleSelectAllPage}
-                      disabled={isLoading || isBulkSorting}
+                      disabled={isLoading || isBulkSorting || isReverting}
                     />
                     <Button
-                      disabled={selectedCollections.length === 0 || isLoading || isBulkSorting}
+                      disabled={selectedCollections.length === 0 || isLoading || isBulkSorting || isReverting}
                       onClick={handleBulkSort}
                       variant="primary"
                     >
@@ -1217,9 +1332,10 @@ export default function CollectionsPage() {
               {collections.length > 0 ? (
                 <>
                   {paginatedCollections.map((collection: Collection) => {
-                    const { id, title, productsCount, sortOrder } = collection;
+                    const { id, title, productsCount, sortOrder, isSorted, sortedAt } = collection;
                     const isCurrentCollection = selectedCollectionId === id && isLoading;
                     const isSorting = isCurrentCollection || (isBulkSorting && selectedCollections.includes(id));
+                    const isRevertingCollection = isReverting && selectedCollectionId === id;
                     
                     return (
                       <Box key={id} padding="400" borderBlockEndWidth="025">
@@ -1229,7 +1345,7 @@ export default function CollectionsPage() {
                               label=""
                               checked={selectedCollections.includes(id)}
                               onChange={(checked) => handleCollectionSelect(id, checked)}
-                              disabled={isLoading || isBulkSorting}
+                              disabled={isLoading || isBulkSorting || isReverting}
                             />
                           </Box>
                           <Box width="25%">
@@ -1250,17 +1366,34 @@ export default function CollectionsPage() {
                                   (Will be changed to MANUAL when sorted)
                                 </Text>
                               )}
+                              {isSorted && (
+                                <Text as="span" variant="bodySm" tone="subdued">
+                                  (Sorted at {sortedAt ? new Date(sortedAt).toLocaleString() : 'unknown time'})
+                                </Text>
+                              )}
                             </InlineStack>
                           </Box>
                           <Box>
-                            <Button
-                              disabled={isLoading || isBulkSorting}
-                              onClick={() => handleSortClick(id)}
-                              size="slim"
-                              variant="primary"
-                            >
-                              {isSorting ? "Sorting..." : "Sort"}
-                            </Button>
+                            <InlineStack gap="200">
+                              {isSorted && (
+                                <Button
+                                  disabled={isLoading || isBulkSorting || isReverting}
+                                  onClick={() => handleRevertClick(id)}
+                                  size="slim"
+                                  tone="critical"
+                                >
+                                  Revert
+                                </Button>
+                              )}
+                              <Button
+                                disabled={isLoading || isBulkSorting || isReverting}
+                                onClick={() => handleSortClick(id)}
+                                size="slim"
+                                variant="primary"
+                              >
+                                {isSorting ? "Sorting..." : "Sort"}
+                              </Button>
+                            </InlineStack>
                           </Box>
                         </InlineStack>
                       </Box>
