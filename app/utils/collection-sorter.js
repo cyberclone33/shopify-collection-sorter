@@ -215,8 +215,8 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
   try {
     await prisma.sortedCollection.upsert({
       where: {
-        shopDomain_collectionId: {
-          shopDomain: session.shop,
+        shop_collectionId: {
+          shop: session.shop,
           collectionId
         }
       },
@@ -225,7 +225,7 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
       },
       create: {
         id: uuidv4(),
-        shopDomain: session.shop,
+        shop: session.shop,
         collectionId,
         collectionTitle,
         lastSortedAt: new Date()
