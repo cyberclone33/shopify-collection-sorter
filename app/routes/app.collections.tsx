@@ -32,10 +32,17 @@ import { useCallback, useEffect, useState } from "react";
 interface Collection {
   id: string;
   title: string;
+  productsCount: number | { count: number };
+  sortOrder: string;
+}
+
+interface MappedCollection {
+  id: string;
+  title: string;
   productsCount: number;
   sortOrder: string;
-  isSorted?: boolean;
-  sortedAt?: string | null;
+  isSorted: boolean;
+  sortedAt: string | null;
 }
 
 interface ActionData {
@@ -51,6 +58,8 @@ interface ActionData {
     message: string;
   }>;
   action?: string;
+  collection?: string;
+  error?: string;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -171,14 +180,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   });
 
-  // Add sorted status to collections
-  collections = collections.map((collection: any) => ({
-    ...collection,
-    isSorted: sortedCollectionsMap.has(collection.id),
-    sortedAt: sortedCollectionsMap.get(collection.id)?.sortedAt || null
-  }));
+  // Map collections for display
+  const mappedCollections = collections.map((collection: Collection) => {
+    // Check if collection is in the sorted list
+    const sortedCollection = sortedCollections.find(
+      (sc) => sc.collectionId === collection.id
+    );
+    
+    // Format the productsCount to handle both object and primitive formats
+    const productCount = typeof collection.productsCount === 'object' 
+      ? collection.productsCount.count 
+      : collection.productsCount;
+    
+    return {
+      id: collection.id,
+      title: collection.title,
+      productsCount: productCount,
+      sortOrder: collection.sortOrder,
+      isSorted: Boolean(sortedCollection),
+      sortedAt: sortedCollection?.sortedAt || null,
+    };
+  });
 
-  return json({ collections });
+  return json({ collections: mappedCollections });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -1088,8 +1112,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-export default function CollectionsPage() {
-  const { collections } = useLoaderData<typeof loader>();
+export default function Collections() {
+  const { collections } = useLoaderData<{ collections: MappedCollection[] }>();
   const actionData = useActionData<ActionData>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -1112,7 +1136,7 @@ export default function CollectionsPage() {
   const [revertedCollections, setRevertedCollections] = useState<string[]>([]);
 
   // Filter collections based on search query
-  const filteredCollections = collections.filter((collection: Collection) => 
+  const filteredCollections = collections.filter((collection: MappedCollection) => 
     collection.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -1179,7 +1203,7 @@ export default function CollectionsPage() {
   const handleSelectAllPage = useCallback((checked: boolean) => {
     if (checked) {
       // Add all collections from current page that aren't already selected
-      const pageCollectionIds = paginatedCollections.map((collection: Collection) => collection.id);
+      const pageCollectionIds = paginatedCollections.map((collection: MappedCollection) => collection.id);
       setSelectedCollections(prev => {
         const newSelections = [...prev];
         pageCollectionIds.forEach((id: string) => {
@@ -1191,7 +1215,7 @@ export default function CollectionsPage() {
       });
     } else {
       // Remove all collections from current page
-      const pageCollectionIds = paginatedCollections.map((collection: Collection) => collection.id);
+      const pageCollectionIds = paginatedCollections.map((collection: MappedCollection) => collection.id);
       setSelectedCollections(prev => prev.filter((id: string) => !pageCollectionIds.includes(id)));
     }
   }, [paginatedCollections]);
@@ -1353,7 +1377,7 @@ export default function CollectionsPage() {
                     <Checkbox
                       label="Select all on this page"
                       checked={paginatedCollections.length > 0 && paginatedCollections.every(
-                        (collection: Collection) => selectedCollections.includes(collection.id)
+                        (collection: MappedCollection) => selectedCollections.includes(collection.id)
                       )}
                       onChange={handleSelectAllPage}
                       disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
@@ -1382,7 +1406,7 @@ export default function CollectionsPage() {
             <Card>
               {collections.length > 0 ? (
                 <>
-                  {paginatedCollections.map((collection: Collection) => {
+                  {paginatedCollections.map((collection: MappedCollection) => {
                     const { id, title, productsCount, sortOrder, isSorted, sortedAt } = collection;
                     const isCurrentCollection = selectedCollectionId === id && isLoading;
                     const isSorting = isCurrentCollection || (isBulkSorting && selectedCollections.includes(id));
@@ -1405,7 +1429,7 @@ export default function CollectionsPage() {
                             </Text>
                           </Box>
                           <Box>
-                            <Text variant="bodyMd" as="span">{productsCount} products</Text>
+                            <Text variant="bodyMd" as="span">{collection.productsCount} products</Text>
                           </Box>
                           <Box>
                             <InlineStack gap="200" blockAlign="center">
