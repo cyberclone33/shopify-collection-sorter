@@ -1,40 +1,41 @@
-import React, { useState, useCallback, useEffect } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
+import { Form, useLoaderData, useNavigation, useActionData, useSubmit } from "@remix-run/react";
+import { authenticate } from "../shopify.server";
 import {
   Page,
   Layout,
+  Text,
   Card,
   Button,
-  Text,
-  Banner,
-  List,
   BlockStack,
-  Spinner,
-  EmptyState,
-  Link,
-  TextField,
-  Select,
-  InlineStack,
   Box,
+  List,
+  Link,
+  InlineStack,
+  EmptyState,
+  useBreakpoints,
+  InlineGrid,
+  Divider,
+  TextField,
+  Checkbox,
+  Banner,
+  Select,
   Pagination,
-  Badge,
-  Checkbox
+  Spinner,
+  Badge
 } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import prisma from "../db.server";
+import { useCallback, useEffect, useState } from "react";
 
 // Define types for our data
 interface Collection {
   id: string;
   title: string;
-  productsCount: {
-    count: number;
-  };
+  productsCount: number;
   sortOrder: string;
-  isSorted: boolean;
-  sortedAt: Date | null;
+  isSorted?: boolean;
+  sortedAt?: string | null;
 }
 
 interface ActionData {
@@ -137,7 +138,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
   
   // Get sorted collections from database
-  let sortedCollections: { collectionId: string; sortedAt: Date }[] = [];
+  let sortedCollections: { collectionId: string; sortedAt: string }[] = [];
   try {
     // Ensure the table exists before querying
     await prisma.$executeRawUnsafe(`
@@ -1093,6 +1094,7 @@ export default function CollectionsPage() {
   const submit = useSubmit();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
+  const app = useAppBridge();
   
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1104,6 +1106,7 @@ export default function CollectionsPage() {
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [isBulkSorting, setIsBulkSorting] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
+  const [isAutoResorting, setIsAutoResorting] = useState(false);
 
   // Add a state to track collections that should be considered reverted
   const [revertedCollections, setRevertedCollections] = useState<string[]>([]);
@@ -1205,6 +1208,42 @@ export default function CollectionsPage() {
         preventScrollReset: true // Prevent scroll reset which can trigger a new page load
       }
     );
+  };
+
+  // Handle re-sort all collections button click
+  const handleAutoResortClick = async () => {
+    setIsAutoResorting(true);
+    
+    try {
+      // Call the auto-resort endpoint
+      const response = await fetch(`/api/auto-resort`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      // Show result with alerts
+      if (result.successful > 0) {
+        alert(`Successfully re-sorted ${result.successful} collections`);
+        
+        // Refresh the collections data to show updated sort status
+        window.location.reload();
+      } else {
+        alert(`No collections were re-sorted`);
+      }
+    } catch (error) {
+      console.error('Error re-sorting all collections:', error);
+      alert('Error re-sorting collections');
+    } finally {
+      setIsAutoResorting(false);
+    }
   };
 
   useEffect(() => {
@@ -1317,14 +1356,21 @@ export default function CollectionsPage() {
                         (collection: Collection) => selectedCollections.includes(collection.id)
                       )}
                       onChange={handleSelectAllPage}
-                      disabled={isLoading || isBulkSorting || isReverting}
+                      disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
                     />
                     <Button
-                      disabled={selectedCollections.length === 0 || isLoading || isBulkSorting || isReverting}
+                      disabled={selectedCollections.length === 0 || isLoading || isBulkSorting || isReverting || isAutoResorting}
                       onClick={handleBulkSort}
                       variant="primary"
                     >
                       {`${isBulkSorting ? "Sorting" : "Sort"} ${selectedCollections.length} ${isBulkSorting ? "collections..." : "selected collections"}`}
+                    </Button>
+                    <Button
+                      disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
+                      onClick={handleAutoResortClick}
+                      variant="primary"
+                    >
+                      {isAutoResorting ? "Re-sorting..." : "Re-sort All"}
                     </Button>
                   </InlineStack>
                 )}
@@ -1350,7 +1396,7 @@ export default function CollectionsPage() {
                               label=""
                               checked={selectedCollections.includes(id)}
                               onChange={(checked) => handleCollectionSelect(id, checked)}
-                              disabled={isLoading || isBulkSorting || isReverting}
+                              disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
                             />
                           </Box>
                           <Box width="25%">
@@ -1359,7 +1405,7 @@ export default function CollectionsPage() {
                             </Text>
                           </Box>
                           <Box>
-                            <Text variant="bodyMd" as="span">{productsCount.count} products</Text>
+                            <Text variant="bodyMd" as="span">{productsCount} products</Text>
                           </Box>
                           <Box>
                             <InlineStack gap="200" blockAlign="center">
@@ -1382,7 +1428,7 @@ export default function CollectionsPage() {
                             <InlineStack gap="200">
                               {isSorted && !revertedCollections.includes(id) && (
                                 <Button
-                                  disabled={isLoading || isBulkSorting || isReverting}
+                                  disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
                                   onClick={() => handleRevertClick(id)}
                                   size="slim"
                                   tone="critical"
@@ -1391,7 +1437,7 @@ export default function CollectionsPage() {
                                 </Button>
                               )}
                               <Button
-                                disabled={isLoading || isBulkSorting || isReverting}
+                                disabled={isLoading || isBulkSorting || isReverting || isAutoResorting}
                                 onClick={() => handleSortClick(id)}
                                 size="slim"
                                 variant="primary"
