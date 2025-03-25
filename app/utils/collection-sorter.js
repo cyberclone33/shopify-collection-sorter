@@ -27,40 +27,38 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
   
   // Fetch all products in the collection
   while (hasNextPage) {
-    const productsResponse = await admin.query({
-      data: {
-        query: `
-          query GetCollectionProducts($collectionId: ID!, $first: Int!, $after: String) {
-            collection(id: $collectionId) {
-              id
-              title
-              products(first: $first, after: $after) {
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-                edges {
-                  cursor
-                  node {
-                    id
-                    title
-                    status
-                    totalInventory
-                  }
-                }
+    const productsResponse = await admin.graphql(
+      `query GetCollectionProducts($collectionId: ID!, $first: Int!, $after: String) {
+        collection(id: $collectionId) {
+          id
+          title
+          products(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              cursor
+              node {
+                id
+                title
+                status
+                totalInventory
               }
             }
           }
-        `,
+        }
+      }`,
+      {
         variables: {
           collectionId,
-          first: 100,
+          first: Math.min(maxProducts, 250),
           after: cursor
         }
       }
-    });
-    
-    const productsData = productsResponse.body?.data;
+    );
+
+    const productsData = await productsResponse.json();
     
     // Check for GraphQL errors
     if (productsData.errors) {
@@ -68,7 +66,7 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
       throw new Error(`Error fetching products: ${errorMessage}`);
     }
     
-    const collection = productsData?.collection;
+    const collection = productsData.data?.collection;
     if (!collection) {
       throw new Error("Collection not found");
     }
@@ -103,50 +101,46 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
   );
   
   // Get collection's sort order
-  const collectionResponse = await admin.query({
-    data: {
-      query: `
-        query GetCollectionSortOrder($collectionId: ID!) {
-          collection(id: $collectionId) {
-            sortOrder
-          }
-        }
-      `,
+  const collectionResponse = await admin.graphql(
+    `query GetCollectionSortOrder($collectionId: ID!) {
+      collection(id: $collectionId) {
+        sortOrder
+      }
+    }`,
+    {
       variables: { collectionId }
     }
-  });
-  
-  const collectionData = collectionResponse.body.data;
-  const sortOrder = collectionData.collection.sortOrder;
+  );
+
+  const collectionData = await collectionResponse.json();
+  const sortOrder = collectionData.data.collection.sortOrder;
   
   // Update sort order to MANUAL if it's not already
   if (sortOrder !== "MANUAL") {
     console.log(`Collection ${collectionTitle} has sort order ${sortOrder}. Updating to MANUAL first...`);
     
-    const updateSortOrderResponse = await admin.query({
-      data: {
-        query: `
-          mutation UpdateCollectionSortOrder($collectionId: ID!) {
-            collectionUpdate(input: {id: $collectionId, sortOrder: MANUAL}) {
-              collection {
-                id
-                sortOrder
-              }
-              userErrors {
-                field
-                message
-              }
-            }
+    const updateSortOrderResponse = await admin.graphql(
+      `mutation UpdateCollectionSortOrder($collectionId: ID!) {
+        collectionUpdate(input: {id: $collectionId, sortOrder: MANUAL}) {
+          collection {
+            id
+            sortOrder
           }
-        `,
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
         variables: { collectionId }
       }
-    });
+    );
+
+    const updateSortOrderData = await updateSortOrderResponse.json();
     
-    const updateSortOrderData = updateSortOrderResponse.body.data;
-    
-    if (updateSortOrderData?.collectionUpdate?.userErrors?.length > 0) {
-      const errors = updateSortOrderData.collectionUpdate.userErrors.map(err => err.message).join(", ");
+    if (updateSortOrderData.data?.collectionUpdate?.userErrors?.length > 0) {
+      const errors = updateSortOrderData.data.collectionUpdate.userErrors.map(err => err.message).join(", ");
       throw new Error(`Error updating collection sort order: ${errors}`);
     }
     
@@ -186,35 +180,33 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
     }));
     
     // Reorder the collection
-    const reorderResponse = await admin.query({
-      data: {
-        query: `
-          mutation CollectionReorderProducts($collectionId: ID!, $moves: [MoveInput!]!) {
-            collectionReorderProducts(id: $collectionId, moves: $moves) {
-              job {
-                id
-              }
-              reorderedCollection {
-                id
-              }
-              userErrors {
-                field
-                message
-              }
-            }
+    const reorderResponse = await admin.graphql(
+      `mutation CollectionReorderProducts($collectionId: ID!, $moves: [MoveInput!]!) {
+        collectionReorderProducts(id: $collectionId, moves: $moves) {
+          job {
+            id
           }
-        `,
+          reorderedCollection {
+            id
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
         variables: {
           collectionId,
           moves
         }
       }
-    });
+    );
+
+    const reorderData = await reorderResponse.json();
     
-    const reorderData = reorderResponse.body.data;
-    
-    if (reorderData?.collectionReorderProducts?.userErrors?.length > 0) {
-      const errors = reorderData.collectionReorderProducts.userErrors.map(err => err.message).join(", ");
+    if (reorderData.data?.collectionReorderProducts?.userErrors?.length > 0) {
+      const errors = reorderData.data.collectionReorderProducts.userErrors.map(err => err.message).join(", ");
       throw new Error(`Error reordering products: ${errors}`);
     }
   }
