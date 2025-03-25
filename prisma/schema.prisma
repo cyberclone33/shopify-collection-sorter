@@ -11,8 +11,6 @@ generator client {
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
-  // Default to a persistent location if DATABASE_URL is not provided
-  defaultConfig = "file:/data/prisma/prod.db"
 }
 
 model Session {
