@@ -176,7 +176,7 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
     // Format moves for the GraphQL mutation
     const moves = batch.map((product, index) => ({
       id: product.id,
-      position: startPosition + index + 1
+      newPosition: (startPosition + index).toString()
     }));
     
     // Reorder the collection
