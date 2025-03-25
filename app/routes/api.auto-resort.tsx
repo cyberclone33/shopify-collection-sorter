@@ -74,8 +74,40 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     } catch (dbError) {
       console.error('Error using Prisma type-safe API, falling back to raw query:', dbError);
-      // Fall back to raw SQL query if the model isn't properly defined
-      sortedCollections = await prisma.$queryRaw`SELECT * FROM SortedCollection ORDER BY sortedAt ASC`;
+      
+      // Check if the error is "no such table" and try to create it
+      if (dbError instanceof Error && dbError.message.includes('no such table')) {
+        console.log('Attempting to create missing SortedCollection table...');
+        try {
+          // Create the SortedCollection table if it doesn't exist
+          await prisma.$executeRaw`
+            CREATE TABLE IF NOT EXISTS SortedCollection (
+              id TEXT PRIMARY KEY,
+              shop TEXT NOT NULL,
+              collectionId TEXT NOT NULL,
+              collectionTitle TEXT NOT NULL,
+              sortedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              sortOrder TEXT NOT NULL DEFAULT 'MANUAL',
+              UNIQUE(shop, collectionId)
+            )
+          `;
+          console.log('SortedCollection table created successfully');
+          
+          // Since we just created an empty table, return an empty array
+          sortedCollections = [];
+        } catch (createError) {
+          console.error('Failed to create SortedCollection table:', createError);
+          return json({ error: "Database error", details: String(createError) }, { status: 500 });
+        }
+      } else {
+        // For other database errors, try the raw query anyway
+        try {
+          sortedCollections = await prisma.$queryRaw`SELECT * FROM SortedCollection ORDER BY sortedAt ASC`;
+        } catch (rawQueryError) {
+          console.error('Raw query also failed:', rawQueryError);
+          return json({ error: "Database query error", details: String(rawQueryError) }, { status: 500 });
+        }
+      }
     }
     
     // If authenticated as a specific shop, only process collections for that shop
