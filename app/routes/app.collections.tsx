@@ -500,7 +500,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Using properly formatted UUID instead of custom ID format
         const uuid = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
         
-        // Log the collection title being saved
+        // Get the collection title from GraphQL if it's not available
+        let collectionTitle = '';
+        
+        // Fetch collection title directly from Shopify
+        try {
+          console.log(`Fetching collection title from Shopify for collection ID: ${collectionId}`);
+          const collectionResponse = await admin.graphql(
+            `#graphql
+              query GetCollection($id: ID!) {
+                collection(id: $id) {
+                  id
+                  title
+                }
+              }
+            `,
+            { 
+              variables: { 
+                id: collectionId
+              } 
+            }
+          );
+          
+          const collectionData = await collectionResponse.json();
+          collectionTitle = collectionData.data?.collection?.title || 'Untitled Collection';
+          console.log(`Retrieved collection title: "${collectionTitle}"`);
+        } catch (error) {
+          console.error(`Error fetching collection title: ${error}`);
+          collectionTitle = 'Untitled Collection';
+        }
+        
         console.log(`Saving collection to database with title: "${collectionTitle}"`);
         
         // Using raw queries since the model might not be fully recognized by TypeScript yet
@@ -884,6 +913,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               // Using properly formatted UUID instead of custom ID format
               const uuid = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
               
+              // Get the collection title from GraphQL if it's not available
+              let collectionTitle = '';
+              
+              // Fetch collection title directly from Shopify
+              try {
+                console.log(`Fetching collection title from Shopify for collection ID: ${remainingCollectionId}`);
+                const collectionResponse = await admin.graphql(
+                  `#graphql
+                    query GetCollection($id: ID!) {
+                      collection(id: $id) {
+                        id
+                        title
+                      }
+                    }
+                  `,
+                  { 
+                    variables: { 
+                      id: remainingCollectionId
+                    } 
+                  }
+                );
+                
+                const collectionData = await collectionResponse.json();
+                collectionTitle = collectionData.data?.collection?.title || 'Untitled Collection';
+                console.log(`Retrieved collection title: "${collectionTitle}"`);
+              } catch (error) {
+                console.error(`Error fetching collection title: ${error}`);
+                collectionTitle = 'Untitled Collection';
+              }
+              
+              console.log(`Saving collection to database: ID=${remainingCollectionId}, Title="${collectionTitle}"`);
+              
               // Using raw queries since the model might not be fully recognized by TypeScript yet
               await tx.$executeRawUnsafe(`
                 INSERT INTO "SortedCollection" ("id", "shop", "collectionId", "collectionTitle", "sortedAt", "sortOrder")
@@ -894,10 +955,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               uuid, 
               session.shop, 
               remainingCollectionId, 
-              remainingCollection.title, 
+              collectionTitle, 
               new Date().toISOString(),
               "MANUAL",
-              remainingCollection.title, // Ensure title is always updated correctly
+              collectionTitle, // Ensure title is always updated correctly
               new Date().toISOString(),
               "MANUAL"
               );
