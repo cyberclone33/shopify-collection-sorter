@@ -2,6 +2,8 @@ import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-r
 import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { sortCollection } from "../utils/collection-sorter";
+import fs from 'fs';
+import path from 'path';
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -35,6 +37,22 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     let isAuthenticated = false;
     let authenticatedShop = '';
+    
+    // Add debug info about the environment
+    console.log('DEBUG: Current directory:', process.cwd());
+    console.log('DEBUG: DATABASE_URL env var:', process.env.DATABASE_URL);
+    console.log('DEBUG: Listing files in data directory:');
+    try {
+      const dataDir = path.resolve(process.cwd(), '../data');
+      if (fs.existsSync(dataDir)) {
+        const files = fs.readdirSync(dataDir);
+        console.log('Files in data dir:', files);
+      } else {
+        console.log('Data directory does not exist');
+      }
+    } catch (fsError) {
+      console.error('Error listing data directory:', fsError);
+    }
     
     // Check if this is a token-based request (from external scheduler)
     const url = new URL(request.url);
@@ -79,7 +97,14 @@ export async function action({ request }: ActionFunctionArgs) {
       if (dbError instanceof Error && dbError.message.includes('no such table')) {
         console.log('Attempting to create missing SortedCollection table...');
         try {
+          // Explicit verbose debugging
+          console.log('DEBUG: Prisma client configuration:', {
+            provider: 'SQLite',
+            databaseUrl: process.env.DATABASE_URL || 'not set'
+          });
+          
           // Create the SortedCollection table if it doesn't exist
+          console.log('DEBUG: Executing raw SQL to create table');
           await prisma.$executeRaw`
             CREATE TABLE IF NOT EXISTS SortedCollection (
               id TEXT PRIMARY KEY,
@@ -97,6 +122,14 @@ export async function action({ request }: ActionFunctionArgs) {
           sortedCollections = [];
         } catch (createError) {
           console.error('Failed to create SortedCollection table:', createError);
+          // More detailed error info
+          if (createError instanceof Error) {
+            console.error('Error details:', {
+              name: createError.name,
+              message: createError.message,
+              stack: createError.stack
+            });
+          }
           return json({ error: "Database error", details: String(createError) }, { status: 500 });
         }
       } else {
