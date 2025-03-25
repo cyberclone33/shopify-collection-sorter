@@ -7,6 +7,27 @@ declare global {
   var prisma: PrismaClient;
 }
 
+// Get the database URL from environment variable or use a default
+function getDatabaseUrl() {
+  // If DATABASE_URL is set, use that
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL;
+  }
+  
+  // Use persistent storage on Render
+  if (process.env.NODE_ENV === "production" && fs.existsSync("/data")) {
+    // Ensure the directory exists
+    const persistentDir = "/data/prisma";
+    if (!fs.existsSync(persistentDir)) {
+      fs.mkdirSync(persistentDir, { recursive: true });
+    }
+    return `file:/data/prisma/prod.db`;
+  }
+  
+  // Default fallback for local development
+  return `file:${path.resolve(process.cwd(), "./prisma/prod.db")}`;
+}
+
 // Function to initialize the database
 async function initializeDatabase() {
   console.log(" Initializing database...");
@@ -14,15 +35,27 @@ async function initializeDatabase() {
   try {
     // Make sure we're in production before running migrations
     if (process.env.NODE_ENV === "production") {
-      // Ensure the prisma directory exists
-      const prismaDir = path.resolve(process.cwd(), "./prisma");
-      if (!fs.existsSync(prismaDir)) {
-        console.log(" Creating prisma directory...");
-        fs.mkdirSync(prismaDir, { recursive: true });
+      // Get the database URL
+      const dbUrl = getDatabaseUrl();
+      console.log(` Using database URL: ${dbUrl}`);
+      
+      // Extract the file path from the URL
+      const matches = dbUrl.match(/^file:(.+)(\?.*)?$/);
+      if (!matches) {
+        console.error(" Invalid DATABASE_URL format. Must start with 'file:'");
+        return;
+      }
+      
+      const dbPath = matches[1];
+      const dbDir = path.dirname(dbPath);
+      
+      // Ensure the directory exists
+      if (!fs.existsSync(dbDir)) {
+        console.log(` Creating database directory at ${dbDir}...`);
+        fs.mkdirSync(dbDir, { recursive: true });
       }
       
       // Create empty database file if it doesn't exist
-      const dbPath = path.resolve(prismaDir, "./prod.db");
       if (!fs.existsSync(dbPath)) {
         console.log(" Creating database file at", dbPath);
         fs.writeFileSync(dbPath, "");
@@ -36,7 +69,7 @@ async function initializeDatabase() {
         console.log(" File permissions set");
         
         // Also set directory permissions
-        fs.chmodSync(prismaDir, 0o777); // rwxrwxrwx
+        fs.chmodSync(dbDir, 0o777); // rwxrwxrwx
         console.log(" Directory permissions set");
       } catch (permError) {
         console.error(" Error setting permissions:", permError);
@@ -49,7 +82,7 @@ async function initializeDatabase() {
           stdio: "inherit",
           env: {
             ...process.env,
-            DATABASE_URL: `file:${dbPath}`
+            DATABASE_URL: dbUrl
           }
         });
         console.log(" Database migrations completed");
@@ -58,7 +91,7 @@ async function initializeDatabase() {
         const testPrisma = new PrismaClient({
           datasources: {
             db: {
-              url: `file:${dbPath}`
+              url: dbUrl
             }
           }
         });
@@ -102,15 +135,16 @@ async function initializeDatabase() {
               "shop" TEXT NOT NULL,
               "collectionId" TEXT NOT NULL,
               "collectionTitle" TEXT NOT NULL,
-              "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+              "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
             );
             
             CREATE UNIQUE INDEX IF NOT EXISTS "shop_collectionId" ON "SortedCollection"("shop", "collectionId");
           `;
           
           try {
-            fs.writeFileSync(path.resolve(prismaDir, "create-session.sql"), createTableSQL);
-            execSync(`cat ${path.resolve(prismaDir, "create-session.sql")} | sqlite3 ${dbPath}`, {
+            fs.writeFileSync(path.resolve(dbDir, "create-session.sql"), createTableSQL);
+            execSync(`cat ${path.resolve(dbDir, "create-session.sql")} | sqlite3 ${dbPath}`, {
               stdio: "inherit"
             });
             console.log(" Session table created using sqlite3 CLI");
@@ -125,7 +159,7 @@ async function initializeDatabase() {
               const directPrisma = new PrismaClient({
                 datasources: {
                   db: {
-                    url: `file:${dbPath}?mode=rwc`
+                    url: `${dbUrl}?mode=rwc`
                   }
                 }
               });
@@ -160,13 +194,14 @@ if (process.env.NODE_ENV === "production") {
 let prisma: PrismaClient;
 
 if (process.env.NODE_ENV === "production") {
-  const dbPath = path.resolve(process.cwd(), "./prisma/prod.db");
-  console.log(" Connecting to database at:", dbPath);
+  // Use the DATABASE_URL from environment or our helper function
+  const dbUrl = getDatabaseUrl();
+  console.log(" Connecting to database at:", dbUrl);
   
   prisma = new PrismaClient({
     datasources: {
       db: {
-        url: `file:${dbPath}?mode=rwc`
+        url: dbUrl
       }
     }
   });

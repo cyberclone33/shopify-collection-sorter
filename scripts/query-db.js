@@ -2,38 +2,44 @@
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 // Get the current file's directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-// Create Prisma client with proper database connection
-let prisma;
-if (process.env.NODE_ENV === 'production') {
-  const dbPath = path.resolve(projectRoot, './prisma/prod.db');
-  console.log('Connecting to production database at:', dbPath);
+// Function to get the database URL from environment or default
+function getDatabaseUrl() {
+  // If DATABASE_URL is set, use that
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL;
+  }
   
-  prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: `file:${dbPath}?mode=rwc`
-      }
-    }
-  });
-} else {
-  // Development mode - use dev.db
-  const dbPath = path.resolve(projectRoot, './prisma/dev.db');
-  console.log('Connecting to development database at:', dbPath);
+  // Use persistent storage on Render
+  if (process.env.NODE_ENV === 'production' && fs.existsSync('/data')) {
+    return 'file:/data/prisma/prod.db';
+  }
   
-  prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: `file:${dbPath}?mode=rwc`
-      }
-    }
-  });
+  // Default fallback depending on environment
+  if (process.env.NODE_ENV === 'production') {
+    return `file:${path.resolve(projectRoot, './prisma/prod.db')}`;
+  } else {
+    return `file:${path.resolve(projectRoot, './prisma/dev.db')}`;
+  }
 }
+
+// Create Prisma client with proper database connection
+const dbUrl = getDatabaseUrl();
+console.log(`Connecting to database at: ${dbUrl}`);
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: dbUrl
+    }
+  }
+});
 
 async function main() {
   try {
