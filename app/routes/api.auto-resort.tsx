@@ -43,12 +43,27 @@ export async function action({ request }: ActionFunctionArgs) {
     console.log('DEBUG: DATABASE_URL env var:', process.env.DATABASE_URL);
     console.log('DEBUG: Listing files in data directory:');
     try {
-      const dataDir = path.resolve(process.cwd(), '../data');
+      // Use absolute path to /data instead of relative path
+      const dataDir = '/data';
       if (fs.existsSync(dataDir)) {
         const files = fs.readdirSync(dataDir);
         console.log('Files in data dir:', files);
       } else {
         console.log('Data directory does not exist');
+        
+        // Try to create the data directory if it doesn't exist
+        try {
+          console.log('Attempting to create data directory');
+          fs.mkdirSync(dataDir, { recursive: true });
+          console.log('Data directory created successfully');
+          
+          // Create prisma subdirectory
+          const prismaDir = path.join(dataDir, 'prisma');
+          fs.mkdirSync(prismaDir, { recursive: true });
+          console.log('Prisma directory created successfully');
+        } catch (mkdirError) {
+          console.error('Error creating data directory:', mkdirError);
+        }
       }
     } catch (fsError) {
       console.error('Error listing data directory:', fsError);
