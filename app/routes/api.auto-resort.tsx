@@ -3,12 +3,14 @@ import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { sortCollection } from "../utils/collection-sorter";
 
+// Initialize Prisma client
 const prisma = new PrismaClient();
 
 // This secure token should be set as an environment variable
 const AUTO_RESORT_SECRET = process.env.AUTO_RESORT_SECRET || "1adeb562b9fcb7ae80555aa49de318be";
 
 interface SortedCollection {
+  id: string;
   shop: string;
   collectionId: string;
   collectionTitle: string;
@@ -61,12 +63,20 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: "Unauthorized" }, { status: 401 });
     }
     
-    // Get all sorted collections from the database
-    const sortedCollections = await prisma.sortedCollection.findMany({
-      orderBy: {
-        sortedAt: 'asc'
-      }
-    });
+    // Get all sorted collections from the database using raw SQL as fallback
+    let sortedCollections: SortedCollection[] = [];
+    try {
+      // Try using Prisma's type-safe API first
+      sortedCollections = await prisma.sortedCollection.findMany({
+        orderBy: {
+          sortedAt: 'asc'
+        }
+      });
+    } catch (dbError) {
+      console.error('Error using Prisma type-safe API, falling back to raw query:', dbError);
+      // Fall back to raw SQL query if the model isn't properly defined
+      sortedCollections = await prisma.$queryRaw`SELECT * FROM SortedCollection ORDER BY sortedAt ASC`;
+    }
     
     // If authenticated as a specific shop, only process collections for that shop
     const collectionsToProcess = authenticatedShop 
@@ -85,6 +95,8 @@ export async function action({ request }: ActionFunctionArgs) {
         outOfStockCount?: number;
       }>
     };
+    
+    console.log(`Found ${collectionsToProcess.length} collections to process`);
     
     // Process each collection
     for (const collection of collectionsToProcess) {
