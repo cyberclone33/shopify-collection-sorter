@@ -221,14 +221,14 @@ export async function sortCollection(admin, session, collectionId, maxProducts =
         }
       },
       update: {
-        lastSortedAt: new Date()
+        sortedAt: new Date()
       },
       create: {
         id: uuidv4(),
         shop: session.shop,
         collectionId,
         collectionTitle,
-        lastSortedAt: new Date()
+        sortedAt: new Date()
       }
     });
   } catch (error) {
