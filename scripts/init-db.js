@@ -17,6 +17,34 @@ async function main() {
   console.log('🔄 Starting database initialization...');
   
   try {
+    // Get DATABASE_URL from environment
+    const dbUrl = process.env.DATABASE_URL || '';
+    console.log(`DEBUG: DATABASE_URL env var: ${dbUrl}`);
+    
+    // Parse the file path from DATABASE_URL
+    let dbFilePath = '';
+    if (dbUrl.startsWith('file:')) {
+      dbFilePath = dbUrl.replace('file:', '');
+      console.log(`DEBUG: Database file path: ${dbFilePath}`);
+      
+      // Get the directory path
+      const dbDirPath = path.dirname(dbFilePath);
+      console.log(`DEBUG: Database directory path: ${dbDirPath}`);
+      
+      // Create the directory structure if it doesn't exist
+      console.log(`DEBUG: Creating directory structure: ${dbDirPath}`);
+      fs.mkdirSync(dbDirPath, { recursive: true });
+      console.log(`DEBUG: Directory structure created or already exists`);
+      
+      // Check if directory is writable
+      try {
+        fs.accessSync(dbDirPath, fs.constants.W_OK);
+        console.log(`DEBUG: Directory ${dbDirPath} is writable`);
+      } catch (e) {
+        console.log(`DEBUG: Directory ${dbDirPath} is not writable:`, e.message);
+      }
+    }
+    
     // Ensure the prisma directory exists
     const prismaDir = path.join(__dirname, '..', 'prisma');
     if (!fs.existsSync(prismaDir)) {
