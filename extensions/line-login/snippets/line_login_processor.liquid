@@ -1,9 +1,17 @@
 {% comment %}
-  This snippet processes LINE login requests and should be included in the theme.liquid file
-  It handles the login using Shopify's Storefront API Customer Access Token
+  This snippet processes LINE login requests and handles authentication using Shopify's Storefront API
 {% endcomment %}
 
-{% render 'line_login_config' %}
+{% assign storefront_api_token = block.settings.storefront_api_token %}
+{% if storefront_api_token == blank %}
+  {% assign storefront_api_token = shop.storefront_access_token %}
+{% endif %}
+
+<script>
+  window.lineLoginConfig = {
+    storefrontApiToken: {{ storefront_api_token | json }}
+  };
+</script>
 
 {% if request.path contains '/account/login' and request.params.line_login == 'success' %}
   <script>
