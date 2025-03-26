@@ -1,6 +1,4 @@
-{% assign shop_url = shop.url %}
 {% assign app_url = block.settings.app_url %}
-{% assign button_text = block.settings.button_text %}
 {% assign button_text_color = block.settings.button_text_color %}
 {% assign button_background_color = block.settings.button_background_color %}
 {% assign button_border_radius = block.settings.button_border_radius %}
@@ -25,7 +23,7 @@
        max-width: 100%;
      ">
     {% if show_logo %}
-      <img src="{{ 'line-logo.svg' | asset_url }}" alt="LINE" style="height: 24px; margin-right: 8px;">
+      <img src="{{ 'line-logo.svg' | asset_url }}" alt="LINE" width="24" height="24" style="margin-right: 8px;">
     {% endif %}
     {% if button_lang == 'en' %}
       {{ 'line_login.button.text_en' | t }}

@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "a0aa9cbf0bbdf96808eba1e702874ab4"
-application_url = "https://example.com/"
+application_url = "https://shopify-collection-sorter.onrender.com"
 embedded = true
 name = "Alpha-Dog"
 handle = "alpha-dog-1"
@@ -19,10 +19,13 @@ api_version = "2025-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,read_products,write_collection_listings,read_collection_listings"
+scopes = "write_products,read_products,read_collections,write_collections,read_customers,write_customers"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://shopify-collection-sorter.onrender.com/api/auth" ]
 
 [pos]
 embedded = false
+
+[build]
+include_config_on_deploy = true
