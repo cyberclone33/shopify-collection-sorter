@@ -38,10 +38,27 @@
               welcomeMessage.remove();
             }, 1000);
           }, 5000);
+          
+          // Store the LINE customer ID in customer metafields or notes
+          // This would require a server-side implementation
+          fetch('/apps/line-login/link-customer', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              customer_id: '{{ customer.id }}',
+              line_customer_id: '{{ request.params.customer_id }}',
+            }),
+          }).catch(function(error) {
+            console.log('Error linking customer:', error);
+          });
         }
       {% else %}
         // If we're not logged in, redirect to the login page with the LINE parameters
-        window.location.href = '/account/login?line_login=success&customer_id={{ request.params.customer_id }}';
+        const params = new URLSearchParams(window.location.search);
+        const redirectUrl = '/account/login?' + params.toString();
+        window.location.href = redirectUrl;
       {% endif %}
     });
   </script>
@@ -50,6 +67,21 @@
 {% if request.path contains '/account/login' and request.params.line_login == 'success' and customer %}
   <script>
     // If we're already logged in on the login page, redirect to the account page
-    window.location.href = '/account';
+    window.location.href = '/account?line_login=success&customer_id={{ request.params.customer_id }}';
+  </script>
+{% endif %}
+
+{% if request.path contains '/account/login' and request.params.line_login == 'success' and request.params.customer_id and request.params.customer_email %}
+  <script>
+    // This script will auto-fill the login form with the customer email
+    document.addEventListener('DOMContentLoaded', function() {
+      const loginForm = document.querySelector('form[action*="/account/login"]');
+      if (loginForm) {
+        const emailField = loginForm.querySelector('input[type="email"]');
+        if (emailField) {
+          emailField.value = '{{ request.params.customer_email }}';
+        }
+      }
+    });
   </script>
 {% endif %}

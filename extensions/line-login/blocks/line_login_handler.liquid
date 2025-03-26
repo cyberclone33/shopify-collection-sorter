@@ -30,6 +30,21 @@
         cursor: pointer;
         font-weight: bold;
       }
+      .line-login-loader {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #06C755;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        animation: line-login-spin 1s linear infinite;
+        display: inline-block;
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+      @keyframes line-login-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
     </style>
 
     <div class="line-login-message">
@@ -45,7 +60,7 @@
         // Store the LINE customer ID in localStorage for later use
         localStorage.setItem('line_customer_id', '{{ request.params.customer_id }}');
         localStorage.setItem('line_customer_name', '{{ request.params.name }}');
-        localStorage.setItem('line_customer_email', '{{ request.params.email }}');
+        localStorage.setItem('line_customer_email', '{{ request.params.customer_email }}');
         
         // Get the login form
         const loginForm = document.querySelector('form[action*="/account/login"]');
@@ -54,10 +69,10 @@
           // Find the email and password fields
           const emailField = loginForm.querySelector('input[type="email"]');
           const passwordField = loginForm.querySelector('input[type="password"]');
-          const submitButton = loginForm.querySelector('button[type="submit"]');
+          const submitButton = loginForm.querySelector('button[type="submit"], input[type="submit"]');
           
           // Check if we have the customer email from LINE
-          const lineEmail = '{{ request.params.email }}';
+          const lineEmail = '{{ request.params.customer_email }}';
           if (lineEmail && emailField) {
             emailField.value = lineEmail;
           }
@@ -65,15 +80,67 @@
           // Hide the regular login form
           loginForm.style.display = 'none';
           
-          // Add event listener to the button
-          document.getElementById('line-login-complete').addEventListener('click', function() {
-            // Show a loading message
-            this.textContent = '{{ 'line_login.handler.logging_in' | t }}';
-            this.disabled = true;
+          // Function to attempt auto-login
+          function attemptLogin() {
+            const button = document.getElementById('line-login-complete');
+            button.innerHTML = '<div class="line-login-loader"></div> {{ 'line_login.handler.logging_in' | t }}';
+            button.disabled = true;
             
-            // Redirect to the account page
-            window.location.href = '/account?line_login=success&customer_id={{ request.params.customer_id }}';
-          });
+            // Try to find a customer account recovery form
+            const recoveryForm = document.querySelector('form[action*="/account/recover"]');
+            if (recoveryForm) {
+              const recoveryEmail = recoveryForm.querySelector('input[type="email"]');
+              if (recoveryEmail && lineEmail) {
+                recoveryEmail.value = lineEmail;
+                
+                // Submit the recovery form to send a password reset email
+                setTimeout(function() {
+                  const recoverySubmit = recoveryForm.querySelector('button[type="submit"], input[type="submit"]');
+                  if (recoverySubmit) {
+                    recoverySubmit.click();
+                  }
+                }, 500);
+                return;
+              }
+            }
+            
+            // If no recovery form, try to login directly
+            if (emailField && passwordField) {
+              // Set a temporary password (this won't actually work, but it will submit the form)
+              passwordField.value = 'LINE-' + Math.random().toString(36).substring(2, 15);
+              
+              // Add a hidden field to indicate this is a LINE login
+              const lineLoginField = document.createElement('input');
+              lineLoginField.type = 'hidden';
+              lineLoginField.name = 'line_login';
+              lineLoginField.value = 'true';
+              loginForm.appendChild(lineLoginField);
+              
+              const lineCustomerIdField = document.createElement('input');
+              lineCustomerIdField.type = 'hidden';
+              lineCustomerIdField.name = 'line_customer_id';
+              lineCustomerIdField.value = '{{ request.params.customer_id }}';
+              loginForm.appendChild(lineCustomerIdField);
+              
+              // Submit the form
+              setTimeout(function() {
+                if (submitButton) {
+                  submitButton.click();
+                } else {
+                  loginForm.submit();
+                }
+              }, 500);
+            } else {
+              // If we can't find the form elements, redirect to the account page
+              window.location.href = '/account?line_login=success&customer_id={{ request.params.customer_id }}';
+            }
+          }
+          
+          // Add event listener to the button
+          document.getElementById('line-login-complete').addEventListener('click', attemptLogin);
+          
+          // Auto-attempt login after a short delay
+          setTimeout(attemptLogin, 1500);
         }
       });
     </script>
