@@ -1,0 +1,16 @@
+{
+  "ratings": {
+    "stars": {
+      "label": "評分"
+    },
+    "home": {
+      "recommendationText": "推薦產品！"
+    }
+  },
+  "line_login": {
+    "button": {
+      "text_en": "Login with LINE",
+      "text_zh_tw": "用LINE登入"
+    }
+  }
+}

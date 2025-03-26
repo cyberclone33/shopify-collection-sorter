@@ -1,0 +1,126 @@
+{% assign shop_url = shop.url %}
+{% assign app_url = block.settings.app_url %}
+{% assign button_text = block.settings.button_text %}
+{% assign button_text_color = block.settings.button_text_color %}
+{% assign button_background_color = block.settings.button_background_color %}
+{% assign button_border_radius = block.settings.button_border_radius %}
+{% assign button_width = block.settings.button_width %}
+{% assign show_logo = block.settings.show_logo %}
+{% assign button_lang = block.settings.button_language %}
+
+<div class="line-login-container" style="margin: {{ block.settings.margin_vertical }}px {{ block.settings.margin_horizontal }}px;">
+  <a href="{{ app_url }}/auth/line?shop={{ shop.permanent_domain }}" 
+     class="line-login-button"
+     style="
+       display: inline-flex;
+       align-items: center;
+       justify-content: center;
+       background-color: {{ button_background_color }};
+       color: {{ button_text_color }};
+       border-radius: {{ button_border_radius }}px;
+       padding: 10px 15px;
+       text-decoration: none;
+       font-weight: bold;
+       width: {{ button_width }}px;
+       max-width: 100%;
+     ">
+    {% if show_logo %}
+      <img src="{{ 'line-logo.svg' | asset_url }}" alt="LINE" style="height: 24px; margin-right: 8px;">
+    {% endif %}
+    {% if button_lang == 'en' %}
+      {{ 'line_login.button.text_en' | t }}
+    {% else %}
+      {{ 'line_login.button.text_zh_tw' | t }}
+    {% endif %}
+  </a>
+</div>
+
+{% schema %}
+{
+  "name": "LINE Login Button",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_url",
+      "label": "App URL",
+      "info": "The URL of your Shopify app (e.g., https://your-app.example.com)",
+      "default": "https://your-app-url.com"
+    },
+    {
+      "type": "select",
+      "id": "button_language",
+      "label": "Button Language",
+      "options": [
+        {
+          "value": "en",
+          "label": "English"
+        },
+        {
+          "value": "zh_tw",
+          "label": "Traditional Chinese"
+        }
+      ],
+      "default": "en"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_logo",
+      "label": "Show LINE Logo",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "button_background_color",
+      "label": "Button Background Color",
+      "default": "#00C300"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button Text Color",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "range",
+      "id": "button_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Button Border Radius",
+      "default": 4
+    },
+    {
+      "type": "range",
+      "id": "button_width",
+      "min": 100,
+      "max": 300,
+      "step": 10,
+      "unit": "px",
+      "label": "Button Width",
+      "default": 200
+    },
+    {
+      "type": "range",
+      "id": "margin_vertical",
+      "min": 0,
+      "max": 50,
+      "step": 5,
+      "unit": "px",
+      "label": "Vertical Margin",
+      "default": 10
+    },
+    {
+      "type": "range",
+      "id": "margin_horizontal",
+      "min": 0,
+      "max": 50,
+      "step": 5,
+      "unit": "px",
+      "label": "Horizontal Margin",
+      "default": 0
+    }
+  ]
+}
+{% endschema %}
