@@ -74,8 +74,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (customerId) {
             console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
             
-            // Use LINE access token as password for consistency
-            const password = tokenData.access_token;
+            // Use first 40 chars of LINE access token as password
+            const password = tokenData.access_token.substring(0, 40);
             
             // Set the password for the customer using Admin API
             try {
@@ -106,7 +106,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               customer_id: customerId,
               name: lineProfile.displayName,
               customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-              access_token: tokenData.access_token,
+              access_token: tokenData.access_token.substring(0, 40), // Use truncated token
               return_url: '/account'
             });
             
@@ -129,7 +129,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
       customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token,
+      access_token: tokenData.access_token.substring(0, 40), // Use truncated token
       return_url: '/account'
     });
     
