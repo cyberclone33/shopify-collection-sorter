@@ -10,13 +10,18 @@
   "line_login": {
     "button": {
       "text": "LINE Login",
-      "alt": "Login with LINE"
+      "alt": "Login with LINE",
+      "login": "Login with LINE",
+      "link": "Link with LINE"
     },
     "handler": {
       "welcome": "Welcome, %{name}!",
       "login_success": "Successfully logged in with LINE",
       "redirecting": "Redirecting to your account...",
-      "login_error": "Sorry, there was a problem logging in. Please try again or contact support."
+      "login_error": "Sorry, there was a problem logging in. Please try again or contact support.",
+      "message": "You've successfully authenticated with LINE.",
+      "complete_login": "Complete Login",
+      "logging_in": "Logging in..."
     }
   }
 }

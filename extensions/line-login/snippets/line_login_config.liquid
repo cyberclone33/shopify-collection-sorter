@@ -2,7 +2,7 @@
   This snippet provides configuration for LINE login functionality
 {% endcomment %}
 
-{% assign storefront_api_token = settings.storefront_api_token %}
+{% assign storefront_api_token = block.settings.storefront_api_token %}
 {% if storefront_api_token == blank %}
   {% assign storefront_api_token = shop.storefront_access_token %}
 {% endif %}

@@ -1,0 +1,11 @@
+{
+  "name": "LINE Login Settings",
+  "settings": [
+    {
+      "type": "text",
+      "id": "storefront_api_token",
+      "label": "Storefront API Token",
+      "info": "Your Shopify Storefront API access token"
+    }
+  ]
+}
