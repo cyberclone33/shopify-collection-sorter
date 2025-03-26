@@ -32,121 +32,134 @@
 {% endfor %}
 
 {% if request.path contains '/account/login' %}
-  {% comment %}Debug section to show all available parameters{% endcomment %}
-  <div class="line-login-debug" style="
-    background: #f5f5f5;
-    padding: 20px;
-    margin: 20px 0;
-    border-radius: 8px;
-    font-family: monospace;
-  ">
-    <h3>Debug Info:</h3>
-    <p>Path: {{ request.path }}</p>
-    <p>Query String: {{ query_string }}</p>
-    <p>URL: {{ request.url }}</p>
-    <hr>
-    <p>Parsed Parameters:</p>
-    <p>Line Login: {{ line_login }}</p>
-    <p>Email: {{ customer_email }}</p>
-    <p>Name: {{ customer_name }}</p>
-    <p>Return URL: {{ return_url }}</p>
-    <p>Access Token: {{ access_token | slice: 0, 10 }}...</p>
-    <hr>
-    <p>Raw Parameters:</p>
-    <ul>
-    {% for param in params %}
-      <li>{{ param }}</li>
-    {% endfor %}
-    </ul>
-  </div>
+  <div id="line-login-content">
+    {% comment %}Debug section to show all available parameters{% endcomment %}
+    <div class="line-login-debug" style="
+      background: #f5f5f5;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      font-family: monospace;
+    ">
+      <h3>Debug Info:</h3>
+      <p>Path: {{ request.path }}</p>
+      <p>Query String: {{ query_string }}</p>
+      <p>Full URL: {{ request.url }}</p>
+      <hr>
+      <p>Parsed Parameters:</p>
+      <p>Line Login: {{ line_login }}</p>
+      <p>Email: {{ customer_email }}</p>
+      <p>Name: {{ customer_name }}</p>
+      <p>Return URL: {{ return_url }}</p>
+      <p>Access Token: {{ access_token | slice: 0, 10 }}...</p>
+      <hr>
+      <p>Raw Parameters:</p>
+      <ul>
+      {% for param in params %}
+        <li>{{ param }}</li>
+      {% endfor %}
+      </ul>
+    </div>
 
-  <!-- Hidden form for Shopify login -->
-  <form id="shopify-auto-login" method="post" action="/account/login" style="display: none;">
-    <input type="email" name="customer[email]" value="{{ customer_email }}">
-    <input type="password" name="customer[password]" value="{{ access_token }}">
-    <input type="hidden" name="form_type" value="customer_login">
-    <input type="hidden" name="utf8" value="✓">
-    {% if return_url != blank %}
-      <input type="hidden" name="return_to" value="{{ return_url }}">
-    {% endif %}
-  </form>
+    <!-- Hidden form for Shopify login -->
+    <form id="shopify-auto-login" method="post" action="/account/login" style="display: none;">
+      <input type="email" name="customer[email]" value="{{ customer_email }}">
+      <input type="password" name="customer[password]" value="{{ access_token }}">
+      <input type="hidden" name="form_type" value="customer_login">
+      <input type="hidden" name="utf8" value="✓">
+      {% if return_url != blank %}
+        <input type="hidden" name="return_to" value="{{ return_url }}">
+      {% endif %}
+    </form>
 
-  <div class="line-login-message" style="
-    background: white;
-    padding: 20px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    margin: 20px 0;
-    text-align: center;
-  ">
-    <div class="spinner" style="
-      width: 40px;
-      height: 40px;
-      margin: 20px auto;
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #06C755;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    "></div>
-    <style>
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-      .line-brand {
-        color: #06C755;
-        font-weight: bold;
-      }
-    </style>
-    <h2>Welcome back, <span class="line-brand">{{ customer_name }}</span>!</h2>
-    <p>Completing your LINE login...</p>
-  </div>
+    <div class="line-login-message" style="
+      background: white;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    ">
+      <div class="spinner" style="
+        width: 40px;
+        height: 40px;
+        margin: 20px auto;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #06C755;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      "></div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .line-brand {
+          color: #06C755;
+          font-weight: bold;
+        }
+      </style>
+      <h2>Welcome back, <span class="line-brand">{{ customer_name }}</span>!</h2>
+      <p>Completing your LINE login...</p>
+    </div>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const form = document.getElementById('shopify-auto-login');
-      const email = form.querySelector('[name="customer[email]"]');
-      const password = form.querySelector('[name="customer[password]"]');
-      const returnTo = form.querySelector('[name="return_to"]');
-      
-      console.log('Debug - Form values:', {
-        email: email?.value,
-        passwordLength: password?.value?.length,
-        returnTo: returnTo?.value,
-        formAction: form.action
-      });
+    <script>
+      // Wait for the page to fully load and URL parameters to be available
+      function initializeLineLogin() {
+        const form = document.getElementById('shopify-auto-login');
+        if (!form) {
+          console.log('Debug - Form not found, retrying in 100ms');
+          setTimeout(initializeLineLogin, 100);
+          return;
+        }
 
-      // Only proceed with auto-login if this is a LINE login
-      if ('{{ line_login }}' === 'success' && email?.value && password?.value) {
-        console.log('Debug - Auto-submitting form in 1.5s');
-        setTimeout(() => {
-          console.log('Debug - Submitting form now');
-          form.submit();
-        }, 1500);
-      } else {
-        console.log('Debug - Not a LINE login or missing parameters');
-        if ('{{ line_login }}' !== 'success') console.log('Debug - Not a LINE login');
-        if (!email?.value) console.log('Debug - Missing email');
-        if (!password?.value) console.log('Debug - Missing access token');
+        const email = form.querySelector('[name="customer[email]"]');
+        const password = form.querySelector('[name="customer[password]"]');
+        const returnTo = form.querySelector('[name="return_to"]');
         
-        // Show error message
-        const message = document.querySelector('.line-login-message');
-        if (message) {
-          message.innerHTML = `
-            <div style="color: #ff4444;">
-              <h2>Login Error</h2>
-              <p>Unable to complete LINE login. Please try again or contact support.</p>
-              <p style="font-size: 0.9em; color: #666;">
-                Missing parameters: ${[
-                  '{{ line_login }}' !== 'success' && 'LINE login flag',
-                  !email?.value && 'email',
-                  !password?.value && 'access token'
-                ].filter(Boolean).join(', ')}
-              </p>
-            </div>
-          `;
+        console.log('Debug - Form values:', {
+          email: email?.value,
+          passwordLength: password?.value?.length,
+          returnTo: returnTo?.value,
+          formAction: form.action,
+          url: window.location.href
+        });
+
+        // Only proceed with auto-login if this is a LINE login
+        if ('{{ line_login }}' === 'success' && email?.value && password?.value) {
+          console.log('Debug - Auto-submitting form in 1.5s');
+          setTimeout(() => {
+            console.log('Debug - Submitting form now');
+            form.submit();
+          }, 1500);
+        } else {
+          console.log('Debug - Not a LINE login or missing parameters');
+          if ('{{ line_login }}' !== 'success') console.log('Debug - Not a LINE login');
+          if (!email?.value) console.log('Debug - Missing email');
+          if (!password?.value) console.log('Debug - Missing access token');
+          
+          // Show error message
+          const message = document.querySelector('.line-login-message');
+          if (message) {
+            message.innerHTML = `
+              <div style="color: #ff4444;">
+                <h2>Login Error</h2>
+                <p>Unable to complete LINE login. Please try again or contact support.</p>
+                <p style="font-size: 0.9em; color: #666;">
+                  Missing parameters: ${[
+                    '{{ line_login }}' !== 'success' && 'LINE login flag',
+                    !email?.value && 'email',
+                    !password?.value && 'access token'
+                  ].filter(Boolean).join(', ')}
+                </p>
+              </div>
+            `;
+          }
         }
       }
-    });
-  </script>
+
+      // Start initialization after a short delay
+      setTimeout(initializeLineLogin, 500);
+    </script>
+  </div>
 {% endif %}
