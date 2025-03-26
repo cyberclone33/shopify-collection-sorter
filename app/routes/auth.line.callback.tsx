@@ -6,10 +6,12 @@ import {
   saveLineUser
 } from "../utils/line-auth.server";
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
+import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
 
-// Admin API access token - in production, store this in environment variables
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN || "";
+// Constants for Shopify store domain and API tokens
 const SHOPIFY_STORE_DOMAIN = "alphapetstw.myshopify.com";
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN || "";
 const SHOPIFY_STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN || "";
 
 /**
@@ -61,7 +63,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       // Try to create or link Shopify customer using Admin API
       if (SHOPIFY_ACCESS_TOKEN) {
         try {
-          const shopifyCustomerId = await createOrLinkShopifyCustomer(
+          const customerId = await createOrLinkShopifyCustomer(
             shop,
             SHOPIFY_ACCESS_TOKEN,
             lineProfile.userId,
@@ -69,39 +71,40 @@ export async function loader({ request }: LoaderFunctionArgs) {
             idTokenData?.email
           );
           
-          if (shopifyCustomerId) {
-            console.log(`Successfully linked LINE user to Shopify customer: ${shopifyCustomerId}`);
+          if (customerId) {
+            console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
             
-            // Now use the Storefront API to create a customer access token
-            if (SHOPIFY_STOREFRONT_TOKEN) {
+            // Generate a random password for the customer
+            const randomPassword = generateRandomPassword(16);
+            
+            // Set the password for the customer using Admin API
+            try {
+              await setCustomerPassword(shop, customerId, randomPassword);
+              
+              // Try to create a customer access token using the new password
               try {
-                // Get the customer's email 
-                const email = idTokenData?.email || `line_${lineProfile.userId}@example.com`;
+                const token = await createCustomerAccessToken(shop, idTokenData?.email || "", randomPassword);
                 
-                // Create a unique password (we'll never use this for actual login)
-                // This is just for the API call - customers will login with LINE 
-                const password = `LINE_${Math.random().toString(36).substring(2, 15)}`;
-                
-                // Call the Storefront API to create a customer access token
-                const customerAccessToken = await createCustomerAccessToken(shop, email, password);
-                
-                if (customerAccessToken) {
+                if (token) {
                   console.log("Successfully created customer access token");
                   
                   // Create a special HTML response that will automatically log in the customer
-                  return createLoginResponse(shop, customerAccessToken, lineProfile.displayName);
+                  return createLoginResponse(token, lineProfile.displayName);
                 }
               } catch (tokenError) {
-                console.error("Error creating customer access token:", tokenError);
+                console.error("Customer access token errors:", tokenError);
                 // Fall back to the old approach if this fails
               }
+            } catch (passwordError) {
+              console.error("Error setting customer password:", passwordError);
+              // Fall back to the old approach if this fails
             }
             
             // Fallback: If we couldn't create a customer access token,
             // redirect to the login page with LINE user info
             const params = new URLSearchParams({
               line_login: 'success',
-              customer_id: shopifyCustomerId,
+              customer_id: customerId,
               name: lineProfile.displayName,
               customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`
             });
@@ -136,12 +139,55 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 /**
- * Call the Shopify Storefront API to create a customer access token
+ * Generate a secure random password
+ */
+function generateRandomPassword(length: number): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+';
+  let password = '';
+  const randomBytes = crypto.randomBytes(length);
+  
+  for (let i = 0; i < length; i++) {
+    const randomIndex = randomBytes[i] % chars.length;
+    password += chars.charAt(randomIndex);
+  }
+  
+  return password;
+}
+
+/**
+ * Set a password for a customer using the Shopify Admin API
+ */
+async function setCustomerPassword(shop: string, customerId: string, password: string): Promise<void> {
+  const adminApiEndpoint = `https://${shop}/admin/api/2023-10/customers/${customerId}.json`;
+  
+  const response = await fetch(adminApiEndpoint, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN
+    },
+    body: JSON.stringify({
+      customer: {
+        id: customerId,
+        password: password,
+        password_confirmation: password
+      }
+    })
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to set customer password: ${JSON.stringify(errorData)}`);
+  }
+}
+
+/**
+ * Create a customer access token using the Shopify Storefront API
  */
 async function createCustomerAccessToken(shop: string, email: string, password: string): Promise<string | null> {
-  const storefrontApiUrl = `https://${shop}/api/2023-10/graphql.json`;
+  const storefrontApiEndpoint = `https://${shop}/api/2023-10/graphql.json`;
   
-  const mutation = `
+  const query = `
     mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
       customerAccessTokenCreate(input: $input) {
         customerAccessToken {
@@ -149,148 +195,154 @@ async function createCustomerAccessToken(shop: string, email: string, password: 
           expiresAt
         }
         customerUserErrors {
-          message
           code
+          field
+          message
         }
       }
     }
   `;
   
-  try {
-    const response = await fetch(storefrontApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Storefront-Access-Token': SHOPIFY_STOREFRONT_TOKEN
-      },
-      body: JSON.stringify({
-        query: mutation,
-        variables: {
-          input: { email, password }
-        }
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Storefront API error: ${response.status}`);
+  const variables = {
+    input: {
+      email: email,
+      password: password
     }
-    
-    const data = await response.json();
-    
-    if (data.errors) {
-      console.error('GraphQL errors:', data.errors);
-      return null;
-    }
-    
-    const result = data.data.customerAccessTokenCreate;
-    
-    if (result.customerUserErrors && result.customerUserErrors.length > 0) {
-      console.error('Customer access token errors:', result.customerUserErrors);
-      return null;
-    }
-    
-    if (result.customerAccessToken) {
-      return result.customerAccessToken.accessToken;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error creating customer access token:', error);
-    return null;
+  };
+  
+  const response = await fetch(storefrontApiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Storefront-Access-Token': SHOPIFY_STOREFRONT_TOKEN
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  
+  const data = await response.json();
+  
+  if (data.errors) {
+    throw data.errors;
   }
+  
+  const result = data.data.customerAccessTokenCreate;
+  
+  if (result.customerUserErrors && result.customerUserErrors.length > 0) {
+    throw result.customerUserErrors;
+  }
+  
+  return result.customerAccessToken.accessToken;
 }
 
 /**
- * Create a special HTML response that sets the customer access token as a cookie
- * and redirects to the account page
+ * Create an HTML response that sets a customer access token cookie and redirects to the account page
  */
-function createLoginResponse(shop: string, accessToken: string, displayName: string): Response {
+function createLoginResponse(customerAccessToken: string, displayName: string): Response {
   const htmlContent = `
     <!DOCTYPE html>
     <html>
-    <head>
-      <meta charset="utf-8">
-      <title>LINE Login - Logging in...</title>
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          background-color: #f8f8f8;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-          margin: 0;
-        }
-        .container {
-          text-align: center;
-          background-color: white;
-          border-radius: 8px;
-          padding: 30px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          max-width: 500px;
-        }
-        h1 {
-          color: #06C755;
-          margin-top: 0;
-        }
-        .line-logo {
-          width: 60px;
-          height: 60px;
-          margin-bottom: 20px;
-        }
-        .message {
-          margin: 20px 0;
-          color: #333;
-        }
-        .loader {
-          border: 5px solid #f3f3f3;
-          border-top: 5px solid #06C755;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-          margin: 20px auto;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <svg class="line-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
-          <path fill="#00C300" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
-          <path fill="#FFF" d="M32.542 17.478c0-7.522-7.385-13.648-16.458-13.648S-.375 9.956-.375 17.478c0 6.73 5.97 12.372 14.035 13.424.55.118 1.3.365 1.49.817.17.412.11 1.064.05 1.477 0 0-.19 1.142-.23 1.39-.07.412-.33 1.608 1.4.877 1.74-.73 9.33-5.497 12.73-9.418 2.35-2.58 3.44-5.16 3.44-8.74z"/>
-          <path fill="#00C300" d="M15.52 13.37h-1.1c-.17 0-.3.14-.3.3v6.8c0 .17.13.3.3.3h1.1c.17 0 .3-.13.3-.3v-6.8c0-.16-.13-.3-.3-.3zm5.06 0h-1.1c-.16 0-.3.14-.3.3v4.06l-3.13-4.23c-.03-.05-.07-.08-.12-.1-.05-.03-.1-.04-.15-.04h-1.1c-.17 0-.3.14-.3.3v6.8c0 .17.13.3.3.3h1.1c.16 0 .3-.13.3-.3v-4.05l3.13 4.24c.05.08.14.12.27.12h1.1c.17 0 .3-.13.3-.3v-6.8c0-.16-.13-.3-.3-.3zm-10.33 5.8H7.16v-5.5c0-.17-.13-.3-.3-.3h-1.1c-.17 0-.3.14-.3.3v6.8c0 .08.03.15.1.2.05.06.13.1.2.1h4.5c.16 0 .3-.13.3-.3v-1c0-.16-.14-.3-.3-.3zm15.96-5.8h-4.5c-.17 0-.3.14-.3.3v6.8c0 .17.13.3.3.3h4.5c.17 0 .3-.13.3-.3v-1c0-.16-.13-.3-.3-.3h-3.1v-1.3h3.1c.17 0 .3-.13.3-.3v-1c0-.16-.13-.3-.3-.3h-3.1v-1.3h3.1c.17 0 .3-.13.3-.3v-1c0-.16-.13-.3-.3-.3z"/>
-        </svg>
-        <h1>LINE Login Successful</h1>
-        <p class="message">Welcome, ${displayName}! Logging you in...</p>
-        <div class="loader"></div>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Logging in with LINE...</title>
+        <style>
+          html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f9f9f9;
+          }
+          
+          .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 0 20px;
+          }
+          
+          .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+          }
+          
+          h1 {
+            color: #06C755;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+          }
+          
+          p {
+            color: #666;
+            margin-bottom: 20px;
+          }
+          
+          .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(6, 199, 85, 0.3);
+            border-radius: 50%;
+            border-top-color: #06C755;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+          }
+          
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          
+          .line-logo {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 20px;
+          }
+          
+          .user-name {
+            color: #06C755;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="card">
+            <svg class="line-logo" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#06C755" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
+            </svg>
+            <h1>Successfully Logged In</h1>
+            <p>Welcome, <span class="user-name">${displayName}</span>!</p>
+            <div class="spinner"></div>
+            <p>Redirecting to your account...</p>
+          </div>
         
-        <script>
-          // Store the customer access token in localStorage
-          localStorage.setItem('customerAccessToken', '${accessToken}');
-          
-          // Create a cookie with the customer access token
-          // Note: This would normally be handled by Shopify's login system
-          document.cookie = "_shopify_y=${accessToken}; path=/; domain=.${shop}; secure; samesite=none";
-          
-          // Redirect to the account page
-          setTimeout(function() {
-            window.location.href = "https://${shop}/account";
-          }, 2000);
-        </script>
-      </div>
-    </body>
+          <script>
+            // Store the customer access token in a cookie
+            document.cookie = "customerAccessToken=${customerAccessToken}; path=/; max-age=2592000; secure; samesite=none";
+            
+            // Redirect to the account page
+            setTimeout(function() {
+              window.location.href = "https://${SHOPIFY_STORE_DOMAIN}/account";
+            }, 2000);
+          </script>
+        </div>
+      </body>
     </html>
   `;
   
   return new Response(htmlContent, {
+    status: 200,
     headers: {
       "Content-Type": "text/html",
       // Set cookies for Shopify customer session
-      "Set-Cookie": `_shopify_y=${accessToken}; path=/; domain=.${shop}; secure; samesite=none`
+      "Set-Cookie": `customerAccessToken=${customerAccessToken}; path=/; max-age=2592000; secure; samesite=none`
     },
   });
 }
