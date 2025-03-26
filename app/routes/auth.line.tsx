@@ -7,12 +7,13 @@ import { authenticate } from "../shopify.server";
  * It generates a state parameter for security and redirects to LINE's authorization page
  */
 export async function loader({ request }: LoaderFunctionArgs) {
-  // Get the shop from the session
-  const { session } = await authenticate.public.appProxy(request);
-  const shop = session?.shop;
-
+  // Get the shop from the query parameter
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  
   if (!shop) {
-    return redirect("/");
+    console.error("No shop parameter provided");
+    return json({ error: "No shop parameter provided" }, { status: 400 });
   }
 
   // For debugging - check if environment variables are set
