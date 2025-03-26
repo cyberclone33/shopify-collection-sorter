@@ -127,7 +127,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_login: 'success',
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
-      email: idTokenData?.email || ''
+      email: idTokenData?.email || '',
+      access_token: tokenData.access_token // Include LINE access token for auto-login
     });
     
     return redirect(`https://${shop}/account/login?${params.toString()}`);

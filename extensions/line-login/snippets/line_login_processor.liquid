@@ -1,5 +1,6 @@
 {% comment %}
   This snippet processes LINE login requests and handles authentication using Shopify's Storefront API
+  Using the invisible form trick for standard Shopify stores
 {% endcomment %}
 
 {% assign storefront_api_token = block.settings.storefront_api_token %}
@@ -14,112 +15,104 @@
 </script>
 
 {% if request.path contains '/account/login' and request.params.line_login == 'success' %}
+  <!-- Hidden form for automatic Shopify login -->
+  <form id="shopify-auto-login" method="post" action="/account/login" style="display:none;">
+    <input type="email" name="customer[email]" id="customer_email">
+    <input type="password" name="customer[password]" id="customer_password">
+    <input type="hidden" name="form_type" value="customer_login">
+    <input type="hidden" name="utf8" value="✓">
+    <button type="submit">Login</button>
+  </form>
+
   <script>
     document.addEventListener('DOMContentLoaded', async function() {
       const customerEmail = '{{ request.params.customer_email }}';
-      const customerPassword = '{{ request.params.access_token }}'; // Using LINE access token as password
+      const lineUserId = '{{ request.params.line_id }}';
+      const accessToken = '{{ request.params.access_token }}';
       
-      if (customerEmail && customerPassword) {
-        try {
-          // Create Customer Access Token using Storefront API
-          const response = await fetch('/api/2024-01/graphql.json', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Shopify-Storefront-Access-Token': window.lineLoginConfig.storefrontApiToken
-            },
-            body: JSON.stringify({
-              query: `
-                mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
-                  customerAccessTokenCreate(input: $input) {
-                    customerAccessToken {
-                      accessToken
-                      expiresAt
-                    }
-                    customerUserErrors {
-                      message
-                    }
-                  }
-                }
-              `,
-              variables: {
-                input: {
-                  email: customerEmail,
-                  password: customerPassword
-                }
-              }
-            })
-          });
+      try {
+        // First show a loading message to indicate we're processing
+        const infoMessage = document.createElement('div');
+        infoMessage.className = 'line-login-info-message';
+        infoMessage.innerHTML = `
+          <style>
+            .line-login-info-message {
+              background-color: #f0f8f0;
+              border: 1px solid #06C755;
+              border-radius: 4px;
+              padding: 15px;
+              margin-bottom: 20px;
+              text-align: center;
+              color: #222;
+            }
+            .line-login-info-message h3 {
+              color: #06C755;
+              margin-top: 0;
+            }
+            .line-brand {
+              color: #06C755;
+              font-weight: bold;
+            }
+          </style>
+          <h3>{{ 'line_login.handler.login_success' | t }}</h3>
+          <p>{{ 'line_login.handler.logging_in' | t }}</p>
+        `;
 
+        // Insert message before the login form
+        const loginForm = document.querySelector('form[action*="account/login"]');
+        if (loginForm && loginForm.id !== 'shopify-auto-login') {
+          loginForm.parentNode.insertBefore(infoMessage, loginForm);
+          loginForm.style.display = 'none';
+        }
+        
+        // If we have all the necessary parameters directly
+        if (customerEmail && accessToken) {
+          // Fill and submit the form directly
+          document.getElementById('customer_email').value = customerEmail;
+          document.getElementById('customer_password').value = accessToken;
+          document.getElementById('shopify-auto-login').submit();
+        } 
+        // Otherwise, fetch from our API endpoint
+        else if (lineUserId && accessToken) {
+          const apiEndpoint = `https://shopify-collection-sorter.onrender.com/api/line-credentials?lineUserId=${encodeURIComponent(lineUserId)}&accessToken=${encodeURIComponent(accessToken)}`;
+          
+          const response = await fetch(apiEndpoint);
           const data = await response.json();
           
-          if (data.data?.customerAccessTokenCreate?.customerAccessToken?.accessToken) {
-            const accessToken = data.data.customerAccessTokenCreate.customerAccessToken.accessToken;
-            
-            // Set cookie and redirect exactly as shown in the example
-            document.cookie = `customerAccessToken=${accessToken}; path=/; secure; SameSite=None`;
-            window.location.href = "https://alphapetstw.myshopify.com/account";
-            
-            // Add visual indication that we're processing (will only show briefly before redirect)
-            const infoMessage = document.createElement('div');
-            infoMessage.className = 'line-login-info-message';
-            infoMessage.innerHTML = `
-              <style>
-                .line-login-info-message {
-                  background-color: #f0f8f0;
-                  border: 1px solid #06C755;
-                  border-radius: 4px;
-                  padding: 15px;
-                  margin-bottom: 20px;
-                  text-align: center;
-                  color: #222;
-                }
-                .line-login-info-message h3 {
-                  color: #06C755;
-                  margin-top: 0;
-                }
-                .line-brand {
-                  color: #06C755;
-                  font-weight: bold;
-                }
-              </style>
-              <h3>{{ 'line_login.handler.login_success' | t }}</h3>
-              <p>{{ 'line_login.handler.redirecting' | t }}</p>
-            `;
-
-            // Insert message before the login form
-            const loginForm = document.querySelector('form[action*="account/login"]');
-            if (loginForm) {
-              loginForm.parentNode.insertBefore(infoMessage, loginForm);
-              loginForm.style.display = 'none';
-            }
+          if (data.email && data.password) {
+            // Fill and submit the form
+            document.getElementById('customer_email').value = data.email;
+            document.getElementById('customer_password').value = data.password;
+            document.getElementById('shopify-auto-login').submit();
           } else {
-            throw new Error('Failed to create access token');
+            throw new Error('Could not retrieve user credentials');
           }
-        } catch (error) {
-          console.error('LINE login error:', error);
-          // Show error message
-          const errorMessage = document.createElement('div');
-          errorMessage.className = 'line-login-error-message';
-          errorMessage.innerHTML = `
-            <style>
-              .line-login-error-message {
-                background-color: #fff0f0;
-                border: 1px solid #ff4444;
-                border-radius: 4px;
-                padding: 15px;
-                margin-bottom: 20px;
-                text-align: center;
-                color: #222;
-              }
-            </style>
-            <p>{{ 'line_login.handler.login_error' | t }}</p>
-          `;
-          
-          const loginForm = document.querySelector('form[action*="account/login"]');
-          if (loginForm) {
-            loginForm.parentNode.insertBefore(errorMessage, loginForm);
-          }
+        } else {
+          throw new Error('Missing required parameters');
+        }
+      } catch (error) {
+        console.error('LINE login error:', error);
+        // Show error message
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'line-login-error-message';
+        errorMessage.innerHTML = `
+          <style>
+            .line-login-error-message {
+              background-color: #fff0f0;
+              border: 1px solid #ff4444;
+              border-radius: 4px;
+              padding: 15px;
+              margin-bottom: 20px;
+              text-align: center;
+              color: #222;
+            }
+          </style>
+          <p>{{ 'line_login.handler.login_error' | t }}</p>
+        `;
+        
+        const loginForm = document.querySelector('form[action*="account/login"]');
+        if (loginForm && loginForm.id !== 'shopify-auto-login') {
+          loginForm.parentNode.insertBefore(errorMessage, loginForm);
         }
       }
     });
