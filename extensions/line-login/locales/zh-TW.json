@@ -9,14 +9,14 @@
   },
   "line_login": {
     "button": {
-      "login": "用LINE登入",
-      "link": "連結LINE帳號"
+      "text": "LINE 登入",
+      "alt": "使用 LINE 登入"
     },
     "handler": {
-      "welcome": "歡迎，%{name}！",
-      "message": "您已成功透過LINE驗證。",
-      "complete_login": "完成登入",
-      "logging_in": "登入中..."
+      "welcome": "歡迎, %{name}！",
+      "login_success": "已成功使用 LINE 登入",
+      "redirecting": "正在重新導向到您的帳戶...",
+      "login_error": "抱歉，登入時發生問題。請重試或聯繫客服。"
     }
   }
 }

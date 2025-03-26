@@ -1,0 +1,14 @@
+{% comment %}
+  This snippet provides configuration for LINE login functionality
+{% endcomment %}
+
+{% assign storefront_api_token = settings.storefront_api_token %}
+{% if storefront_api_token == blank %}
+  {% assign storefront_api_token = shop.storefront_access_token %}
+{% endif %}
+
+<script>
+  window.lineLoginConfig = {
+    storefrontApiToken: {{ storefront_api_token | json }}
+  };
+</script>
