@@ -1,10 +1,6 @@
 import { redirect } from "@remix-run/node";
 import axios from "axios";
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
-
-// Create a new prisma client instance
-const prisma = new PrismaClient();
 
 // LINE OAuth configuration
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID || "";
@@ -135,6 +131,10 @@ export async function saveLineUser(
   expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
   try {
+    // Explicitly import and initialize Prisma client
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+
     // Use Prisma's upsert operation to create or update the LINE user
     // @ts-ignore - Ignore TypeScript errors as the model might exist at runtime
     const lineUser = await prisma.lineUser.upsert({
