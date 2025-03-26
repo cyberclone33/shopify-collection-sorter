@@ -6,7 +6,9 @@ import {
   saveLineUser
 } from "../utils/line-auth.server";
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
-import { authenticate } from "../shopify.server";
+
+// Admin API access token - in production, store this in environment variables
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN || "";
 
 /**
  * This route handles the callback from LINE OAuth
@@ -51,12 +53,38 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Save LINE user data to our database
     const lineUser = await saveLineUser(shop, lineProfile, tokenData, idTokenData);
     
-    // For now, we'll skip creating a Shopify customer since we don't have the session
-    // In a production app, you would need to implement a different approach
     console.log(`Successfully authenticated LINE user: ${lineProfile.displayName}`);
     
-    // Redirect to success page or back to the store
-    return redirect(`https://${shop}?login=success`);
+    // Create or link Shopify customer using Admin API
+    if (SHOPIFY_ACCESS_TOKEN) {
+      const shopifyCustomerId = await createOrLinkShopifyCustomer(
+        shop,
+        SHOPIFY_ACCESS_TOKEN,
+        lineProfile.userId,
+        lineProfile.displayName,
+        idTokenData?.email
+      );
+      
+      if (shopifyCustomerId) {
+        console.log(`Successfully linked LINE user to Shopify customer: ${shopifyCustomerId}`);
+        
+        // For Shopify Plus stores, we could use Multipass for seamless login
+        // For regular stores, we need to redirect to the login page
+        // Here we'll redirect to the account page with a special parameter
+        return redirect(`https://${shop}/account?line_login=success&customer_id=${shopifyCustomerId}`);
+      }
+    }
+    
+    // If we couldn't create/link a customer or don't have an access token,
+    // redirect to the login page with LINE user info
+    const params = new URLSearchParams({
+      line_login: 'success',
+      line_id: lineProfile.userId,
+      name: lineProfile.displayName,
+      email: idTokenData?.email || ''
+    });
+    
+    return redirect(`https://${shop}/account/login?${params.toString()}`);
     
   } catch (error) {
     console.error("Error processing LINE callback:", error);
