@@ -269,10 +269,6 @@ if (process.env.NODE_ENV === "production") {
   const dbUrl = getDatabaseUrl();
   console.log(" Connecting to database at:", dbUrl);
   
-  // Set DATABASE_URL for Prisma
-  process.env.DATABASE_URL = dbUrl;
-  
-  // Create initial Prisma client instance
   prisma = new PrismaClient({
     datasources: {
       db: {
@@ -281,103 +277,62 @@ if (process.env.NODE_ENV === "production") {
     }
   });
   
-  // Initialize database and create Prisma client
+  // Verify the SortedCollection table exists immediately
   (async () => {
     try {
-      // First run database initialization
-      await initializeDatabase();
+      await prisma.$queryRaw`SELECT count(*) FROM SortedCollection`;
+      console.log(" SortedCollection table verified to exist");
+    } catch (tableError) {
+      console.error(" SortedCollection table verification failed:", tableError);
       
-      // Regenerate Prisma client to ensure it recognizes all models
-      console.log(" Regenerating Prisma client...");
-      execSync('npx prisma generate', { stdio: 'inherit' });
-      
-      // Create new Prisma client instance after regeneration
-      const newPrisma = new PrismaClient({
-        datasources: {
-          db: {
-            url: dbUrl
-          }
-        }
-      });
-      
-      // Connect to verify the client works
-      await newPrisma.$connect();
-      
-      // Verify tables exist
+      // Try to create it
       try {
-        await newPrisma.$transaction(async (tx) => {
-          // Verify SortedCollection table
-          await tx.$executeRaw`SELECT count(*) FROM SortedCollection`;
-          console.log(" SortedCollection table verified to exist");
-          
-          // Verify LineUser table
-          await tx.$executeRaw`SELECT count(*) FROM LineUser`;
-          console.log(" LineUser table verified to exist");
-          
-          // Verify Prisma models are available
-          // @ts-ignore - Runtime check for model availability
-          if (!newPrisma.lineUser || !newPrisma.sortedCollection) {
-            throw new Error("Prisma models not properly generated");
-          }
-          
-          console.log(" All Prisma models verified to exist");
-        });
-        
-        // If everything is verified, replace the old client
-        await prisma.$disconnect();
-        prisma = newPrisma;
-      } catch (error) {
-        console.error(" Table/model verification failed:", error);
-        
-        // Create tables if they don't exist
-        await newPrisma.$transaction(async (tx) => {
-          // Create SortedCollection table
-          await tx.$executeRaw`
-            CREATE TABLE IF NOT EXISTS "SortedCollection" (
-              "id" TEXT NOT NULL PRIMARY KEY,
-              "shop" TEXT NOT NULL,
-              "collectionId" TEXT NOT NULL,
-              "collectionTitle" TEXT NOT NULL,
-              "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
-            )
-          `;
-          
-          // Create LineUser table
-          await tx.$executeRaw`
-            CREATE TABLE IF NOT EXISTS "LineUser" (
-              "id" TEXT NOT NULL PRIMARY KEY,
-              "shop" TEXT NOT NULL,
-              "lineId" TEXT NOT NULL,
-              "lineAccessToken" TEXT,
-              "lineRefreshToken" TEXT,
-              "tokenExpiresAt" DATETIME,
-              "displayName" TEXT,
-              "pictureUrl" TEXT,
-              "email" TEXT,
-              "shopifyCustomerId" TEXT,
-              "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              "updatedAt" DATETIME NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
-          `;
-          
-          console.log(" Tables created successfully");
-          
-          // Regenerate Prisma client again after creating tables
-          console.log(" Regenerating Prisma client after table creation...");
-          execSync('npx prisma generate', { stdio: 'inherit' });
-          
-          // Replace the old client with the new one after table creation
-          await prisma.$disconnect();
-          prisma = newPrisma;
-        });
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "SortedCollection" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "collectionId" TEXT NOT NULL,
+            "collectionTitle" TEXT NOT NULL,
+            "sortedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "sortOrder" TEXT NOT NULL DEFAULT 'MANUAL'
+          )
+        `;
+        console.log(" SortedCollection table created during startup");
+      } catch (createError) {
+        console.error(" Failed to create SortedCollection table:", createError);
       }
+    }
+    
+    // Also verify the LineUser table exists
+    try {
+      await prisma.$queryRaw`SELECT count(*) FROM LineUser`;
+      console.log(" LineUser table verified to exist");
+    } catch (tableError) {
+      console.error(" LineUser table verification failed:", tableError);
       
-      console.log(" Database initialization and Prisma client setup completed successfully");
-    } catch (error) {
-      console.error(" Failed to initialize database and Prisma client:", error);
-      process.exit(1); // Exit if we can't set up the database properly
+      // Try to create it
+      try {
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "LineUser" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "lineId" TEXT NOT NULL,
+            "lineAccessToken" TEXT,
+            "lineRefreshToken" TEXT,
+            "tokenExpiresAt" DATETIME,
+            "displayName" TEXT,
+            "pictureUrl" TEXT,
+            "email" TEXT,
+            "shopifyCustomerId" TEXT,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
+        `;
+        console.log(" LineUser table created during startup");
+      } catch (createError) {
+        console.error(" Failed to create LineUser table:", createError);
+      }
     }
   })();
 } else {

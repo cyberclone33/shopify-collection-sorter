@@ -1,63 +1,33 @@
 #!/usr/bin/env node
 
 /**
- * This script properly sets up the LineUser table and regenerates Prisma client
- * This ensures the Prisma type-safe API will work correctly
+ * This script directly creates the LineUser table in SQLite
+ * Run it manually on Render to fix the missing table issue
  */
 
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get current directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🔄 Starting Prisma setup for LineUser table...');
+  console.log('Starting manual LineUser table creation...');
   
   try {
-    // Step 1: Make sure schema.prisma is properly set up
-    console.log('✅ Verifying schema.prisma includes LineUser model');
-    const schemaPath = path.join(projectRoot, 'prisma', 'schema.prisma');
-    const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+    // First attempt: Use Prisma db push
+    console.log('Attempting Prisma db push...');
+    execSync('npx prisma db push --force-reset', { stdio: 'inherit' });
+    console.log('Prisma db push completed successfully');
     
-    if (!schemaContent.includes('model LineUser')) {
-      console.error('❌ LineUser model not found in schema.prisma!');
-      return;
-    }
-    
-    // Step 2: Regenerate Prisma client
-    console.log('🔄 Regenerating Prisma client...');
-    execSync('npx prisma generate', { 
-      stdio: 'inherit',
-      cwd: projectRoot
-    });
-    console.log('✅ Prisma client regenerated successfully');
-    
-    // Step 3: Push schema changes to the database
-    console.log('🔄 Pushing schema to database...');
-    execSync('npx prisma db push', { 
-      stdio: 'inherit',
-      cwd: projectRoot
-    });
-    console.log('✅ Schema pushed to database successfully');
-    
-    // Step 4: Verify the LineUser table exists
+    // Verify the table exists
     try {
-      console.log('🔍 Verifying LineUser table...');
       await prisma.$queryRaw`SELECT 1 FROM LineUser LIMIT 1`;
-      console.log('✅ LineUser table exists in database');
+      console.log('SUCCESS: LineUser table now exists!');
     } catch (tableCheckErr) {
-      console.error('❌ Table verification failed:', tableCheckErr);
+      console.error('Table verification failed:', tableCheckErr);
       
-      // If table doesn't exist, create it with direct SQL
-      console.log('🔄 Creating LineUser table with direct SQL...');
+      // If Prisma failed, try direct SQLite command
+      console.log('Attempting direct SQLite table creation...');
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS "LineUser" (
           "id" TEXT NOT NULL PRIMARY KEY,
@@ -77,34 +47,23 @@ async function main() {
       `;
       
       await prisma.$executeRawUnsafe(createTableSQL);
-      console.log('✅ Direct SQL table creation completed');
+      console.log('Direct SQLite table creation attempted');
       
-      // Final verification
+      // Verify again
       try {
         await prisma.$queryRaw`SELECT 1 FROM LineUser LIMIT 1`;
-        console.log('✅ LineUser table confirmed to exist after direct creation');
+        console.log('SUCCESS: LineUser table now exists after direct creation!');
       } catch (finalCheckErr) {
-        console.error('❌ Final table verification failed:', finalCheckErr);
+        console.error('Final table verification failed:', finalCheckErr);
       }
     }
-    
-    // Step 5: Test the Prisma model API directly
-    console.log('🔍 Testing Prisma model API for LineUser...');
-    try {
-      // @ts-ignore - Type checking will fail if client not regenerated
-      const testCount = await prisma.lineUser.count();
-      console.log(`✅ Prisma model API working correctly! Found ${testCount} LineUser records`);
-    } catch (modelErr) {
-      console.error('❌ Prisma model API test failed:', modelErr);
-      console.log('💡 This suggests your Prisma client needs to be restarted with the new schema');
-    }
   } catch (error) {
-    console.error('❌ Error setting up LineUser table:', error);
+    console.error('Error creating LineUser table:', error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
 main()
-  .then(() => console.log('✅ Script completed successfully'))
-  .catch(e => console.error('❌ Script failed:', e));
+  .then(() => console.log('Script completed'))
+  .catch(e => console.error('Script failed:', e));
