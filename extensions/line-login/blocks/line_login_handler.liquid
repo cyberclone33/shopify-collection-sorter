@@ -1,0 +1,89 @@
+{% comment %}
+  This block handles automatic login after LINE authentication
+  It should be included in the login page template
+{% endcomment %}
+
+{% if request.params.line_login == 'success' and request.params.customer_id %}
+  <div id="line-login-handler" style="display: block;">
+    <style>
+      .line-login-message {
+        background-color: #f8f8f8;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .line-login-message h3 {
+        margin-top: 0;
+        color: #06C755;
+      }
+      .line-login-message p {
+        margin-bottom: 10px;
+      }
+      .line-login-button {
+        background-color: #06C755;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+    </style>
+
+    <div class="line-login-message">
+      <h3>{{ 'line_login.handler.welcome' | t: name: request.params.name }}</h3>
+      <p>{{ 'line_login.handler.message' | t }}</p>
+      <button class="line-login-button" id="line-login-complete">
+        {{ 'line_login.handler.complete_login' | t }}
+      </button>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // Store the LINE customer ID in localStorage for later use
+        localStorage.setItem('line_customer_id', '{{ request.params.customer_id }}');
+        localStorage.setItem('line_customer_name', '{{ request.params.name }}');
+        localStorage.setItem('line_customer_email', '{{ request.params.email }}');
+        
+        // Get the login form
+        const loginForm = document.querySelector('form[action*="/account/login"]');
+        
+        if (loginForm) {
+          // Find the email and password fields
+          const emailField = loginForm.querySelector('input[type="email"]');
+          const passwordField = loginForm.querySelector('input[type="password"]');
+          const submitButton = loginForm.querySelector('button[type="submit"]');
+          
+          // Check if we have the customer email from LINE
+          const lineEmail = '{{ request.params.email }}';
+          if (lineEmail && emailField) {
+            emailField.value = lineEmail;
+          }
+          
+          // Hide the regular login form
+          loginForm.style.display = 'none';
+          
+          // Add event listener to the button
+          document.getElementById('line-login-complete').addEventListener('click', function() {
+            // Show a loading message
+            this.textContent = '{{ 'line_login.handler.logging_in' | t }}';
+            this.disabled = true;
+            
+            // Redirect to the account page
+            window.location.href = '/account?line_login=success&customer_id={{ request.params.customer_id }}';
+          });
+        }
+      });
+    </script>
+  </div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "LINE Login Handler",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}

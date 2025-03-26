@@ -11,6 +11,12 @@
     "button": {
       "text_en": "Login with LINE",
       "text_zh_tw": "用LINE登入"
+    },
+    "handler": {
+      "welcome": "Welcome, %{name}!",
+      "message": "You've successfully authenticated with LINE. Click the button below to complete your login.",
+      "complete_login": "Complete Login",
+      "logging_in": "Logging in..."
     }
   }
 }

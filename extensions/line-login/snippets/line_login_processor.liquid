@@ -1,0 +1,55 @@
+{% comment %}
+  This snippet processes LINE login requests and should be included in the theme.liquid file
+  It handles the customer_id parameter from LINE authentication
+{% endcomment %}
+
+{% if request.path contains '/account' and request.params.line_login == 'success' and request.params.customer_id %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Check if we're already logged in
+      {% if customer %}
+        // If we're already logged in, show a welcome message
+        const accountHeader = document.querySelector('.account-header, .customer-header, h1');
+        if (accountHeader) {
+          const welcomeMessage = document.createElement('div');
+          welcomeMessage.className = 'line-login-success-message';
+          welcomeMessage.innerHTML = `
+            <style>
+              .line-login-success-message {
+                background-color: #f0f8f0;
+                border: 1px solid #c0e0c0;
+                border-radius: 4px;
+                padding: 15px;
+                margin-bottom: 20px;
+                text-align: center;
+                color: #06C755;
+                font-weight: bold;
+              }
+            </style>
+            <p>{{ 'line_login.handler.welcome' | t: name: customer.name }}</p>
+          `;
+          accountHeader.parentNode.insertBefore(welcomeMessage, accountHeader.nextSibling);
+          
+          // Remove the message after 5 seconds
+          setTimeout(function() {
+            welcomeMessage.style.transition = 'opacity 1s ease-out';
+            welcomeMessage.style.opacity = '0';
+            setTimeout(function() {
+              welcomeMessage.remove();
+            }, 1000);
+          }, 5000);
+        }
+      {% else %}
+        // If we're not logged in, redirect to the login page with the LINE parameters
+        window.location.href = '/account/login?line_login=success&customer_id={{ request.params.customer_id }}';
+      {% endif %}
+    });
+  </script>
+{% endif %}
+
+{% if request.path contains '/account/login' and request.params.line_login == 'success' and customer %}
+  <script>
+    // If we're already logged in on the login page, redirect to the account page
+    window.location.href = '/account';
+  </script>
+{% endif %}
