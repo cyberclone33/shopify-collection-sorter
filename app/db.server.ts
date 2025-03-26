@@ -302,6 +302,38 @@ if (process.env.NODE_ENV === "production") {
         console.error(" Failed to create SortedCollection table:", createError);
       }
     }
+    
+    // Also verify the LineUser table exists
+    try {
+      await prisma.$queryRaw`SELECT count(*) FROM LineUser`;
+      console.log(" LineUser table verified to exist");
+    } catch (tableError) {
+      console.error(" LineUser table verification failed:", tableError);
+      
+      // Try to create it
+      try {
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "LineUser" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "lineId" TEXT NOT NULL,
+            "lineAccessToken" TEXT,
+            "lineRefreshToken" TEXT,
+            "tokenExpiresAt" DATETIME,
+            "displayName" TEXT,
+            "pictureUrl" TEXT,
+            "email" TEXT,
+            "shopifyCustomerId" TEXT,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
+        `;
+        console.log(" LineUser table created during startup");
+      } catch (createError) {
+        console.error(" Failed to create LineUser table:", createError);
+      }
+    }
   })();
 } else {
   if (!global.prisma) {

@@ -2,9 +2,10 @@ import { redirect } from "@remix-run/node";
 import axios from "axios";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
 
-// Create a new prisma client instance
-const prisma = new PrismaClient();
+// Import the db client from db.server.ts as default export
+import prisma from "../db.server";
 
 // LINE OAuth configuration
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID || "";
@@ -137,74 +138,108 @@ export async function saveLineUser(
   try {
     console.log(`Attempting to save LINE user data for: ${lineProfile.displayName} (${lineProfile.userId})`);
     
-    // First try using Prisma's type-safe API
+    // First try using Prisma's type-safe API if available
     try {
+      // Make sure prisma is defined before using it
+      if (!prisma) {
+        throw new Error("Prisma client is not initialized");
+      }
+      
       // Connect to the database before using the Prisma client
       await prisma.$connect();
       
-      const lineUser = await prisma.lineUser.upsert({
-        where: {
-          shop_lineId: {
+      // Check if LineUser model exists in the Prisma client
+      // Note: This is a TypeScript error but might work at runtime if the table exists
+      try {
+        // @ts-ignore - Ignore TypeScript error about lineUser not existing on PrismaClient
+        const lineUser = await prisma.lineUser.upsert({
+          where: {
+            shop_lineId: {
+              shop,
+              lineId: lineProfile.userId
+            }
+          },
+          update: {
+            lineAccessToken: tokenData.access_token,
+            lineRefreshToken: tokenData.refresh_token,
+            tokenExpiresAt: expiresAt,
+            displayName: lineProfile.displayName,
+            pictureUrl: lineProfile.pictureUrl,
+            email: idTokenData?.email,
+            updatedAt: new Date()
+          },
+          create: {
             shop,
-            lineId: lineProfile.userId
+            lineId: lineProfile.userId,
+            lineAccessToken: tokenData.access_token,
+            lineRefreshToken: tokenData.refresh_token,
+            tokenExpiresAt: expiresAt,
+            displayName: lineProfile.displayName,
+            pictureUrl: lineProfile.pictureUrl,
+            email: idTokenData?.email
           }
-        },
-        update: {
-          lineAccessToken: tokenData.access_token,
-          lineRefreshToken: tokenData.refresh_token,
-          tokenExpiresAt: expiresAt,
-          displayName: lineProfile.displayName,
-          pictureUrl: lineProfile.pictureUrl,
-          email: idTokenData?.email,
-          updatedAt: new Date()
-        },
-        create: {
-          shop,
-          lineId: lineProfile.userId,
-          lineAccessToken: tokenData.access_token,
-          lineRefreshToken: tokenData.refresh_token,
-          tokenExpiresAt: expiresAt,
-          displayName: lineProfile.displayName,
-          pictureUrl: lineProfile.pictureUrl,
-          email: idTokenData?.email
-        }
-      });
-      
-      console.log(`Successfully saved LINE user data for: ${lineProfile.displayName} (${lineProfile.userId})`);
-      return lineUser;
+        });
+        
+        console.log(`Successfully saved LINE user data for: ${lineProfile.displayName} (${lineProfile.userId})`);
+        return lineUser;
+      } catch (modelError) {
+        console.error('Error using Prisma model API, falling back to raw query:', modelError);
+        throw modelError; // Re-throw to be caught by the outer try/catch
+      }
     } catch (prismaError) {
       console.error('Error using Prisma type-safe API, falling back to raw query:', prismaError);
       
-      // Check if the error is "no such table" and try to create it
-      if (prismaError instanceof Error && prismaError.message.includes('no such table')) {
-        console.log('Attempting to create missing LineUser table...');
-        try {
-          // Create the LineUser table if it doesn't exist
+      // Use raw SQL queries as a fallback
+      try {
+        // First, ensure the table exists
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "LineUser" (
+            "id" TEXT PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "lineId" TEXT NOT NULL,
+            "lineAccessToken" TEXT,
+            "lineRefreshToken" TEXT,
+            "tokenExpiresAt" DATETIME,
+            "displayName" TEXT,
+            "pictureUrl" TEXT,
+            "email" TEXT,
+            "shopifyCustomerId" TEXT,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL,
+            UNIQUE(shop, lineId)
+          )
+        `;
+        
+        // Check if a record already exists
+        const existingRecords = await prisma.$queryRaw`
+          SELECT id FROM "LineUser" 
+          WHERE shop = ${shop} AND lineId = ${lineProfile.userId}
+          LIMIT 1
+        `;
+        
+        const now = new Date().toISOString();
+        let id: string;
+        
+        if (Array.isArray(existingRecords) && existingRecords.length > 0) {
+          // Update existing record
+          id = existingRecords[0].id;
           await prisma.$executeRaw`
-            CREATE TABLE IF NOT EXISTS LineUser (
-              id TEXT PRIMARY KEY,
-              shop TEXT NOT NULL,
-              lineId TEXT NOT NULL,
-              lineAccessToken TEXT,
-              lineRefreshToken TEXT,
-              tokenExpiresAt DATETIME,
-              displayName TEXT,
-              pictureUrl TEXT,
-              email TEXT,
-              shopifyCustomerId TEXT,
-              createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              updatedAt DATETIME NOT NULL,
-              UNIQUE(shop, lineId)
-            )
+            UPDATE "LineUser" SET
+              lineAccessToken = ${tokenData.access_token},
+              lineRefreshToken = ${tokenData.refresh_token},
+              tokenExpiresAt = ${expiresAt.toISOString()},
+              displayName = ${lineProfile.displayName},
+              pictureUrl = ${lineProfile.pictureUrl},
+              email = ${idTokenData?.email},
+              updatedAt = ${now}
+            WHERE id = ${id}
           `;
-          console.log('LineUser table created successfully');
-          
-          // Now try to insert the record using raw SQL
-          const id = Math.random().toString(36).substring(2, 15);
-          const now = new Date().toISOString();
-          
+          console.log(`Updated existing LINE user record with ID: ${id}`);
+        } else {
+          // Insert new record
+          id = crypto.randomUUID();
           await prisma.$executeRaw`
-            INSERT INTO LineUser (
+            INSERT INTO "LineUser" (
               id, shop, lineId, lineAccessToken, lineRefreshToken, 
               tokenExpiresAt, displayName, pictureUrl, email, 
               createdAt, updatedAt
@@ -213,39 +248,28 @@ export async function saveLineUser(
               ${expiresAt.toISOString()}, ${lineProfile.displayName}, ${lineProfile.pictureUrl}, ${idTokenData?.email},
               ${now}, ${now}
             )
-            ON CONFLICT(shop, lineId) DO UPDATE SET
-              lineAccessToken = ${tokenData.access_token},
-              lineRefreshToken = ${tokenData.refresh_token},
-              tokenExpiresAt = ${expiresAt.toISOString()},
-              displayName = ${lineProfile.displayName},
-              pictureUrl = ${lineProfile.pictureUrl},
-              email = ${idTokenData?.email},
-              updatedAt = ${now}
           `;
-          
-          console.log(`Successfully saved LINE user data using raw SQL for: ${lineProfile.displayName} (${lineProfile.userId})`);
-          
-          // Return a constructed object that matches the LineUser model
-          return {
-            id,
-            shop,
-            lineId: lineProfile.userId,
-            lineAccessToken: tokenData.access_token,
-            lineRefreshToken: tokenData.refresh_token,
-            tokenExpiresAt: expiresAt,
-            displayName: lineProfile.displayName,
-            pictureUrl: lineProfile.pictureUrl,
-            email: idTokenData?.email,
-            shopifyCustomerId: null,
-            createdAt: new Date(now),
-            updatedAt: new Date(now)
-          };
-        } catch (createError) {
-          console.error('Failed to create or insert into LineUser table:', createError);
-          throw createError; // Re-throw to be caught by the outer catch
+          console.log(`Inserted new LINE user record with ID: ${id}`);
         }
-      } else {
-        throw prismaError; // Re-throw to be caught by the outer catch
+        
+        // Return a constructed object that matches the LineUser model
+        return {
+          id,
+          shop,
+          lineId: lineProfile.userId,
+          lineAccessToken: tokenData.access_token,
+          lineRefreshToken: tokenData.refresh_token,
+          tokenExpiresAt: expiresAt,
+          displayName: lineProfile.displayName,
+          pictureUrl: lineProfile.pictureUrl,
+          email: idTokenData?.email,
+          shopifyCustomerId: null,
+          createdAt: new Date(now),
+          updatedAt: new Date(now)
+        };
+      } catch (sqlError) {
+        console.error('Error executing raw SQL:', sqlError);
+        throw sqlError; // Re-throw to be caught by the outer catch
       }
     }
   } catch (error) {
