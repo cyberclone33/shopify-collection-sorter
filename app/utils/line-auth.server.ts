@@ -135,7 +135,7 @@ export async function saveLineUser(
     
     // Try using Prisma's type-safe API first
     try {
-      const lineUser = await prisma.lineUser.upsert({
+      const lineUser = await prisma.LineUser.upsert({
         where: {
           shop_lineId: {
             shop,
