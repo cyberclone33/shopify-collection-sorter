@@ -89,7 +89,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
                   console.log("Successfully created customer access token");
                   
                   // Create a special HTML response that will automatically log in the customer
-                  return createLoginResponse(token, lineProfile.displayName);
+                  return createLoginResponse(token, lineProfile.displayName, idTokenData?.email || `line_${lineProfile.userId}@example.com`, randomPassword);
                 }
               } catch (tokenError) {
                 console.error("Customer access token errors:", tokenError);
@@ -237,7 +237,8 @@ async function createCustomerAccessToken(shop: string, email: string, password: 
 /**
  * Create an HTML response that sets a customer access token cookie and redirects to the account page
  */
-function createLoginResponse(customerAccessToken: string, displayName: string): Response {
+function createLoginResponse(customerAccessToken: string, displayName: string, customerEmail: string, randomPassword: string): Response {
+  // Updated to directly set the cookie and redirect to account page
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -317,17 +318,17 @@ function createLoginResponse(customerAccessToken: string, displayName: string): 
             <svg class="line-logo" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
               <path fill="#06C755" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
             </svg>
-            <h1>Successfully Logged In</h1>
+            <h1>Successfully Connected</h1>
             <p>Welcome, <span class="user-name">${displayName}</span>!</p>
             <div class="spinner"></div>
-            <p>Redirecting to your account...</p>
+            <p>Logging you in automatically...</p>
           </div>
         
           <script>
-            // Store the customer access token in a cookie
-            document.cookie = "customerAccessToken=${customerAccessToken}; path=/; max-age=2592000; secure; samesite=none";
+            // Directly set the customerAccessToken cookie
+            document.cookie = \`customerAccessToken=${customerAccessToken}; path=/; secure; SameSite=None\`;
             
-            // Redirect to the account page
+            // Then redirect straight to the account page
             setTimeout(function() {
               window.location.href = "https://${SHOPIFY_STORE_DOMAIN}/account";
             }, 2000);
@@ -341,8 +342,6 @@ function createLoginResponse(customerAccessToken: string, displayName: string): 
     status: 200,
     headers: {
       "Content-Type": "text/html",
-      // Set cookies for Shopify customer session
-      "Set-Cookie": `customerAccessToken=${customerAccessToken}; path=/; max-age=2592000; secure; samesite=none`
     },
   });
 }
