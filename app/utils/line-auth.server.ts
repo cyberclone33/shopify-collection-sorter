@@ -60,8 +60,7 @@ export function getLineAuthUrl(shop: string, state: string): string {
     state: state,
     scope: "profile openid email",
     nonce: Math.random().toString(36).substring(2, 15),
-    prompt: "consent",
-    bot_prompt: "normal",
+    bot_prompt: "aggressive",
   });
 
   return `${LINE_AUTH_URL}?${params.toString()}`;
