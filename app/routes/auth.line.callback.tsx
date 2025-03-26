@@ -289,11 +289,12 @@ function createLoginResponse(customerAccessToken: string, displayName: string, c
           <div class="spinner"></div>
           
           <!-- Hidden Shopify login form -->
-          <form id="shopify-login" method="post" action="/account/login" style="display: none;">
+          <form id="shopify-login" method="post" action="https://${SHOPIFY_STORE_DOMAIN}/account/login" style="display: none;">
             <input type="email" name="customer[email]" value="${customerEmail}">
             <input type="password" name="customer[password]" value="${password}">
             <input type="hidden" name="form_type" value="customer_login">
             <input type="hidden" name="utf8" value="✓">
+            <input type="hidden" name="return_url" value="/account">
           </form>
           
           <script>
