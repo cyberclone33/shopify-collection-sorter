@@ -2,8 +2,10 @@ import { LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { 
   getLineAccessToken, 
   getLineProfile, 
-  parseIdToken
+  parseIdToken,
+  saveLineUser
 } from "../utils/line-auth.server";
+import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
 
 // Admin API access token - in production, store this in environment variables
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN || "";
@@ -50,10 +52,41 @@ export async function loader({ request }: LoaderFunctionArgs) {
     
     console.log(`Successfully authenticated LINE user: ${lineProfile.displayName}`);
     
-    // Since we're having issues with the LineUser table, skip the database operations
-    // and just pass the LINE user info to the login page
+    // Try to save LINE user data to our database
+    try {
+      const lineUser = await saveLineUser(shop, lineProfile, tokenData, idTokenData);
+      
+      // Try to create or link Shopify customer using Admin API
+      if (SHOPIFY_ACCESS_TOKEN) {
+        try {
+          const shopifyCustomerId = await createOrLinkShopifyCustomer(
+            shop,
+            SHOPIFY_ACCESS_TOKEN,
+            lineProfile.userId,
+            lineProfile.displayName,
+            idTokenData?.email
+          );
+          
+          if (shopifyCustomerId) {
+            console.log(`Successfully linked LINE user to Shopify customer: ${shopifyCustomerId}`);
+            
+            // For Shopify Plus stores, we could use Multipass for seamless login
+            // For regular stores, we need to redirect to the login page
+            // Here we'll redirect to the account page with a special parameter
+            return redirect(`https://${shop}/account?line_login=success&customer_id=${shopifyCustomerId}`);
+          }
+        } catch (customerError) {
+          console.error("Error linking customer:", customerError);
+          // Continue to fallback redirect
+        }
+      }
+    } catch (dbError) {
+      console.error("Database operation failed:", dbError);
+      // Continue to fallback redirect
+    }
     
-    // Prepare parameters for the redirect
+    // Fallback: If we couldn't create/link a customer or don't have an access token,
+    // redirect to the login page with LINE user info
     const params = new URLSearchParams({
       line_login: 'success',
       line_id: lineProfile.userId,
@@ -61,7 +94,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       email: idTokenData?.email || ''
     });
     
-    // Redirect the user directly to the login page with LINE user information
     return redirect(`https://${shop}/account/login?${params.toString()}`);
     
   } catch (error) {
