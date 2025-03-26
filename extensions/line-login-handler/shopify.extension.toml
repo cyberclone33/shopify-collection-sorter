@@ -1,0 +1,18 @@
+name = "LINE Login Handler"
+type = "theme"
+handle = "line-login-handler"
+
+[[metafields]]
+namespace = "line_login"
+key = "customer_id"
+description = "Customer ID linked to LINE account"
+type = "single_line_text_field"
+owner_type = "customer"
+
+[settings]
+  [[settings.fields]]
+  key = "enable_auto_login"
+  type = "boolean"
+  name = "Enable Auto Login"
+  description = "Automatically log in customers after LINE authentication"
+  default = true

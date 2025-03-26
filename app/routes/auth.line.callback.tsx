@@ -70,10 +70,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (shopifyCustomerId) {
             console.log(`Successfully linked LINE user to Shopify customer: ${shopifyCustomerId}`);
             
-            // For Shopify Plus stores, we could use Multipass for seamless login
-            // For regular stores, we need to redirect to the login page
-            // Here we'll redirect to the account page with a special parameter
-            return redirect(`https://${shop}/account?line_login=success&customer_id=${shopifyCustomerId}`);
+            // For Shopify Plus stores with Multipass, we would generate a token here
+            // For regular stores, we need to redirect to a custom login page
+            
+            // Instead of redirecting to the account page directly, redirect to a custom login handler
+            // that will automatically log the user in
+            return redirect(`https://${shop}/account/login?return_url=%2Faccount&line_login=success&customer_id=${shopifyCustomerId}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);

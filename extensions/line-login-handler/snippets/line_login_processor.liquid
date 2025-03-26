@@ -1,0 +1,53 @@
+{% comment %}
+  This snippet processes LINE login requests and should be included in the theme.liquid file
+  It handles the customer_id parameter from LINE authentication
+{% endcomment %}
+
+{% if request.path contains '/account/login' and request.params.line_login == 'success' and request.params.customer_id %}
+  <script>
+    // Store the LINE customer ID in localStorage for later use
+    localStorage.setItem('line_customer_id', '{{ request.params.customer_id }}');
+    localStorage.setItem('line_customer_name', '{{ request.params.name }}');
+    localStorage.setItem('line_customer_email', '{{ request.params.email }}');
+    
+    // Check if we're already logged in
+    {% if customer %}
+      // If we're already logged in, redirect to the account page
+      window.location.href = '/account';
+    {% endif %}
+  </script>
+{% endif %}
+
+{% if customer and customer.metafields.line_login.customer_id == blank and request.path contains '/account' %}
+  {% if request.params.line_login == 'success' or request.params.customer_id %}
+    <script>
+      // If we're logged in and have a LINE customer ID in localStorage, save it to the customer metafield
+      document.addEventListener('DOMContentLoaded', function() {
+        const lineCustomerId = localStorage.getItem('line_customer_id');
+        if (lineCustomerId) {
+          // Create a form to update the customer metafield
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = '/account/update';
+          form.style.display = 'none';
+          
+          // Add the LINE customer ID as a hidden field
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'customer[note][line_customer_id]';
+          input.value = lineCustomerId;
+          form.appendChild(input);
+          
+          // Add the form to the page and submit it
+          document.body.appendChild(form);
+          form.submit();
+          
+          // Clear the localStorage
+          localStorage.removeItem('line_customer_id');
+          localStorage.removeItem('line_customer_name');
+          localStorage.removeItem('line_customer_email');
+        }
+      });
+    </script>
+  {% endif %}
+{% endif %}

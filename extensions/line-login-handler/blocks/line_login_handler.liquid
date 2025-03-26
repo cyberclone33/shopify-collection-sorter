@@ -1,0 +1,89 @@
+{% comment %}
+  This block handles automatic login after LINE authentication
+  It should be included in the login page template
+{% endcomment %}
+
+{% if request.params.line_login == 'success' and request.params.customer_id %}
+  <div id="line-login-handler" style="display: none;">
+    <script>
+      // This script automatically logs in the customer using the customer_id from LINE authentication
+      document.addEventListener('DOMContentLoaded', function() {
+        // Get the login form
+        const loginForm = document.querySelector('form[action*="/account/login"]');
+        
+        if (loginForm) {
+          // Find the email and password fields
+          const emailField = loginForm.querySelector('input[type="email"]');
+          const passwordField = loginForm.querySelector('input[type="password"]');
+          const submitButton = loginForm.querySelector('button[type="submit"]');
+          
+          // Check if we have the customer email from LINE
+          const lineEmail = '{{ request.params.email }}';
+          if (lineEmail && emailField) {
+            emailField.value = lineEmail;
+          }
+          
+          // Create a message to show the user
+          const messageContainer = document.createElement('div');
+          messageContainer.className = 'line-login-message';
+          messageContainer.innerHTML = `
+            <style>
+              .line-login-message {
+                background-color: #f8f8f8;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 15px;
+                margin-bottom: 20px;
+                text-align: center;
+              }
+              .line-login-message h3 {
+                margin-top: 0;
+                color: #06C755;
+              }
+              .line-login-message p {
+                margin-bottom: 10px;
+              }
+              .line-login-button {
+                background-color: #06C755;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 20px;
+                cursor: pointer;
+                font-weight: bold;
+              }
+            </style>
+            <h3>{{ 'customer.login.line_login_success' | t: name: request.params.name }}</h3>
+            <p>{{ 'customer.login.line_login_message' | t }}</p>
+            <button class="line-login-button" id="line-login-complete">
+              {{ 'customer.login.complete_login' | t }}
+            </button>
+          `;
+          
+          // Insert the message before the form
+          loginForm.parentNode.insertBefore(messageContainer, loginForm);
+          
+          // Hide the regular login form
+          loginForm.style.display = 'none';
+          
+          // Add event listener to the button
+          document.getElementById('line-login-complete').addEventListener('click', function() {
+            // Show a loading message
+            this.textContent = '{{ 'customer.login.logging_in' | t }}';
+            this.disabled = true;
+            
+            // Submit the form with a special parameter
+            const lineLoginInput = document.createElement('input');
+            lineLoginInput.type = 'hidden';
+            lineLoginInput.name = 'line_customer_id';
+            lineLoginInput.value = '{{ request.params.customer_id }}';
+            loginForm.appendChild(lineLoginInput);
+            
+            // Submit the form
+            submitButton.click();
+          });
+        }
+      });
+    </script>
+  </div>
+{% endif %}

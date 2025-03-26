@@ -1,0 +1,10 @@
+{
+  "customer": {
+    "login": {
+      "line_login_success": "Welcome, %{name}!",
+      "line_login_message": "You've successfully authenticated with LINE. Click the button below to complete your login.",
+      "complete_login": "Complete Login",
+      "logging_in": "Logging in..."
+    }
+  }
+}
