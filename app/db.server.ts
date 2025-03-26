@@ -149,6 +149,39 @@ async function initializeDatabase() {
           console.error(` Error with direct SQL:`, sqliteError);
         }
         
+        // Also ensure the LineUser table exists
+        console.log(` Ensuring LineUser table exists...`);
+        const createLineUserTableSQL = `
+          CREATE TABLE IF NOT EXISTS "LineUser" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "lineId" TEXT NOT NULL,
+            "lineAccessToken" TEXT,
+            "lineRefreshToken" TEXT,
+            "tokenExpiresAt" DATETIME,
+            "displayName" TEXT,
+            "pictureUrl" TEXT,
+            "email" TEXT,
+            "shopifyCustomerId" TEXT,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
+        `;
+        
+        // Write the SQL to a file
+        fs.writeFileSync(path.join(dbDir, "create-lineuser.sql"), createLineUserTableSQL);
+        
+        // Execute it with sqlite3
+        try {
+          execSync(`cat ${path.join(dbDir, "create-lineuser.sql")} | sqlite3 ${dbPath}`, {
+            stdio: "inherit"
+          });
+          console.log(` LineUser table ensured via direct SQL`);
+        } catch (sqliteError) {
+          console.error(` Error with direct SQL:`, sqliteError);
+        }
+        
         // Test the database connection immediately
         const testPrisma = new PrismaClient({
           datasources: {
@@ -168,6 +201,14 @@ async function initializeDatabase() {
             console.log(` SortedCollection table exists and is accessible`);
           } catch (tableError) {
             console.error(` SortedCollection table test failed:`, tableError);
+          }
+          
+          // Also test the LineUser table
+          try {
+            await testPrisma.$queryRaw`SELECT COUNT(*) FROM LineUser`;
+            console.log(` LineUser table exists and is accessible`);
+          } catch (tableError) {
+            console.error(` LineUser table test failed:`, tableError);
           }
           
           await testPrisma.$disconnect();
@@ -277,15 +318,18 @@ if (process.env.NODE_ENV === "production") {
     }
   });
   
-  // Verify the SortedCollection table exists immediately
+  // Verify both SortedCollection and LineUser tables exist immediately
   (async () => {
     try {
       await prisma.$queryRaw`SELECT count(*) FROM SortedCollection`;
       console.log(" SortedCollection table verified to exist");
-    } catch (tableError) {
-      console.error(" SortedCollection table verification failed:", tableError);
       
-      // Try to create it
+      await prisma.$queryRaw`SELECT count(*) FROM LineUser`;
+      console.log(" LineUser table verified to exist");
+    } catch (tableError) {
+      console.error(" Table verification failed:", tableError);
+      
+      // Try to create both tables
       try {
         await prisma.$executeRaw`
           CREATE TABLE IF NOT EXISTS "SortedCollection" (
@@ -298,20 +342,7 @@ if (process.env.NODE_ENV === "production") {
           )
         `;
         console.log(" SortedCollection table created during startup");
-      } catch (createError) {
-        console.error(" Failed to create SortedCollection table:", createError);
-      }
-    }
-    
-    // Also verify the LineUser table exists
-    try {
-      await prisma.$queryRaw`SELECT count(*) FROM LineUser`;
-      console.log(" LineUser table verified to exist");
-    } catch (tableError) {
-      console.error(" LineUser table verification failed:", tableError);
-      
-      // Try to create it
-      try {
+        
         await prisma.$executeRaw`
           CREATE TABLE IF NOT EXISTS "LineUser" (
             "id" TEXT NOT NULL PRIMARY KEY,
@@ -331,11 +362,20 @@ if (process.env.NODE_ENV === "production") {
         `;
         console.log(" LineUser table created during startup");
       } catch (createError) {
-        console.error(" Failed to create LineUser table:", createError);
+        console.error(" Failed to create tables during startup:", createError);
       }
+    }
+    
+    // Test database connection
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      console.log(" Database connection test successful");
+    } catch (connectionError) {
+      console.error(" Database connection test failed:", connectionError);
     }
   })();
 } else {
+  // For development, create a new instance if one doesn't exist
   if (!global.prisma) {
     global.prisma = new PrismaClient();
   }
