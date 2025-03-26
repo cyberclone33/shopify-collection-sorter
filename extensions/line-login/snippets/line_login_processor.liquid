@@ -3,11 +3,33 @@
   Using the form trick for standard Shopify stores
 {% endcomment %}
 
-{% assign line_login = request.params.line_login %}
-{% assign customer_email = request.params.customer_email %}
-{% assign access_token = request.params.access_token %}
-{% assign return_url = request.params.return_url %}
-{% assign customer_name = request.params.name %}
+{% assign query_string = request.query_string %}
+{% assign params = request.url | split: '?' | last | split: '&' %}
+
+{% assign line_login = '' %}
+{% assign customer_email = '' %}
+{% assign access_token = '' %}
+{% assign return_url = '' %}
+{% assign customer_name = '' %}
+
+{% for param in params %}
+  {% assign key_value = param | split: '=' %}
+  {% assign key = key_value[0] %}
+  {% assign value = key_value[1] | url_decode %}
+  
+  {% case key %}
+    {% when 'line_login' %}
+      {% assign line_login = value %}
+    {% when 'customer_email' %}
+      {% assign customer_email = value %}
+    {% when 'access_token' %}
+      {% assign access_token = value %}
+    {% when 'return_url' %}
+      {% assign return_url = value %}
+    {% when 'name' %}
+      {% assign customer_name = value %}
+  {% endcase %}
+{% endfor %}
 
 {% if request.path contains '/account/login' %}
   {% comment %}Debug section to show all available parameters{% endcomment %}
@@ -20,15 +42,20 @@
   ">
     <h3>Debug Info:</h3>
     <p>Path: {{ request.path }}</p>
+    <p>Query String: {{ query_string }}</p>
+    <p>URL: {{ request.url }}</p>
+    <hr>
+    <p>Parsed Parameters:</p>
     <p>Line Login: {{ line_login }}</p>
     <p>Email: {{ customer_email }}</p>
     <p>Name: {{ customer_name }}</p>
     <p>Return URL: {{ return_url }}</p>
     <p>Access Token: {{ access_token | slice: 0, 10 }}...</p>
-    <p>All params:</p>
+    <hr>
+    <p>Raw Parameters:</p>
     <ul>
-    {% for param in request.params %}
-      <li>{{ param[0] }}: {{ param[1] }}</li>
+    {% for param in params %}
+      <li>{{ param }}</li>
     {% endfor %}
     </ul>
   </div>
