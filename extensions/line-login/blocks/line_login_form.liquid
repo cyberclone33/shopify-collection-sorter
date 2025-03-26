@@ -1,0 +1,14 @@
+{% comment %}
+  This block adds the LINE login form processor to the login page
+{% endcomment %}
+
+{% render 'line_login_processor' %}
+
+{% schema %}
+{
+  "name": "LINE Login Form",
+  "target": "section",
+  "templates": ["customers/login"],
+  "settings": []
+}
+{% endschema %}
