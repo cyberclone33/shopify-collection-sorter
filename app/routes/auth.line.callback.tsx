@@ -74,43 +74,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (customerId) {
             console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
             
-            // Use first 40 chars of LINE access token as password
+            // Use LINE access token as password for consistency
             const password = tokenData.access_token.substring(0, 40);
             
             // Set the password for the customer using Admin API
             try {
               await setCustomerPassword(shop, customerId, password);
               
-              // Try to create a customer access token using the new password
-              try {
-                const customerEmail = idTokenData?.email || `line_${lineProfile.userId}@example.com`;
-                const token = await createCustomerAccessToken(shop, customerEmail, password);
-                
-                if (token) {
-                  console.log("Successfully created customer access token");
-                  
-                  // Create an HTML response that auto-submits Shopify's native login form
-                  return createLoginResponse(token, lineProfile.displayName, customerEmail, password);
-                }
-              } catch (tokenError) {
-                console.error("Error creating customer access token:", tokenError);
-              }
+              // Redirect to login page with all necessary parameters
+              const params = new URLSearchParams({
+                line_login: 'success',
+                customer_id: customerId,
+                name: lineProfile.displayName,
+                customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
+                access_token: password,
+                return_url: '/account'
+              });
+              
+              return redirect(`https://${shop}/account/login?${params.toString()}`);
             } catch (passwordError) {
               console.error("Error setting customer password:", passwordError);
             }
-            
-            // Fallback: If we couldn't create a customer access token,
-            // redirect to the login page with LINE user info
-            const params = new URLSearchParams({
-              line_login: 'success',
-              customer_id: customerId,
-              name: lineProfile.displayName,
-              customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-              access_token: tokenData.access_token.substring(0, 40), // Use truncated token
-              return_url: '/account'
-            });
-            
-            return redirect(`https://${shop}/account/login?${params.toString()}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -129,7 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
       customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token.substring(0, 40), // Use truncated token
+      access_token: tokenData.access_token.substring(0, 40),
       return_url: '/account'
     });
     
@@ -235,83 +219,4 @@ async function createCustomerAccessToken(shop: string, email: string, password: 
   }
   
   return result.customerAccessToken.accessToken;
-}
-
-/**
- * Create an HTML response that auto-submits Shopify's native login form
- */
-function createLoginResponse(customerAccessToken: string, displayName: string, customerEmail: string, password: string): Response {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Logging in...</title>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f5f5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-          }
-          .loading-container {
-            text-align: center;
-            padding: 2rem;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          }
-          .line-brand {
-            color: #06C755;
-            font-weight: bold;
-          }
-          .spinner {
-            width: 40px;
-            height: 40px;
-            margin: 20px auto;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #06C755;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="loading-container">
-          <h2>Welcome back, <span class="line-brand">${displayName}</span>!</h2>
-          <p>Completing your LINE login...</p>
-          <div class="spinner"></div>
-          
-          <!-- Hidden Shopify login form -->
-          <form id="shopify-login" method="post" action="https://${SHOPIFY_STORE_DOMAIN}/account/login" style="display: none;">
-            <input type="email" name="customer[email]" value="${customerEmail}">
-            <input type="password" name="customer[password]" value="${password}">
-            <input type="hidden" name="form_type" value="customer_login">
-            <input type="hidden" name="utf8" value="✓">
-            <input type="hidden" name="return_url" value="/account">
-          </form>
-          
-          <script>
-            // Auto-submit the form after a short delay
-            setTimeout(() => {
-              document.getElementById('shopify-login').submit();
-            }, 1500);
-          </script>
-        </div>
-      </body>
-    </html>
-  `;
-  
-  return new Response(html, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html",
-    },
-  });
 }
