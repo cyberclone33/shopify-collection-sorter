@@ -56,10 +56,11 @@
           if (data.data?.customerAccessTokenCreate?.customerAccessToken?.accessToken) {
             const accessToken = data.data.customerAccessTokenCreate.customerAccessToken.accessToken;
             
-            // Set the customerAccessToken cookie properly
+            // Set cookie and redirect exactly as shown in the example
             document.cookie = `customerAccessToken=${accessToken}; path=/; secure; SameSite=None`;
+            window.location.href = "https://alphapetstw.myshopify.com/account";
             
-            // Create info message
+            // Add visual indication that we're processing (will only show briefly before redirect)
             const infoMessage = document.createElement('div');
             infoMessage.className = 'line-login-info-message';
             infoMessage.innerHTML = `
@@ -92,11 +93,6 @@
               loginForm.parentNode.insertBefore(infoMessage, loginForm);
               loginForm.style.display = 'none';
             }
-
-            // Redirect to account page with the proper URL
-            setTimeout(() => {
-              window.location.href = "https://{{ shop.domain }}/account";
-            }, 2000);
           } else {
             throw new Error('Failed to create access token');
           }
