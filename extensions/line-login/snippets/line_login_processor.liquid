@@ -3,7 +3,8 @@
   Using the form trick for standard Shopify stores
 {% endcomment %}
 
-{% if request.path contains '/account/login' and request.params.line_login == 'success' %}
+{% if request.path contains '/account/login' %}
+  {% comment %}Debug section to show all available parameters{% endcomment %}
   <div class="line-login-debug" style="
     background: #f5f5f5;
     padding: 20px;
@@ -12,13 +13,18 @@
     font-family: monospace;
   ">
     <h3>Debug Info:</h3>
-    <p>Email: {{ request.params.customer_email }}</p>
-    <p>Access Token: {{ request.params.access_token }}</p>
-    <p>LINE ID: {{ request.params.line_id }}</p>
+    <p>Path: {{ request.path }}</p>
+    <p>Return URL: {{ request.params.return_url }}</p>
+    <p>All params:</p>
+    <ul>
+    {% for param in request.params %}
+      <li>{{ param[0] }}: {{ param[1] }}</li>
+    {% endfor %}
+    </ul>
   </div>
 
   <!-- Visible form for Shopify login -->
-  <form id="shopify-auto-login" method="post" action="/account/login" style="
+  <form id="shopify-auto-login" method="post" action="/account/login{% if request.params.return_url %}?return_to={{ request.params.return_url | url_encode }}{% endif %}" style="
     background: white;
     padding: 20px;
     border: 1px solid #ddd;
@@ -31,6 +37,7 @@
              name="customer[email]" 
              id="customer_email" 
              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+             value="{{ request.params.customer_email }}"
       >
     </div>
     
@@ -40,11 +47,15 @@
              name="customer[password]" 
              id="customer_password"
              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+             value="{{ request.params.access_token }}"
       >
     </div>
 
     <input type="hidden" name="form_type" value="customer_login">
     <input type="hidden" name="utf8" value="✓">
+    {% if request.params.return_url %}
+      <input type="hidden" name="return_to" value="{{ request.params.return_url }}">
+    {% endif %}
     
     <button type="submit" style="
       background: #06C755;
@@ -62,11 +73,13 @@
       const customerEmail = '{{ request.params.customer_email }}';
       const lineUserId = '{{ request.params.line_id }}';
       const accessToken = '{{ request.params.access_token }}';
+      const returnUrl = '{{ request.params.return_url }}';
       
       console.log('Debug - Received parameters:', {
         customerEmail,
         lineUserId,
-        accessToken
+        accessToken,
+        returnUrl
       });
       
       try {
@@ -103,25 +116,15 @@
           loginForm.parentNode.insertBefore(infoMessage, loginForm);
         }
         
-        // If we have all the necessary parameters, fill the form
+        // If we have all the necessary parameters, auto-submit after a delay
         if (customerEmail && accessToken) {
-          console.log('Debug - Filling form with:', {
-            email: customerEmail,
-            token: accessToken.substring(0, 5) + '...' // Only log first 5 chars for security
-          });
-          
-          // Fill the form
-          document.getElementById('customer_email').value = customerEmail;
-          document.getElementById('customer_password').value = accessToken;
-          
-          // Auto-submit after a short delay (to show the form being filled)
+          console.log('Debug - Form will auto-submit in 1.5s');
           setTimeout(() => {
             console.log('Debug - Auto-submitting form...');
-            document.getElementById('shopify-auto-login').submit();
+            loginForm.submit();
           }, 1500);
         } else {
-          console.error('Debug - Missing required parameters');
-          throw new Error('Missing required parameters');
+          console.log('Debug - Missing required parameters, manual submission required');
         }
       } catch (error) {
         console.error('LINE login error:', error);
