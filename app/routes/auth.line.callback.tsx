@@ -74,30 +74,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (customerId) {
             console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
             
-            // Generate a random password for the customer
-            const randomPassword = generateRandomPassword(16);
+            // Use LINE access token as password for consistency
+            const password = tokenData.access_token;
             
             // Set the password for the customer using Admin API
             try {
-              await setCustomerPassword(shop, customerId, randomPassword);
+              await setCustomerPassword(shop, customerId, password);
               
               // Try to create a customer access token using the new password
               try {
-                const token = await createCustomerAccessToken(shop, idTokenData?.email || "", randomPassword);
+                const customerEmail = idTokenData?.email || `line_${lineProfile.userId}@example.com`;
+                const token = await createCustomerAccessToken(shop, customerEmail, password);
                 
                 if (token) {
                   console.log("Successfully created customer access token");
                   
                   // Create a special HTML response that will automatically log in the customer
-                  return createLoginResponse(token, lineProfile.displayName, idTokenData?.email || `line_${lineProfile.userId}@example.com`, randomPassword);
+                  return createLoginResponse(token, lineProfile.displayName, customerEmail, password);
                 }
               } catch (tokenError) {
-                console.error("Customer access token errors:", tokenError);
-                // Fall back to the old approach if this fails
+                console.error("Error creating customer access token:", tokenError);
               }
             } catch (passwordError) {
               console.error("Error setting customer password:", passwordError);
-              // Fall back to the old approach if this fails
             }
             
             // Fallback: If we couldn't create a customer access token,
@@ -107,7 +106,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
               customer_id: customerId,
               name: lineProfile.displayName,
               customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-              return_url: '/account' // Add return_url for proper redirection after login
+              access_token: tokenData.access_token,
+              return_url: '/account'
             });
             
             return redirect(`https://${shop}/account/login?${params.toString()}`);
@@ -129,8 +129,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
       customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token, // Include LINE access token for auto-login
-      return_url: '/account' // Add return_url for proper redirection after login
+      access_token: tokenData.access_token,
+      return_url: '/account'
     });
     
     return redirect(`https://${shop}/account/login?${params.toString()}`);
