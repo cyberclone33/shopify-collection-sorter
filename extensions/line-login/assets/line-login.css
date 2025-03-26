@@ -1,0 +1,29 @@
+.line-login-embed {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.line-login-form-container {
+  padding: 20px;
+  border: 1px solid #e8e8e8;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+.line-login-status .success {
+  color: #2c8a43;
+  font-weight: bold;
+}
+
+.line-login-status .error {
+  color: #d82c0d;
+  font-weight: bold;
+}
+
+.line-login-info {
+  margin-top: 15px;
+}
+
+#line-manual-login .button {
+  margin-top: 10px;
+}

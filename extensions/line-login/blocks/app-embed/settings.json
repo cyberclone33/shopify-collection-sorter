@@ -1,11 +1,22 @@
 {
   "name": "LINE Login Settings",
+  "templates": ["customers/login", "customers/account"],
+  "target": "section",
+  "stylesheet": "line-login.css",
+  "javascript": "line-login.js",
   "settings": [
     {
       "type": "text",
       "id": "storefront_api_token",
       "label": "Storefront API Token",
       "info": "Your Shopify Storefront API access token"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_debug_info",
+      "label": "Show Debug Info",
+      "default": true,
+      "info": "Show debug information for LINE login"
     }
   ]
 }

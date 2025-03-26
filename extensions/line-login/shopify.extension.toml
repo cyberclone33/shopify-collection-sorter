@@ -1,3 +1,7 @@
 name = "line-login"
 type = "theme"
+extension_points = ["app_embed"]
 
+[[metafields]]
+namespace = "line-login"
+key = "settings"

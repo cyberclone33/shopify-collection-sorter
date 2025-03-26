@@ -23,5 +23,22 @@
       "complete_login": "完成登入",
       "logging_in": "登入中..."
     }
+  },
+  "customer": {
+    "login": {
+      "line_login_title": "LINE 登入",
+      "line_authenticating": "正在透過 LINE 驗證...",
+      "line_success": "已成功透過 LINE 驗證！",
+      "line_error": "使用 LINE 登入時出現問題。請重試。",
+      "line_manual_login": "點擊下方按鈕完成登入：",
+      "missing_token": "缺少 Storefront API 令牌。請聯繫商店管理員。",
+      "missing_info": "缺少 LINE 所需的登入資訊。",
+      "welcome": "歡迎，",
+      "redirecting": "正在重新導向到您的帳戶...",
+      "sign_in": "登入",
+      "auto_filling": "自動填寫登入表單...",
+      "submitting": "提交登入表單...",
+      "form_not_found": "找不到登入表單。請使用下方的手動登入按鈕。"
+    }
   }
 }

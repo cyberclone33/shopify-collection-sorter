@@ -23,5 +23,22 @@
       "complete_login": "Complete Login",
       "logging_in": "Logging in..."
     }
+  },
+  "customer": {
+    "login": {
+      "line_login_title": "LINE Login",
+      "line_authenticating": "Authenticating with LINE...",
+      "line_success": "Successfully authenticated with LINE!",
+      "line_error": "There was a problem logging in with LINE. Please try again.",
+      "line_manual_login": "Click the button below to complete your login:",
+      "missing_token": "Storefront API token is missing. Please contact the store administrator.",
+      "missing_info": "Missing required login information from LINE.",
+      "welcome": "Welcome,",
+      "redirecting": "Redirecting to your account...",
+      "sign_in": "Sign In",
+      "auto_filling": "Auto-filling login form...",
+      "submitting": "Submitting login form...",
+      "form_not_found": "Login form not found. Please use the manual login button below."
+    }
   }
 }

@@ -1,14 +1,23 @@
 {% comment %}
-  This snippet provides configuration for LINE login functionality
+  LINE Login Configuration
+  This snippet loads the Storefront API token from theme settings and makes it available to JavaScript
 {% endcomment %}
 
-{% assign storefront_api_token = block.settings.storefront_api_token %}
-{% if storefront_api_token == blank %}
-  {% assign storefront_api_token = shop.storefront_access_token %}
-{% endif %}
-
 <script>
-  window.lineLoginConfig = {
-    storefrontApiToken: {{ storefront_api_token | json }}
-  };
+  // Create global config object for LINE Login
+  window.lineLoginConfig = window.lineLoginConfig || {};
+  
+  // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
+  window.lineLoginConfig.storefrontApiToken = {{ settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
+  
+  // Debug mode
+  window.lineLoginConfig.debug = {{ settings.show_debug_info | default: false | json }};
+  
+  // Log configuration if debug mode is enabled
+  if (window.lineLoginConfig.debug) {
+    console.log('LINE Login Config:', {
+      storefrontApiToken: window.lineLoginConfig.storefrontApiToken ? '********' : 'Not configured',
+      debug: window.lineLoginConfig.debug
+    });
+  }
 </script>

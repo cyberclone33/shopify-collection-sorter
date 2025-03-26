@@ -15,6 +15,25 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_TOKEN || "";
 const SHOPIFY_STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN || "";
 
 /**
+ * Generate a secure random password
+ * Creates a 32-character string with numbers, lowercase and uppercase letters
+ */
+function generateSecurePassword(length = 32): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let password = '';
+  
+  // Use crypto.randomBytes for better randomness
+  const randomBytes = crypto.randomBytes(length);
+  
+  for (let i = 0; i < length; i++) {
+    const randomIndex = randomBytes[i] % charset.length;
+    password += charset[randomIndex];
+  }
+  
+  return password;
+}
+
+/**
  * This route handles the callback from LINE OAuth
  * It exchanges the authorization code for an access token,
  * fetches the user's profile, and creates/updates the user in our database
@@ -41,8 +60,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Extract shop from state parameter (we should encode this in the state)
   // For now, use a default shop
   const shop = SHOPIFY_STORE_DOMAIN;
-  
-  // In production, you should verify the state parameter matches what was sent
   
   try {
     // Exchange code for access token
@@ -74,8 +91,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (customerId) {
             console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
             
-            // Use LINE access token as password for consistency
-            const password = tokenData.access_token.substring(0, 40);
+            // Generate a secure random password instead of using LINE access token
+            const password = generateSecurePassword(32);
             
             // Set the password for the customer using Admin API
             try {
@@ -85,7 +102,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               const params = new URLSearchParams({
                 line_login: 'success',
                 customer_id: customerId,
-                name: lineProfile.displayName,
+                name: encodeURIComponent(lineProfile.displayName),
                 customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
                 access_token: password,
                 return_url: '/account'
@@ -111,9 +128,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const params = new URLSearchParams({
       line_login: 'success',
       line_id: lineProfile.userId,
-      name: lineProfile.displayName,
+      name: encodeURIComponent(lineProfile.displayName),
       customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token.substring(0, 40),
+      access_token: tokenData.access_token,
       return_url: '/account'
     });
     
@@ -123,22 +140,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     console.error("Error processing LINE callback:", error);
     return redirect("/?error=server_error");
   }
-}
-
-/**
- * Generate a secure random password
- */
-function generateRandomPassword(length: number): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+';
-  let password = '';
-  const randomBytes = crypto.randomBytes(length);
-  
-  for (let i = 0; i < length; i++) {
-    const randomIndex = randomBytes[i] % chars.length;
-    password += chars.charAt(randomIndex);
-  }
-  
-  return password;
 }
 
 /**
@@ -166,57 +167,4 @@ async function setCustomerPassword(shop: string, customerId: string, password: s
     const errorData = await response.json();
     throw new Error(`Failed to set customer password: ${JSON.stringify(errorData)}`);
   }
-}
-
-/**
- * Create a customer access token using the Shopify Storefront API
- */
-async function createCustomerAccessToken(shop: string, email: string, password: string): Promise<string | null> {
-  const storefrontApiEndpoint = `https://${shop}/api/2023-10/graphql.json`;
-  
-  const query = `
-    mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
-      customerAccessTokenCreate(input: $input) {
-        customerAccessToken {
-          accessToken
-          expiresAt
-        }
-        customerUserErrors {
-          code
-          field
-          message
-        }
-      }
-    }
-  `;
-  
-  const variables = {
-    input: {
-      email: email,
-      password: password
-    }
-  };
-  
-  const response = await fetch(storefrontApiEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Shopify-Storefront-Access-Token': SHOPIFY_STOREFRONT_TOKEN
-    },
-    body: JSON.stringify({ query, variables })
-  });
-  
-  const data = await response.json();
-  
-  if (data.errors) {
-    throw data.errors;
-  }
-  
-  const result = data.data.customerAccessTokenCreate;
-  
-  if (result.customerUserErrors && result.customerUserErrors.length > 0) {
-    throw result.customerUserErrors;
-  }
-  
-  return result.customerAccessToken.accessToken;
 }

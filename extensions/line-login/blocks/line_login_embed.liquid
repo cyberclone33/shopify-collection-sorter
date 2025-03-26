@@ -1,0 +1,230 @@
+{% comment %}
+  LINE Login App Embed Block - Processes LINE login redirects and handles authentication
+{% endcomment %}
+
+<div id="line-login-embed" class="line-login-embed">
+  <!-- Hidden container - no visible UI -->
+  
+  {% if request.path contains '/account/login' %}
+  <!-- Hidden form for Shopify login (moved from line_login_processor.liquid) -->
+  <form id="shopify-auto-login" method="post" action="/account/login" style="display: none;">
+    <input type="email" name="customer[email]" id="customer-email">
+    <input type="password" name="customer[password]" id="customer-password">
+    <input type="hidden" name="form_type" value="customer_login">
+    <input type="hidden" name="utf8" value="✓">
+    <input type="hidden" name="return_to" id="return-to" value="/account">
+    <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response" value="">
+  </form>
+  
+  <!-- Loading overlay for LINE login -->
+  <div id="line-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+    <div id="line-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
+      <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(6, 199, 85, 0.2); border-top-color: #06C755; border-radius: 50%; animation: line-login-spin 1s linear infinite;"></div>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 🐾</p>
+      <p style="font-size: 14px; color: #666; margin: 0;">Logging in with LINE...</p>
+    </div>
+  </div>
+  
+  <style>
+    @keyframes line-login-spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    #line-login-overlay.show {
+      display: flex !important;
+    }
+    
+    .line-login-message {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #06C755;
+      border-radius: 5px;
+      background-color: #f0fff5;
+      text-align: center;
+    }
+  </style>
+  {% endif %}
+</div>
+
+<script>
+  // Create global config object for LINE Login
+  window.lineLoginConfig = window.lineLoginConfig || {};
+  
+  // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
+  window.lineLoginConfig.storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
+  
+  // Debug mode
+  window.lineLoginConfig.debug = false;
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    // Function to get URL parameters (consolidated from both files)
+    function getUrlParams() {
+      const params = {};
+      const searchParams = new URLSearchParams(window.location.search);
+      for (const [key, value] of searchParams.entries()) {
+        params[key] = value;
+      }
+      
+      // Also check hash fragment (from processor file)
+      if (window.location.hash && window.location.hash.length > 1) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        for (const [key, value] of hashParams.entries()) {
+          params[key] = value;
+        }
+      }
+      
+      return params;
+    }
+
+    // Function to check if CAPTCHA is required on the page
+    function isCaptchaRequired() {
+      return document.querySelector('.g-recaptcha') !== null || 
+             document.querySelector('[data-sitekey]') !== null ||
+             document.querySelector('[data-recaptcha-sitekey]') !== null;
+    }
+    
+    // Function to show loading overlay
+    function showLoadingOverlay() {
+      const overlay = document.getElementById('line-login-overlay');
+      if (overlay) {
+        overlay.classList.add('show');
+      }
+    }
+    
+    // Function to hide loading overlay
+    function hideLoadingOverlay() {
+      const overlay = document.getElementById('line-login-overlay');
+      if (overlay) {
+        overlay.classList.remove('show');
+        // Add a slight delay before removing from DOM to allow for transition
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 300);
+      }
+    }
+
+    // Process LINE login if parameters are present (consolidated function)
+    function processLineLogin() {
+      const params = getUrlParams();
+      
+      // Check if this is a LINE login redirect
+      if (params.line_login === 'success') {
+        // Show loading overlay
+        showLoadingOverlay();
+        
+        // Extract customer information
+        const customerId = params.customer_id || params.line_id || '';
+        const customerName = params.name ? decodeURIComponent(params.name) : '';
+        const customerEmail = params.customer_email ? decodeURIComponent(params.customer_email) : '';
+        const accessToken = params.access_token || '';
+        const returnUrl = params.return_url || '/account';
+        
+        // If we have email and access token, proceed with login
+        if (customerEmail && accessToken) {
+          // Find all possible email and password fields on the page
+          const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+          const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+          
+          // Fill all email and password fields found
+          emailInputs.forEach(input => {
+            input.value = customerEmail;
+            // Trigger input events to ensure any validation or listeners are triggered
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          
+          passwordInputs.forEach(input => {
+            input.value = accessToken;
+            // Trigger input events to ensure any validation or listeners are triggered
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          
+          // Check if CAPTCHA is present
+          if (isCaptchaRequired()) {
+            // Hide loading overlay since user interaction is needed
+            hideLoadingOverlay();
+            
+            // Add a helper message for the user
+            const loginForm = document.querySelector('form.customer_login') || 
+                             document.querySelector('form#customer_login') || 
+                             document.querySelector('form[action*="/account/login"]');
+            
+            if (loginForm) {
+              // Create a message to guide the user
+              const messageDiv = document.createElement('div');
+              messageDiv.className = 'line-login-message';
+              messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
+                                    '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
+              messageDiv.style.color = '#06C755'; // LINE green color
+              
+              // Insert at the top of the form
+              loginForm.insertBefore(messageDiv, loginForm.firstChild);
+              
+              // Scroll to and highlight the CAPTCHA
+              const captchaElement = document.querySelector('.g-recaptcha') || 
+                                    document.querySelector('[data-sitekey]') || 
+                                    document.querySelector('[data-recaptcha-sitekey]');
+              
+              if (captchaElement) {
+                captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
+                captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+              }
+            }
+          } else {
+            // If no CAPTCHA, try to auto-submit the form
+            const loginForm = document.querySelector('form.customer_login') || 
+                             document.querySelector('form#customer_login') || 
+                             document.querySelector('form[action*="/account/login"]');
+            
+            if (loginForm) {
+              const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+              
+              // Add a slight delay before submitting to allow the form to update
+              setTimeout(() => {
+                if (submitButton) {
+                  submitButton.click();
+                } else {
+                  loginForm.submit();
+                }
+                // Keep overlay visible during submission
+              }, 500);
+            } else {
+              // If no form found, hide the overlay
+              hideLoadingOverlay();
+            }
+          }
+        } else {
+          // If missing email or token, hide the overlay
+          hideLoadingOverlay();
+        }
+      }
+    }
+    
+    // Run when page loads
+    processLineLogin();
+  });
+</script>
+
+{% schema %}
+{
+  "name": "LINE Login",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "storefront_api_token",
+      "label": "Storefront API Token",
+      "info": "Your Shopify Storefront API access token"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_debug_info",
+      "label": "Show Debug Info",
+      "default": false,
+      "info": "Show debug information for LINE login"
+    }
+  ]
+}
+{% endschema %}
