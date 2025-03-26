@@ -15,6 +15,7 @@
     <h3>Debug Info:</h3>
     <p>Path: {{ request.path }}</p>
     <p>Return URL: {{ request.params.return_url }}</p>
+    <p>Line Login: {{ request.params.line_login }}</p>
     <p>All params:</p>
     <ul>
     {% for param in request.params %}
@@ -74,57 +75,62 @@
       const lineUserId = '{{ request.params.line_id }}';
       const accessToken = '{{ request.params.access_token }}';
       const returnUrl = '{{ request.params.return_url }}';
+      const lineLogin = '{{ request.params.line_login }}';
       
       console.log('Debug - Received parameters:', {
         customerEmail,
         lineUserId,
         accessToken,
-        returnUrl
+        returnUrl,
+        lineLogin
       });
       
       try {
-        // First show a loading message to indicate we're processing
-        const infoMessage = document.createElement('div');
-        infoMessage.className = 'line-login-info-message';
-        infoMessage.innerHTML = `
-          <style>
-            .line-login-info-message {
-              background-color: #f0f8f0;
-              border: 1px solid #06C755;
-              border-radius: 4px;
-              padding: 15px;
-              margin-bottom: 20px;
-              text-align: center;
-              color: #222;
-            }
-            .line-login-info-message h3 {
-              color: #06C755;
-              margin-top: 0;
-            }
-            .line-brand {
-              color: #06C755;
-              font-weight: bold;
-            }
-          </style>
-          <h3>{{ 'line_login.handler.login_success' | t }}</h3>
-          <p>{{ 'line_login.handler.logging_in' | t }}</p>
-        `;
+        // Only proceed with auto-login if this is a LINE login
+        if (lineLogin === 'success' && customerEmail && accessToken) {
+          // First show a loading message to indicate we're processing
+          const infoMessage = document.createElement('div');
+          infoMessage.className = 'line-login-info-message';
+          infoMessage.innerHTML = `
+            <style>
+              .line-login-info-message {
+                background-color: #f0f8f0;
+                border: 1px solid #06C755;
+                border-radius: 4px;
+                padding: 15px;
+                margin-bottom: 20px;
+                text-align: center;
+                color: #222;
+              }
+              .line-login-info-message h3 {
+                color: #06C755;
+                margin-top: 0;
+              }
+              .line-brand {
+                color: #06C755;
+                font-weight: bold;
+              }
+            </style>
+            <h3>{{ 'line_login.handler.login_success' | t }}</h3>
+            <p>{{ 'line_login.handler.logging_in' | t }}</p>
+          `;
 
-        // Insert message before the login form
-        const loginForm = document.querySelector('#shopify-auto-login');
-        if (loginForm) {
-          loginForm.parentNode.insertBefore(infoMessage, loginForm);
-        }
-        
-        // If we have all the necessary parameters, auto-submit after a delay
-        if (customerEmail && accessToken) {
-          console.log('Debug - Form will auto-submit in 1.5s');
+          // Insert message before the login form
+          const loginForm = document.querySelector('#shopify-auto-login');
+          if (loginForm) {
+            loginForm.parentNode.insertBefore(infoMessage, loginForm);
+          }
+          
+          console.log('Debug - Auto-submitting form in 1.5s');
           setTimeout(() => {
-            console.log('Debug - Auto-submitting form...');
+            console.log('Debug - Submitting form now');
             loginForm.submit();
           }, 1500);
         } else {
-          console.log('Debug - Missing required parameters, manual submission required');
+          console.log('Debug - Not a LINE login or missing parameters');
+          if (!lineLogin) console.log('Debug - Not a LINE login');
+          if (!customerEmail) console.log('Debug - Missing email');
+          if (!accessToken) console.log('Debug - Missing access token');
         }
       } catch (error) {
         console.error('LINE login error:', error);

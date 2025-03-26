@@ -106,7 +106,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
               line_login: 'success',
               customer_id: customerId,
               name: lineProfile.displayName,
-              customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`
+              customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
+              return_url: '/account' // Add return_url for proper redirection after login
             });
             
             return redirect(`https://${shop}/account/login?${params.toString()}`);
@@ -128,7 +129,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
       customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token // Include LINE access token for auto-login
+      access_token: tokenData.access_token, // Include LINE access token for auto-login
+      return_url: '/account' // Add return_url for proper redirection after login
     });
     
     return redirect(`https://${shop}/account/login?${params.toString()}`);
