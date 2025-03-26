@@ -102,45 +102,57 @@ async function main() {
       }
     }
     
-    // Ensure the prisma directory exists
-    const prismaDir = path.join(__dirname, '..', 'prisma');
-    if (!fs.existsSync(prismaDir)) {
-      console.log('❌ Prisma directory not found.');
-      process.exit(1);
-    }
-
-    // Run prisma generate to create Prisma client
-    console.log('📦 Generating Prisma client...');
-    execSync('npx prisma generate', { stdio: 'inherit' });
-    
-    // Check if database already exists and has tables
+    // Run Prisma migrations
+    console.log('DEBUG: Running Prisma migrations...');
     try {
-      console.log('🔍 Checking if Session table exists...');
-      const sessionCount = await prisma.session.count();
-      console.log(`✅ Session table exists with ${sessionCount} records.`);
-    } catch (e) {
-      console.log('⚠️ Session table not found, running migrations...');
-      console.error('DEBUG: Error details:', e);
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+      console.log('DEBUG: Prisma migrations completed successfully');
+    } catch (migrationErr) {
+      console.error('DEBUG: Error running Prisma migrations:', migrationErr);
       
-      // Run migrations to create tables
+      // Try direct database push as a fallback
+      console.log('DEBUG: Attempting direct database push as fallback...');
       try {
-        execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-        console.log('✅ Migration successful.');
-      } catch (migrateError) {
-        console.log('⚠️ Migration deploy failed, trying reset...');
-        console.error('DEBUG: Migration error details:', migrateError);
-        try {
-          // If regular migration fails, try reset with force
-          execSync('npx prisma migrate reset --force', { stdio: 'inherit' });
-          console.log('✅ Migration reset successful.');
-        } catch (resetError) {
-          console.error('❌ Migration reset failed:', resetError);
-          process.exit(1);
-        }
+        execSync('npx prisma db push', { stdio: 'inherit' });
+        console.log('DEBUG: Prisma db push completed successfully');
+      } catch (dbPushErr) {
+        console.error('DEBUG: Error running Prisma db push:', dbPushErr);
       }
     }
-
-    console.log('✅ Database initialization completed successfully.');
+    
+    // Connect to the database
+    console.log('DEBUG: Connecting to the database...');
+    await prisma.$connect();
+    console.log('DEBUG: Connected to the database');
+    
+    // Check if the Session table exists
+    console.log('DEBUG: Checking if Session table exists...');
+    let sessionTableExists = false;
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM Session LIMIT 1`;
+      sessionTableExists = true;
+      console.log('DEBUG: Session table exists');
+    } catch (err) {
+      console.error('DEBUG: Error checking Session table:', err.message);
+      console.log('DEBUG: Session table does not exist or cannot be accessed');
+    }
+    
+    // Check if the LineUser table exists
+    console.log('DEBUG: Checking if LineUser table exists...');
+    let lineUserTableExists = false;
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM LineUser LIMIT 1`;
+      lineUserTableExists = true;
+      console.log('DEBUG: LineUser table exists');
+    } catch (err) {
+      console.error('DEBUG: Error checking LineUser table:', err.message);
+      console.log('DEBUG: LineUser table does not exist or cannot be accessed');
+    }
+    
+    console.log('✅ Database initialization completed');
+    console.log(`DEBUG: Session table exists: ${sessionTableExists}`);
+    console.log(`DEBUG: LineUser table exists: ${lineUserTableExists}`);
+    
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
     process.exit(1);
