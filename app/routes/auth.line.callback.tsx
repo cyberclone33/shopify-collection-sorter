@@ -127,7 +127,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       line_login: 'success',
       line_id: lineProfile.userId,
       name: lineProfile.displayName,
-      email: idTokenData?.email || '',
+      customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
       access_token: tokenData.access_token // Include LINE access token for auto-login
     });
     

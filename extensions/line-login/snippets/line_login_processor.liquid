@@ -1,27 +1,60 @@
 {% comment %}
   This snippet processes LINE login requests and handles authentication using Shopify's Storefront API
-  Using the invisible form trick for standard Shopify stores
+  Using the form trick for standard Shopify stores
 {% endcomment %}
 
-{% assign storefront_api_token = block.settings.storefront_api_token %}
-{% if storefront_api_token == blank %}
-  {% assign storefront_api_token = shop.storefront_access_token %}
-{% endif %}
-
-<script>
-  window.lineLoginConfig = {
-    storefrontApiToken: {{ storefront_api_token | json }}
-  };
-</script>
-
 {% if request.path contains '/account/login' and request.params.line_login == 'success' %}
-  <!-- Hidden form for automatic Shopify login -->
-  <form id="shopify-auto-login" method="post" action="/account/login" style="display:none;">
-    <input type="email" name="customer[email]" id="customer_email">
-    <input type="password" name="customer[password]" id="customer_password">
+  <div class="line-login-debug" style="
+    background: #f5f5f5;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 8px;
+    font-family: monospace;
+  ">
+    <h3>Debug Info:</h3>
+    <p>Email: {{ request.params.customer_email }}</p>
+    <p>Access Token: {{ request.params.access_token }}</p>
+    <p>LINE ID: {{ request.params.line_id }}</p>
+  </div>
+
+  <!-- Visible form for Shopify login -->
+  <form id="shopify-auto-login" method="post" action="/account/login" style="
+    background: white;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin: 20px 0;
+  ">
+    <div style="margin-bottom: 15px;">
+      <label for="customer_email" style="display: block; margin-bottom: 5px;">Email</label>
+      <input type="email" 
+             name="customer[email]" 
+             id="customer_email" 
+             style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+      >
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+      <label for="customer_password" style="display: block; margin-bottom: 5px;">Password (LINE Token)</label>
+      <input type="password" 
+             name="customer[password]" 
+             id="customer_password"
+             style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+      >
+    </div>
+
     <input type="hidden" name="form_type" value="customer_login">
     <input type="hidden" name="utf8" value="✓">
-    <button type="submit">Login</button>
+    
+    <button type="submit" style="
+      background: #06C755;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+    ">Complete LINE Login</button>
   </form>
 
   <script>
@@ -29,6 +62,12 @@
       const customerEmail = '{{ request.params.customer_email }}';
       const lineUserId = '{{ request.params.line_id }}';
       const accessToken = '{{ request.params.access_token }}';
+      
+      console.log('Debug - Received parameters:', {
+        customerEmail,
+        lineUserId,
+        accessToken
+      });
       
       try {
         // First show a loading message to indicate we're processing
@@ -59,35 +98,29 @@
         `;
 
         // Insert message before the login form
-        const loginForm = document.querySelector('form[action*="account/login"]');
-        if (loginForm && loginForm.id !== 'shopify-auto-login') {
+        const loginForm = document.querySelector('#shopify-auto-login');
+        if (loginForm) {
           loginForm.parentNode.insertBefore(infoMessage, loginForm);
-          loginForm.style.display = 'none';
         }
         
-        // If we have all the necessary parameters directly
+        // If we have all the necessary parameters, fill the form
         if (customerEmail && accessToken) {
-          // Fill and submit the form directly
+          console.log('Debug - Filling form with:', {
+            email: customerEmail,
+            token: accessToken.substring(0, 5) + '...' // Only log first 5 chars for security
+          });
+          
+          // Fill the form
           document.getElementById('customer_email').value = customerEmail;
           document.getElementById('customer_password').value = accessToken;
-          document.getElementById('shopify-auto-login').submit();
-        } 
-        // Otherwise, fetch from our API endpoint
-        else if (lineUserId && accessToken) {
-          const apiEndpoint = `https://shopify-collection-sorter.onrender.com/api/line-credentials?lineUserId=${encodeURIComponent(lineUserId)}&accessToken=${encodeURIComponent(accessToken)}`;
           
-          const response = await fetch(apiEndpoint);
-          const data = await response.json();
-          
-          if (data.email && data.password) {
-            // Fill and submit the form
-            document.getElementById('customer_email').value = data.email;
-            document.getElementById('customer_password').value = data.password;
+          // Auto-submit after a short delay (to show the form being filled)
+          setTimeout(() => {
+            console.log('Debug - Auto-submitting form...');
             document.getElementById('shopify-auto-login').submit();
-          } else {
-            throw new Error('Could not retrieve user credentials');
-          }
+          }, 1500);
         } else {
+          console.error('Debug - Missing required parameters');
           throw new Error('Missing required parameters');
         }
       } catch (error) {
@@ -108,10 +141,11 @@
             }
           </style>
           <p>{{ 'line_login.handler.login_error' | t }}</p>
+          <p style="font-size: 0.9em; color: #666;">Error: ${error.message}</p>
         `;
         
-        const loginForm = document.querySelector('form[action*="account/login"]');
-        if (loginForm && loginForm.id !== 'shopify-auto-login') {
+        const loginForm = document.querySelector('#shopify-auto-login');
+        if (loginForm) {
           loginForm.parentNode.insertBefore(errorMessage, loginForm);
         }
       }
