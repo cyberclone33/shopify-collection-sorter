@@ -89,7 +89,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
                 if (token) {
                   console.log("Successfully created customer access token");
                   
-                  // Create a special HTML response that will automatically log in the customer
+                  // Create an HTML response that auto-submits Shopify's native login form
                   return createLoginResponse(token, lineProfile.displayName, customerEmail, password);
                 }
               } catch (tokenError) {
@@ -238,110 +238,76 @@ async function createCustomerAccessToken(shop: string, email: string, password: 
 }
 
 /**
- * Create an HTML response that sets a customer access token cookie and redirects to the account page
+ * Create an HTML response that auto-submits Shopify's native login form
  */
-function createLoginResponse(customerAccessToken: string, displayName: string, customerEmail: string, randomPassword: string): Response {
-  // Updated to directly set the cookie and redirect to account page
-  const htmlContent = `
+function createLoginResponse(customerAccessToken: string, displayName: string, customerEmail: string, password: string): Response {
+  const html = `
     <!DOCTYPE html>
     <html>
       <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Logging in with LINE...</title>
+        <title>Logging in...</title>
         <style>
-          html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
+          body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f9f9f9;
-          }
-          
-          .container {
+            background: #f5f5f5;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100%;
+            height: 100vh;
+            margin: 0;
+          }
+          .loading-container {
             text-align: center;
-            padding: 0 20px;
-          }
-          
-          .card {
-            background-color: white;
+            padding: 2rem;
+            background: white;
             border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            padding: 30px;
-            width: 100%;
-            max-width: 400px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
           }
-          
-          h1 {
-            color: #06C755;
-            font-size: 1.5rem;
-            margin-bottom: 10px;
-          }
-          
-          p {
-            color: #666;
-            margin-bottom: 20px;
-          }
-          
-          .spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(6, 199, 85, 0.3);
-            border-radius: 50%;
-            border-top-color: #06C755;
-            animation: spin 1s ease-in-out infinite;
-            margin-bottom: 20px;
-          }
-          
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          
-          .line-logo {
-            width: 60px;
-            height: 60px;
-            margin-bottom: 20px;
-          }
-          
-          .user-name {
+          .line-brand {
             color: #06C755;
             font-weight: bold;
+          }
+          .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #06C755;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="card">
-            <svg class="line-logo" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
-              <path fill="#06C755" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
-            </svg>
-            <h1>Successfully Connected</h1>
-            <p>Welcome, <span class="user-name">${displayName}</span>!</p>
-            <div class="spinner"></div>
-            <p>Logging you in automatically...</p>
-          </div>
-        
+        <div class="loading-container">
+          <h2>Welcome back, <span class="line-brand">${displayName}</span>!</h2>
+          <p>Completing your LINE login...</p>
+          <div class="spinner"></div>
+          
+          <!-- Hidden Shopify login form -->
+          <form id="shopify-login" method="post" action="/account/login" style="display: none;">
+            <input type="email" name="customer[email]" value="${customerEmail}">
+            <input type="password" name="customer[password]" value="${password}">
+            <input type="hidden" name="form_type" value="customer_login">
+            <input type="hidden" name="utf8" value="✓">
+          </form>
+          
           <script>
-            // Directly set the customerAccessToken cookie
-            document.cookie = \`customerAccessToken=${customerAccessToken}; path=/; secure; SameSite=None\`;
-            
-            // Then redirect straight to the account page
-            setTimeout(function() {
-              window.location.href = "https://${SHOPIFY_STORE_DOMAIN}/account";
-            }, 2000);
+            // Auto-submit the form after a short delay
+            setTimeout(() => {
+              document.getElementById('shopify-login').submit();
+            }, 1500);
           </script>
         </div>
       </body>
     </html>
   `;
   
-  return new Response(htmlContent, {
+  return new Response(html, {
     status: 200,
     headers: {
       "Content-Type": "text/html",
