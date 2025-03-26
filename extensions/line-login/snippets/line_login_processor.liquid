@@ -54,8 +54,10 @@
           const data = await response.json();
           
           if (data.data?.customerAccessTokenCreate?.customerAccessToken?.accessToken) {
-            // Set the secure session cookie
-            document.cookie = '_secure_session_id=' + data.data.customerAccessTokenCreate.customerAccessToken.accessToken + '; path=/';
+            const accessToken = data.data.customerAccessTokenCreate.customerAccessToken.accessToken;
+            
+            // Set the customerAccessToken cookie properly
+            document.cookie = `customerAccessToken=${accessToken}; path=/; secure; SameSite=None`;
             
             // Create info message
             const infoMessage = document.createElement('div');
@@ -91,9 +93,9 @@
               loginForm.style.display = 'none';
             }
 
-            // Redirect to account page
+            // Redirect to account page with the proper URL
             setTimeout(() => {
-              window.location.href = '/account';
+              window.location.href = "https://{{ shop.domain }}/account";
             }, 2000);
           } else {
             throw new Error('Failed to create access token');
