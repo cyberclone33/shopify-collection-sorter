@@ -1,7 +1,0 @@
-{
-  "google_login": {
-    "button_text": "使用 Google 登入",
-    "loading_message": "正在自動登入中⋯請稍候",
-    "captcha_message": "您已從 Google 登入，請完成下方驗證碼以繼續。"
-  }
-}

@@ -1,7 +1,0 @@
-name = "google-login"
-type = "theme"
-extension_points = ["app_embed"]
-
-[[metafields]]
-namespace = "google-login"
-key = "settings"

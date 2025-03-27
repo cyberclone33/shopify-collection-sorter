@@ -1,7 +1,0 @@
-{
-  "google_login": {
-    "button_text": "Sign in with Google",
-    "loading_message": "Logging in with Google...",
-    "captcha_message": "You've logged in with Google. Please complete the CAPTCHA below to continue."
-  }
-}
