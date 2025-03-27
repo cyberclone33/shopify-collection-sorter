@@ -20,8 +20,9 @@
   <div id="line-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
     <div id="line-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
       <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(6, 199, 85, 0.2); border-top-color: #06C755; border-radius: 50%; animation: line-login-spin 1s linear infinite;"></div>
-      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 🐾</p>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
       <p style="font-size: 14px; color: #666; margin: 0;">Logging in with LINE...</p>
+      <p id="line-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold;">請不要切換分頁，否則可能需要重新驗證 / Please don't switch tabs or you may need to re-verify</p>
     </div>
   </div>
   
@@ -42,6 +43,16 @@
       background-color: #f0fff5;
       text-align: center;
     }
+    
+    .line-login-error {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #ff4b4b;
+      border-radius: 5px;
+      background-color: #fff0f0;
+      text-align: center;
+      color: #d32f2f;
+    }
   </style>
   {% endif %}
 </div>
@@ -57,6 +68,24 @@
   window.lineLoginConfig.debug = false;
   
   document.addEventListener('DOMContentLoaded', function() {
+    // Store login parameters in sessionStorage to persist across page refreshes and tab switches
+    function storeLoginParams(params) {
+      if (params && Object.keys(params).length > 0) {
+        sessionStorage.setItem('lineLoginParams', JSON.stringify(params));
+      }
+    }
+    
+    // Retrieve login parameters from sessionStorage
+    function getStoredLoginParams() {
+      const storedParams = sessionStorage.getItem('lineLoginParams');
+      return storedParams ? JSON.parse(storedParams) : null;
+    }
+    
+    // Clear stored login parameters
+    function clearStoredLoginParams() {
+      sessionStorage.removeItem('lineLoginParams');
+    }
+  
     // Function to get URL parameters (consolidated from both files)
     function getUrlParams() {
       const params = {};
@@ -102,128 +131,296 @@
         }, 300);
       }
     }
+    
+    // Function to log debug messages
+    function debugLog(...args) {
+      if (window.lineLoginConfig.debug) {
+        console.log('[LINE Login]', ...args);
+      }
+    }
+    
+    // Immediately check if we have a redirect parameter and disable autofill on forms
+    function disableAutofillOnForms() {
+      const params = getUrlParams();
+      const storedParams = getStoredLoginParams();
+      
+      // If we're being redirected from LINE login
+      if (params.line_login === 'success' || (storedParams && storedParams.line_login === 'success')) {
+        debugLog('LINE login redirect detected, disabling autofill on forms');
+        
+        // Find all login forms
+        const loginForms = document.querySelectorAll('form.customer_login, form#customer_login, form[action*="/account/login"]');
+        
+        loginForms.forEach(form => {
+          // First attempt: Add autocomplete="off" to form and all inputs
+          form.setAttribute('autocomplete', 'off');
+          form.setAttribute('data-line-login', 'true');
+          
+          // Second attempt: Replace email and password fields with new ones that have non-standard names
+          setTimeout(() => {
+            const emailInputs = form.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+            const passwordInputs = form.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+            
+            emailInputs.forEach(input => {
+              // Get current attributes
+              const newInput = document.createElement('input');
+              newInput.type = 'email';
+              
+              // Copy all attributes except name
+              Array.from(input.attributes).forEach(attr => {
+                if (attr.name !== 'name' && attr.name !== 'id' && attr.name !== 'autocomplete') {
+                  newInput.setAttribute(attr.name, attr.value);
+                }
+              });
+              
+              // Set autocomplete off and use non-standard name
+              newInput.setAttribute('autocomplete', 'new-email');
+              newInput.setAttribute('autocomplete', 'off');
+              newInput.setAttribute('name', 'customer[email]');
+              
+              // If there was an ID, keep it
+              if (input.id) {
+                newInput.id = input.id;
+              }
+              
+              // Replace old input with new one
+              input.parentNode.replaceChild(newInput, input);
+            });
+            
+            passwordInputs.forEach(input => {
+              // Get current attributes
+              const newInput = document.createElement('input');
+              newInput.type = 'password';
+              
+              // Copy all attributes except name
+              Array.from(input.attributes).forEach(attr => {
+                if (attr.name !== 'name' && attr.name !== 'id' && attr.name !== 'autocomplete') {
+                  newInput.setAttribute(attr.name, attr.value);
+                }
+              });
+              
+              // Set autocomplete off and use non-standard name
+              newInput.setAttribute('autocomplete', 'new-password');
+              newInput.setAttribute('autocomplete', 'off');
+              newInput.setAttribute('name', 'customer[password]');
+              
+              // If there was an ID, keep it
+              if (input.id) {
+                newInput.id = input.id;
+              }
+              
+              // Replace old input with new one
+              input.parentNode.replaceChild(newInput, input);
+            });
+          }, 0);
+          
+          // Add hidden honeypot fields to trick autofill
+          const honeypotField1 = document.createElement('input');
+          honeypotField1.type = 'text';
+          honeypotField1.name = 'username';
+          honeypotField1.style.display = 'none';
+          
+          const honeypotField2 = document.createElement('input');
+          honeypotField2.type = 'password';
+          honeypotField2.name = 'password';
+          honeypotField2.style.display = 'none';
+          
+          // Insert at beginning of form
+          form.insertBefore(honeypotField2, form.firstChild);
+          form.insertBefore(honeypotField1, form.firstChild);
+        });
+      }
+    }
+    
+    // Run autofill disabling immediately
+    disableAutofillOnForms();
+    
+    // Handle visibility change to warn about CAPTCHA issues when switching tabs
+    document.addEventListener('visibilitychange', function() {
+      const params = getUrlParams();
+      const storedParams = getStoredLoginParams();
+      
+      // Only show warning if we're in the middle of a LINE login process
+      if ((params.line_login === 'success' || (storedParams && storedParams.line_login === 'success')) && 
+          document.visibilityState === 'hidden') {
+        const captchaWarning = document.getElementById('line-captcha-warning');
+        if (captchaWarning) {
+          captchaWarning.style.display = 'block';
+        }
+      }
+    });
 
     // Process LINE login if parameters are present (consolidated function)
     function processLineLogin() {
       const params = getUrlParams();
+      let loginParams = params;
+      
+      // If no params in URL but we have stored params, use those (for tab switching recovery)
+      if (!params.line_login && !params.customer_email) {
+        const storedParams = getStoredLoginParams();
+        if (storedParams && storedParams.line_login === 'success') {
+          loginParams = storedParams;
+          debugLog('Using stored login parameters', loginParams);
+        }
+      } else if (params.line_login === 'success') {
+        // Store the parameters for potential tab switching recovery
+        storeLoginParams(params);
+      }
       
       // Check if this is a LINE login redirect
-      if (params.line_login === 'success') {
+      if (loginParams.line_login === 'success') {
         // Show loading overlay
         showLoadingOverlay();
         
         // Extract customer information
-        const customerId = params.customer_id || params.line_id || '';
-        const customerName = params.name ? decodeURIComponent(params.name) : '';
-        const customerEmail = params.customer_email ? decodeURIComponent(params.customer_email) : '';
-        const accessToken = params.access_token || '';
-        const returnUrl = params.return_url || '/account';
+        const customerId = loginParams.customer_id || loginParams.line_id || '';
+        const customerName = loginParams.name ? decodeURIComponent(loginParams.name) : '';
+        const customerEmail = loginParams.customer_email ? decodeURIComponent(loginParams.customer_email) : '';
+        const accessToken = loginParams.access_token || '';
+        const returnUrl = loginParams.return_url || '/account';
+        
+        debugLog('Processing LINE login', {
+          customerId,
+          customerName,
+          customerEmail,
+          accessToken: accessToken ? '**********' : 'missing',
+          returnUrl
+        });
         
         // If we have email and access token, proceed with login
         if (customerEmail && accessToken) {
-          // Find all possible email and password fields on the page
-          const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
-          const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
-          
-          // Fill all email and password fields found
-          emailInputs.forEach(input => {
-            input.value = customerEmail;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          });
-          
-          passwordInputs.forEach(input => {
-            input.value = accessToken;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          });
-          
-          // Check if CAPTCHA is present
-          if (isCaptchaRequired()) {
-            // Hide loading overlay since user interaction is needed
-            hideLoadingOverlay();
+          // Wait a bit to make sure our autofill protection has been applied
+          setTimeout(() => {
+            // Find all possible email and password fields on the page
+            const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+            const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
             
-            // Add a helper message for the user
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
+            debugLog('Found form elements', {
+              emailInputs: emailInputs.length,
+              passwordInputs: passwordInputs.length
+            });
             
-            if (loginForm) {
-              // Create a message to guide the user
-              const messageDiv = document.createElement('div');
-              messageDiv.className = 'line-login-message';
-              messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
-                                    '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
-              messageDiv.style.color = '#06C755'; // LINE green color
+            // Fill all email and password fields found
+            emailInputs.forEach(input => {
+              input.value = customerEmail;
+              // Trigger input events to ensure any validation or listeners are triggered
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
+            passwordInputs.forEach(input => {
+              input.value = accessToken;
+              // Trigger input events to ensure any validation or listeners are triggered
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
+            // Check if CAPTCHA is present
+            if (isCaptchaRequired()) {
+              debugLog('CAPTCHA detected, waiting for user interaction');
+              // Hide loading overlay since user interaction is needed
+              hideLoadingOverlay();
               
-              // Insert at the top of the form
-              loginForm.insertBefore(messageDiv, loginForm.firstChild);
+              // Add a helper message for the user
+              const loginForm = document.querySelector('form.customer_login') || 
+                               document.querySelector('form#customer_login') || 
+                               document.querySelector('form[action*="/account/login"]');
               
-              // Scroll to and highlight the CAPTCHA
-              const captchaElement = document.querySelector('.g-recaptcha') || 
-                                    document.querySelector('[data-sitekey]') || 
-                                    document.querySelector('[data-recaptcha-sitekey]');
+              if (loginForm) {
+                // Create a message to guide the user
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'line-login-message';
+                messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
+                                      '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>' +
+                                      '<p style="color: #d32f2f;">請不要切換分頁或使用密碼自動填充，否則可能需要重新驗證</p>' +
+                                      '<p style="color: #d32f2f;">Please don\'t switch tabs or use password autofill during verification</p>';
+                messageDiv.style.color = '#06C755'; // LINE green color
+                
+                // Insert at the top of the form
+                loginForm.insertBefore(messageDiv, loginForm.firstChild);
+                
+                // Scroll to and highlight the CAPTCHA
+                const captchaElement = document.querySelector('.g-recaptcha') || 
+                                      document.querySelector('[data-sitekey]') || 
+                                      document.querySelector('[data-recaptcha-sitekey]');
+                
+                if (captchaElement) {
+                  captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
+                  captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+                }
+                
+                // Add event listener for form submission to clear stored params
+                loginForm.addEventListener('submit', function() {
+                  clearStoredLoginParams();
+                });
+              }
+            } else {
+              debugLog('No CAPTCHA detected, attempting to submit form');
+              // If no CAPTCHA, try to auto-submit the form
+              const loginForm = document.querySelector('form.customer_login') || 
+                               document.querySelector('form#customer_login') || 
+                               document.querySelector('form[action*="/account/login"]');
               
-              if (captchaElement) {
-                captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
-                captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+              if (loginForm) {
+                const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                
+                // Add a slight delay before submitting to allow the form to update
+                setTimeout(() => {
+                  debugLog('Submitting form');
+                  clearStoredLoginParams(); // Clear stored params before submitting
+                  if (submitButton) {
+                    submitButton.click();
+                  } else {
+                    loginForm.submit();
+                  }
+                  // Keep overlay visible during submission
+                }, 500);
+              } else {
+                debugLog('No login form found');
+                // If no form found, hide the overlay
+                hideLoadingOverlay();
               }
             }
-          } else {
-            // If no CAPTCHA, try to auto-submit the form
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
-              
-              // Add a slight delay before submitting to allow the form to update
-              setTimeout(() => {
-                if (submitButton) {
-                  submitButton.click();
-                } else {
-                  loginForm.submit();
-                }
-                // Keep overlay visible during submission
-              }, 500);
-            } else {
-              // If no form found, hide the overlay
-              hideLoadingOverlay();
-            }
-          }
+          }, 200);
         } else {
+          debugLog('Missing email or access token', { hasEmail: !!customerEmail, hasToken: !!accessToken });
           // If missing email or token, hide the overlay
           hideLoadingOverlay();
         }
       }
     }
     
-    // Run when page loads
+    // Call the function to process LINE login
     processLineLogin();
+    
+    // Add CSS to prevent autofill styling
+    const style = document.createElement('style');
+    style.textContent = `
+      /* Change the background color of autofilled inputs */
+      input:-webkit-autofill,
+      input:-webkit-autofill:hover,
+      input:-webkit-autofill:focus,
+      input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px white inset !important;
+        -webkit-text-fill-color: inherit !important;
+        transition: background-color 5000s ease-in-out 0s;
+      }
+    `;
+    document.head.appendChild(style);
   });
 </script>
 
 {% schema %}
 {
   "name": "LINE Login",
-  "target": "section",
+  "target": "body",
   "settings": [
     {
       "type": "text",
       "id": "storefront_api_token",
       "label": "Storefront API Token",
-      "info": "Your Shopify Storefront API access token"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_debug_info",
-      "label": "Show Debug Info",
-      "default": false,
-      "info": "Show debug information for LINE login"
+      "info": "Optional: Enter your Storefront API token if needed for additional functionality"
     }
   ]
 }
