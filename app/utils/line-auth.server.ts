@@ -194,7 +194,8 @@ export async function saveLineUser(
           
           // Now try to insert/update the record using raw SQL
           const id = crypto.randomUUID();
-          const now = new Date().toISOString();
+          const now = new Date();
+          const sqliteTimestamp = Math.floor(now.getTime() / 1000); // Convert to Unix timestamp (seconds)
           
           // Check if a record already exists
           const existingRecords = await prisma.$queryRaw`
@@ -210,11 +211,11 @@ export async function saveLineUser(
               UPDATE "LineUser" SET
                 lineAccessToken = ${tokenData.access_token},
                 lineRefreshToken = ${tokenData.refresh_token},
-                tokenExpiresAt = ${expiresAt.toISOString()},
+                tokenExpiresAt = datetime(${Math.floor(expiresAt.getTime() / 1000)}, 'unixepoch'),
                 displayName = ${displayName},
                 pictureUrl = ${pictureUrl},
                 email = ${email},
-                updatedAt = ${now}
+                updatedAt = datetime(${sqliteTimestamp}, 'unixepoch')
               WHERE id = ${existingId}
             `;
             console.log(`Updated existing LINE user record with ID: ${existingId}`);
@@ -229,8 +230,8 @@ export async function saveLineUser(
               pictureUrl,
               email,
               shopifyCustomerId: null,
-              createdAt: new Date(now),
-              updatedAt: new Date(now)
+              createdAt: now,
+              updatedAt: now
             };
           } else {
             // Insert new record
@@ -241,8 +242,8 @@ export async function saveLineUser(
                 createdAt, updatedAt
               ) VALUES (
                 ${id}, ${shop}, ${lineProfile.userId}, ${tokenData.access_token}, ${tokenData.refresh_token},
-                ${expiresAt.toISOString()}, ${displayName}, ${pictureUrl}, ${email},
-                ${now}, ${now}
+                datetime(${Math.floor(expiresAt.getTime() / 1000)}, 'unixepoch'), ${displayName}, ${pictureUrl}, ${email},
+                datetime('now'), datetime(${sqliteTimestamp}, 'unixepoch')
               )
             `;
             console.log(`Inserted new LINE user record with ID: ${id}`);
@@ -257,8 +258,8 @@ export async function saveLineUser(
               pictureUrl,
               email,
               shopifyCustomerId: null,
-              createdAt: new Date(now),
-              updatedAt: new Date(now)
+              createdAt: now,
+              updatedAt: now
             };
           }
         } catch (createError) {
