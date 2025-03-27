@@ -199,7 +199,7 @@ export async function saveLineUser(
           
           // Check if a record already exists
           const existingRecords = await prisma.$queryRaw`
-            SELECT id FROM "LineUser" 
+            SELECT id, updatedAt FROM "LineUser" 
             WHERE shop = ${shop} AND lineId = ${lineProfile.userId}
             LIMIT 1
           `;
@@ -207,6 +207,7 @@ export async function saveLineUser(
           if (Array.isArray(existingRecords) && existingRecords.length > 0) {
             // Update existing record
             const existingId = existingRecords[0].id;
+            const updatedAt = new Date(existingRecords[0].updatedAt * 1000); // Convert to Date object
             await prisma.$executeRaw`
               UPDATE "LineUser" SET
                 lineAccessToken = ${tokenData.access_token},
@@ -230,8 +231,8 @@ export async function saveLineUser(
               pictureUrl,
               email,
               shopifyCustomerId: null,
-              createdAt: now,
-              updatedAt: now
+              createdAt: new Date(now),
+              updatedAt: updatedAt // Use the converted Date object
             };
           } else {
             // Insert new record
@@ -258,8 +259,8 @@ export async function saveLineUser(
               pictureUrl,
               email,
               shopifyCustomerId: null,
-              createdAt: now,
-              updatedAt: now
+              createdAt: new Date(now),
+              updatedAt: new Date(now) // Use the current time
             };
           }
         } catch (createError) {
@@ -268,28 +269,28 @@ export async function saveLineUser(
         }
       }
       throw prismaError;
+    } } catch (error) {
+      console.error("Error saving LINE user:", error);
+      
+      // For debugging purposes, log more details about the error
+      if (error instanceof Error) {
+        console.error(`Error name: ${error.name}, message: ${error.message}`);
+        console.error(`Stack trace: ${error.stack}`);
+      }
+      
+      // Return a mock object to ensure the authentication flow continues
+      return {
+        shop,
+        lineId: lineProfile.userId,
+        lineAccessToken: tokenData.access_token,
+        lineRefreshToken: tokenData.refresh_token,
+        tokenExpiresAt: expiresAt,
+        displayName,
+        pictureUrl,
+        email
+      };
     }
-  } catch (error) {
-    console.error("Error saving LINE user:", error);
-    
-    // For debugging purposes, log more details about the error
-    if (error instanceof Error) {
-      console.error(`Error name: ${error.name}, message: ${error.message}`);
-      console.error(`Stack trace: ${error.stack}`);
-    }
-    
-    // Return a mock object to ensure the authentication flow continues
-    return {
-      shop,
-      lineId: lineProfile.userId,
-      lineAccessToken: tokenData.access_token,
-      lineRefreshToken: tokenData.refresh_token,
-      tokenExpiresAt: expiresAt,
-      displayName,
-      pictureUrl,
-      email
-    };
-  }
+  
 }
 
 /**
