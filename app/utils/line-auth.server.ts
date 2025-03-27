@@ -199,7 +199,7 @@ export async function saveLineUser(
           
           // Check if a record already exists
           const existingRecords = await prisma.$queryRaw`
-            SELECT id, updatedAt FROM "LineUser" 
+            SELECT id, strftime('%s', updatedAt) as updatedAt FROM "LineUser" 
             WHERE shop = ${shop} AND lineId = ${lineProfile.userId}
             LIMIT 1
           `;
@@ -207,7 +207,7 @@ export async function saveLineUser(
           if (Array.isArray(existingRecords) && existingRecords.length > 0) {
             // Update existing record
             const existingId = existingRecords[0].id;
-            const updatedAt = new Date(existingRecords[0].updatedAt * 1000); // Convert to Date object
+            const updatedAt = new Date(parseInt(existingRecords[0].updatedAt) * 1000); // Convert to Date object
             await prisma.$executeRaw`
               UPDATE "LineUser" SET
                 lineAccessToken = ${tokenData.access_token},
@@ -216,7 +216,7 @@ export async function saveLineUser(
                 displayName = ${displayName},
                 pictureUrl = ${pictureUrl},
                 email = ${email},
-                updatedAt = datetime(${sqliteTimestamp}, 'unixepoch')
+                updatedAt = strftime('%Y-%m-%d %H:%M:%f', 'now')
               WHERE id = ${existingId}
             `;
             console.log(`Updated existing LINE user record with ID: ${existingId}`);
@@ -232,7 +232,7 @@ export async function saveLineUser(
               email,
               shopifyCustomerId: null,
               createdAt: new Date(now),
-              updatedAt: updatedAt // Use the converted Date object
+              updatedAt: now
             };
           } else {
             // Insert new record
@@ -244,7 +244,7 @@ export async function saveLineUser(
               ) VALUES (
                 ${id}, ${shop}, ${lineProfile.userId}, ${tokenData.access_token}, ${tokenData.refresh_token},
                 datetime(${Math.floor(expiresAt.getTime() / 1000)}, 'unixepoch'), ${displayName}, ${pictureUrl}, ${email},
-                datetime('now'), datetime(${sqliteTimestamp}, 'unixepoch')
+                strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
               )
             `;
             console.log(`Inserted new LINE user record with ID: ${id}`);
