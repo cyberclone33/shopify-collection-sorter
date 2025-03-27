@@ -52,6 +52,22 @@
       text-align: center;
       color: #d32f2f;
     }
+    
+    .google-login-captcha-container {
+      margin-top: 1rem;
+      padding: 15px;
+      border: 2px solid #4285F4;
+      border-radius: 8px;
+      background-color: #f8f9fa;
+      text-align: center;
+      animation: pulse-border 2s infinite;
+    }
+    
+    @keyframes pulse-border {
+      0% { border-color: #4285F4; }
+      50% { border-color: #34a853; }
+      100% { border-color: #4285F4; }
+    }
   </style>
   {% endif %}
 </div>
@@ -90,7 +106,9 @@
     function isCaptchaRequired() {
       return document.querySelector('.g-recaptcha') !== null || 
              document.querySelector('[data-sitekey]') !== null ||
-             document.querySelector('[data-recaptcha-sitekey]') !== null;
+             document.querySelector('[data-recaptcha-sitekey]') !== null ||
+             document.body.textContent.includes('CAPTCHA') ||
+             document.body.textContent.includes('captcha');
     }
     
     // Function to show loading overlay
@@ -139,6 +157,81 @@
       }
     }
     
+    // Function to handle CAPTCHA challenge
+    function handleCaptchaChallenge(email, password, returnUrl) {
+      debugLog('Handling CAPTCHA challenge');
+      hideLoadingOverlay();
+      
+      // Find the login form
+      const loginForm = document.querySelector('form.customer_login') || 
+                        document.querySelector('form#customer_login') || 
+                        document.querySelector('form[action*="/account/login"]');
+      
+      if (!loginForm) {
+        debugLog('No login form found for CAPTCHA handling');
+        return;
+      }
+      
+      // Find email and password fields and fill them
+      const emailInputs = loginForm.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+      const passwordInputs = loginForm.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+      
+      emailInputs.forEach(input => {
+        input.value = email;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      
+      passwordInputs.forEach(input => {
+        input.value = password;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      
+      // Create a message to guide the user
+      const captchaContainer = document.createElement('div');
+      captchaContainer.className = 'google-login-captcha-container';
+      captchaContainer.innerHTML = `
+        <p style="font-weight: bold; font-size: 16px; color: #4285F4;">您已從 Google 登入</p>
+        <p style="margin-bottom: 15px;">請完成下方的驗證碼以繼續登入</p>
+        <p style="font-size: 14px; color: #666;">You've logged in with Google. Please complete the CAPTCHA below to continue.</p>
+      `;
+      
+      // Insert at the top of the form
+      loginForm.insertBefore(captchaContainer, loginForm.firstChild);
+      
+      // Find and highlight the CAPTCHA element
+      const captchaElement = document.querySelector('.g-recaptcha') || 
+                            document.querySelector('[data-sitekey]') || 
+                            document.querySelector('[data-recaptcha-sitekey]');
+      
+      if (captchaElement) {
+        captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
+        captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+        captchaElement.style.padding = '10px';
+        captchaElement.style.borderRadius = '5px';
+        captchaElement.style.margin = '15px auto';
+        captchaElement.style.display = 'inline-block';
+      }
+      
+      // Add event listener to auto-submit after CAPTCHA is completed
+      if (typeof grecaptcha !== 'undefined') {
+        try {
+          grecaptcha.ready(function() {
+            grecaptcha.execute();
+          });
+          
+          window.captchaCallback = function(token) {
+            debugLog('CAPTCHA completed, submitting form');
+            loginForm.submit();
+          };
+        } catch (e) {
+          debugLog('Error with grecaptcha:', e);
+        }
+      }
+    }
+    
     // Function to process Google login
     function processGoogleLogin() {
       const params = getUrlParams();
@@ -162,6 +255,15 @@
           accessToken: accessToken ? '**********' : 'missing',
           returnUrl
         });
+        
+        // Check if we're on an error page or if CAPTCHA is required
+        if (document.body.textContent.includes('Missing CAPTCHA token') || 
+            document.body.textContent.includes('驗證碼') || 
+            isCaptchaRequired()) {
+          debugLog('CAPTCHA required detected');
+          handleCaptchaChallenge(customerEmail, accessToken, returnUrl);
+          return;
+        }
         
         // If we have email and access token, proceed with login
         if (customerEmail && accessToken) {
@@ -222,36 +324,7 @@
           // Check if CAPTCHA is present
           if (isCaptchaRequired()) {
             debugLog('CAPTCHA detected, waiting for user interaction');
-            // Hide loading overlay since user interaction is needed
-            hideLoadingOverlay();
-            
-            // Add a helper message for the user
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              // Create a message to guide the user
-              const messageDiv = document.createElement('div');
-              messageDiv.className = 'google-login-message';
-              messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 Google 登入，請完成下方驗證碼以繼續。</p>' + 
-                                    '<p>You\'ve logged in with Google. Please complete the CAPTCHA below to continue.</p>';
-              messageDiv.style.color = '#4285F4'; // Google blue color
-              
-              // Insert at the top of the form
-              loginForm.insertBefore(messageDiv, loginForm.firstChild);
-              
-              // Scroll to and highlight the CAPTCHA
-              const captchaElement = document.querySelector('.g-recaptcha') || 
-                                    document.querySelector('[data-sitekey]') || 
-                                    document.querySelector('[data-recaptcha-sitekey]');
-              
-              if (captchaElement) {
-                captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
-                captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
-              }
-            }
+            handleCaptchaChallenge(customerEmail, accessToken, returnUrl);
           } else {
             debugLog('No CAPTCHA detected, attempting to submit form');
             // If no CAPTCHA, try to auto-submit the form

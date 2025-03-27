@@ -1,5 +1,5 @@
 {
-  "name": "LINE Login Settings",
+  "name": "Social Login Settings",
   "templates": ["customers/login", "customers/account"],
   "target": "section",
   "stylesheet": "line-login.css",
@@ -16,7 +16,29 @@
       "id": "show_debug_info",
       "label": "Show Debug Info",
       "default": true,
-      "info": "Show debug information for LINE login"
+      "info": "Show debug information for social logins"
+    },
+    {
+      "type": "header",
+      "content": "LINE Login Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_line_login",
+      "label": "Enable LINE Login",
+      "default": true,
+      "info": "Enable or disable LINE login functionality"
+    },
+    {
+      "type": "header",
+      "content": "Google Login Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_google_login",
+      "label": "Enable Google Login",
+      "default": true,
+      "info": "Enable or disable Google login functionality"
     }
   ]
 }
