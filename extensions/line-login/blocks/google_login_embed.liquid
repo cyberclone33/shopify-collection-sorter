@@ -53,34 +53,6 @@
       text-align: center;
       color: #d32f2f;
     }
-    
-    .google-login-autofill-message {
-      margin-top: 1rem;
-      padding: 10px;
-      border: 1px solid #FF9800;
-      border-radius: 5px;
-      background-color: #FFF3E0;
-      text-align: center;
-      font-weight: bold;
-    }
-    
-    .captcha-container {
-      opacity: 0;
-      transition: opacity 0.5s ease-in-out;
-      margin-top: 15px;
-      padding: 10px;
-    }
-    
-    .captcha-container.show {
-      opacity: 1;
-    }
-    
-    .countdown {
-      font-size: 18px;
-      color: #4285F4;
-      font-weight: bold;
-      margin: 10px 0;
-    }
   </style>
   {% endif %}
 </div>
@@ -167,157 +139,101 @@
       }
     }
     
-    // Flags to track state
-    let autofillDetected = false;
-    let captchaInitiated = false;
-    let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    
-    // Function to detect iOS autofill
-    function detectIOSAutofill() {
-      // Monitor password fields every 100ms for changes
-      const passwordInputs = document.querySelectorAll('input[type="password"]');
-      passwordInputs.forEach(input => {
-        const initialValue = input.value;
+    // Immediately check if we have a redirect parameter and disable autofill on login forms
+    function disableAutofillOnForms() {
+      const params = getUrlParams();
+      const storedParams = getStoredLoginParams();
+      
+      // If we're being redirected from Google login
+      if (params.google_login === 'success' || (storedParams && storedParams.google_login === 'success')) {
+        debugLog('Google login redirect detected, disabling autofill on forms');
         
-        // Check if value changed without direct user interaction
-        if (initialValue === '' && input.value !== '') {
-          debugLog('iOS autofill detected on password field');
-          handleAutofill();
-        }
-      });
-    }
-    
-    // Setup iOS autofill detection interval
-    let autofillCheckInterval;
-    
-    // Function to handle autofill detection
-    function handleAutofill() {
-      if (autofillDetected) return; // Only handle once
-      
-      autofillDetected = true;
-      debugLog('Autofill detected, delaying CAPTCHA rendering');
-      
-      // Clear the interval to stop checking
-      if (autofillCheckInterval) {
-        clearInterval(autofillCheckInterval);
-      }
-      
-      // Find login form
-      const loginForm = document.querySelector('form.customer_login') || 
-                      document.querySelector('form#customer_login') || 
-                      document.querySelector('form[action*="/account/login"]');
-      
-      if (!loginForm) return;
-      
-      // Add message about autofill
-      const autofillMessage = document.createElement('div');
-      autofillMessage.className = 'google-login-autofill-message';
-      autofillMessage.innerHTML = `
-        <p>已偵測到密碼自動填入</p>
-        <p>Password autofill detected</p>
-        <div class="countdown">2</div>
-      `;
-      loginForm.insertBefore(autofillMessage, loginForm.firstChild);
-      
-      // Start countdown
-      let countdown = 2;
-      const countdownEl = autofillMessage.querySelector('.countdown');
-      
-      const countdownInterval = setInterval(() => {
-        countdown--;
-        if (countdownEl) countdownEl.textContent = countdown;
+        // Find all login forms
+        const loginForms = document.querySelectorAll('form.customer_login, form#customer_login, form[action*="/account/login"]');
         
-        if (countdown <= 0) {
-          clearInterval(countdownInterval);
+        loginForms.forEach(form => {
+          // First attempt: Add autocomplete="off" to form and all inputs
+          form.setAttribute('autocomplete', 'off');
+          form.setAttribute('data-google-login', 'true');
           
-          // Hide autofill message
-          autofillMessage.style.display = 'none';
-          
-          // Fill the login form with Google credentials
-          const params = getUrlParams();
-          const storedParams = getStoredLoginParams();
-          const loginParams = params.google_login === 'success' ? params : storedParams;
-          
-          if (loginParams && loginParams.google_login === 'success') {
-            const customerEmail = loginParams.customer_email ? decodeURIComponent(loginParams.customer_email) : '';
-            const accessToken = loginParams.access_token || '';
-            
-            // Re-fill form fields after autofill
-            const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
-            const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+          // Second attempt: Replace email and password fields with new ones that have non-standard names
+          setTimeout(() => {
+            const emailInputs = form.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+            const passwordInputs = form.querySelectorAll('input[type="password"], input[name="customer[password]"]');
             
             emailInputs.forEach(input => {
-              input.value = customerEmail;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
+              // Get current attributes
+              const newInput = document.createElement('input');
+              newInput.type = 'email';
+              
+              // Copy all attributes except name
+              Array.from(input.attributes).forEach(attr => {
+                if (attr.name !== 'name' && attr.name !== 'id' && attr.name !== 'autocomplete') {
+                  newInput.setAttribute(attr.name, attr.value);
+                }
+              });
+              
+              // Set autocomplete off and use non-standard name
+              newInput.setAttribute('autocomplete', 'new-email');
+              newInput.setAttribute('autocomplete', 'off');
+              newInput.setAttribute('name', 'customer[email]');
+              
+              // If there was an ID, keep it
+              if (input.id) {
+                newInput.id = input.id;
+              }
+              
+              // Replace old input with new one
+              input.parentNode.replaceChild(newInput, input);
             });
             
             passwordInputs.forEach(input => {
-              input.value = accessToken;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
+              // Get current attributes
+              const newInput = document.createElement('input');
+              newInput.type = 'password';
+              
+              // Copy all attributes except name
+              Array.from(input.attributes).forEach(attr => {
+                if (attr.name !== 'name' && attr.name !== 'id' && attr.name !== 'autocomplete') {
+                  newInput.setAttribute(attr.name, attr.value);
+                }
+              });
+              
+              // Set autocomplete off and use non-standard name
+              newInput.setAttribute('autocomplete', 'new-password');
+              newInput.setAttribute('autocomplete', 'off');
+              newInput.setAttribute('name', 'customer[password]');
+              
+              // If there was an ID, keep it
+              if (input.id) {
+                newInput.id = input.id;
+              }
+              
+              // Replace old input with new one
+              input.parentNode.replaceChild(newInput, input);
             });
-            
-            // Now show CAPTCHA if required
-            showCaptchaWithDelay();
-          }
-        }
-      }, 1000);
+          }, 0);
+          
+          // Add hidden honeypot fields to trick autofill
+          const honeypotField1 = document.createElement('input');
+          honeypotField1.type = 'text';
+          honeypotField1.name = 'username';
+          honeypotField1.style.display = 'none';
+          
+          const honeypotField2 = document.createElement('input');
+          honeypotField2.type = 'password';
+          honeypotField2.name = 'password';
+          honeypotField2.style.display = 'none';
+          
+          // Insert at beginning of form
+          form.insertBefore(honeypotField2, form.firstChild);
+          form.insertBefore(honeypotField1, form.firstChild);
+        });
+      }
     }
     
-    // Function to show CAPTCHA with delay
-    function showCaptchaWithDelay() {
-      if (captchaInitiated) return; // Only initialize once
-      captchaInitiated = true;
-      
-      // Check if CAPTCHA is required
-      if (!isCaptchaRequired()) {
-        debugLog('No CAPTCHA required');
-        return;
-      }
-      
-      debugLog('Showing CAPTCHA with delay');
-      
-      // Find CAPTCHA element
-      const captchaElement = document.querySelector('.g-recaptcha') || 
-                           document.querySelector('[data-sitekey]') || 
-                           document.querySelector('[data-recaptcha-sitekey]');
-      
-      if (!captchaElement) {
-        debugLog('CAPTCHA element not found');
-        return;
-      }
-      
-      // Create a container for CAPTCHA with controlled visibility
-      const captchaContainer = document.createElement('div');
-      captchaContainer.className = 'captcha-container';
-      captchaContainer.innerHTML = `
-        <p style="font-weight: bold; margin-bottom: 10px;">請完成下方驗證碼以繼續</p>
-        <p style="margin-bottom: 10px;">Please complete the CAPTCHA below to continue</p>
-      `;
-      
-      // Move CAPTCHA into our container
-      const captchaParent = captchaElement.parentNode;
-      captchaParent.insertBefore(captchaContainer, captchaElement);
-      captchaContainer.appendChild(captchaElement);
-      
-      // Force CAPTCHA to be visible and render properly
-      captchaElement.style.display = 'block';
-      captchaElement.style.visibility = 'visible';
-      captchaElement.style.opacity = '1';
-      
-      // Show captcha with delay
-      setTimeout(() => {
-        captchaContainer.classList.add('show');
-        
-        // Scroll to CAPTCHA
-        captchaContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
-        // Highlight CAPTCHA
-        captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
-        captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
-      }, 500);
-    }
+    // Run autofill disabling immediately
+    disableAutofillOnForms();
     
     // Handle visibility change to warn about CAPTCHA issues when switching tabs
     document.addEventListener('visibilitychange', function() {
@@ -373,128 +289,100 @@
         
         // If we have email and access token, proceed with login
         if (customerEmail && accessToken) {
-          // Find all possible email and password fields on the page
-          const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
-          const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
-          
-          debugLog('Found form elements', {
-            emailInputs: emailInputs.length,
-            passwordInputs: passwordInputs.length
-          });
-          
-          // Fill all email and password fields found
-          emailInputs.forEach(input => {
-            input.value = customerEmail;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+          // Wait a bit to make sure our autofill protection has been applied
+          setTimeout(() => {
+            // Find all possible email and password fields on the page
+            const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+            const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
             
-            // Disable autofill by setting autocomplete attribute
-            input.setAttribute('autocomplete', 'off');
-          });
-          
-          passwordInputs.forEach(input => {
-            input.value = accessToken;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+            debugLog('Found form elements', {
+              emailInputs: emailInputs.length,
+              passwordInputs: passwordInputs.length
+            });
             
-            // Disable autofill by setting autocomplete attribute
-            input.setAttribute('autocomplete', 'off');
-          });
-          
-          // Start autofill detection on iOS
-          if (isIOS) {
-            debugLog('iOS detected, setting up autofill detection');
-            autofillCheckInterval = setInterval(detectIOSAutofill, 100);
+            // Fill all email and password fields found
+            emailInputs.forEach(input => {
+              input.value = customerEmail;
+              // Trigger input events to ensure any validation or listeners are triggered
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
             
-            // Cleanup interval after 10 seconds to prevent performance issues
-            setTimeout(() => {
-              if (autofillCheckInterval) {
-                clearInterval(autofillCheckInterval);
-              }
-            }, 10000);
-          }
-          
-          // Check if CAPTCHA is present
-          if (isCaptchaRequired()) {
-            debugLog('CAPTCHA detected, waiting for user interaction');
-            // Hide loading overlay since user interaction is needed
-            hideLoadingOverlay();
+            passwordInputs.forEach(input => {
+              input.value = accessToken;
+              // Trigger input events to ensure any validation or listeners are triggered
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
             
-            // Add a helper message for the user
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              // Set autocomplete off on the form to prevent browser autofill
-              loginForm.setAttribute('autocomplete', 'off');
-              
-              // Create a message to guide the user
-              const messageDiv = document.createElement('div');
-              messageDiv.className = 'google-login-message';
-              messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 Google 登入，請完成下方驗證碼以繼續。</p>' + 
-                                    '<p>You\'ve logged in with Google. Please complete the CAPTCHA below to continue.</p>' +
-                                    '<p style="color: #d32f2f;">請不要切換分頁，否則可能需要重新驗證 / Please don\'t switch tabs during verification</p>';
-              messageDiv.style.color = '#4285F4'; // Google blue color
-              
-              // Insert at the top of the form
-              loginForm.insertBefore(messageDiv, loginForm.firstChild);
-              
-              // On iOS, delay showing CAPTCHA by default
-              if (isIOS) {
-                debugLog('iOS detected, handling autofill right away');
-                handleAutofill();
-              } else {
-                // Just show CAPTCHA normally on non-iOS
-                showCaptchaWithDelay();
-              }
-              
-              // Add event listener for form submission to clear stored params
-              loginForm.addEventListener('submit', function() {
-                clearStoredLoginParams();
-              });
-              
-              // Handle autofill events 
-              document.addEventListener('animationstart', function(e) {
-                // This catches Chrome/Safari/Firefox autofill which triggers a special animation
-                if (e.animationName.indexOf('autofill') !== -1 && !autofillDetected) {
-                  debugLog('Autofill animation detected');
-                  handleAutofill();
-                }
-              }, true);
-            }
-          } else {
-            debugLog('No CAPTCHA detected, attempting to submit form');
-            // If no CAPTCHA, try to auto-submit the form
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              // Set autocomplete off on the form to prevent browser autofill
-              loginForm.setAttribute('autocomplete', 'off');
-              
-              const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
-              
-              // Add a slight delay before submitting to allow the form to update
-              setTimeout(() => {
-                debugLog('Submitting form');
-                clearStoredLoginParams(); // Clear stored params before submitting
-                if (submitButton) {
-                  submitButton.click();
-                } else {
-                  loginForm.submit();
-                }
-                // Keep overlay visible during submission
-              }, 500);
-            } else {
-              debugLog('No login form found');
-              // If no form found, hide the overlay
+            // Check if CAPTCHA is present
+            if (isCaptchaRequired()) {
+              debugLog('CAPTCHA detected, waiting for user interaction');
+              // Hide loading overlay since user interaction is needed
               hideLoadingOverlay();
+              
+              // Add a helper message for the user
+              const loginForm = document.querySelector('form.customer_login') || 
+                               document.querySelector('form#customer_login') || 
+                               document.querySelector('form[action*="/account/login"]');
+              
+              if (loginForm) {
+                // Create a message to guide the user
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'google-login-message';
+                messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 Google 登入，請完成下方驗證碼以繼續。</p>' + 
+                                      '<p>You\'ve logged in with Google. Please complete the CAPTCHA below to continue.</p>' +
+                                      '<p style="color: #d32f2f;">請不要切換分頁或使用密碼自動填充，否則可能需要重新驗證</p>' +
+                                      '<p style="color: #d32f2f;">Please don\'t switch tabs or use password autofill during verification</p>';
+                messageDiv.style.color = '#4285F4'; // Google blue color
+                
+                // Insert at the top of the form
+                loginForm.insertBefore(messageDiv, loginForm.firstChild);
+                
+                // Scroll to and highlight the CAPTCHA
+                const captchaElement = document.querySelector('.g-recaptcha') || 
+                                      document.querySelector('[data-sitekey]') || 
+                                      document.querySelector('[data-recaptcha-sitekey]');
+                
+                if (captchaElement) {
+                  captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
+                  captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+                }
+                
+                // Add event listener for form submission to clear stored params
+                loginForm.addEventListener('submit', function() {
+                  clearStoredLoginParams();
+                });
+              }
+            } else {
+              debugLog('No CAPTCHA detected, attempting to submit form');
+              // If no CAPTCHA, try to auto-submit the form
+              const loginForm = document.querySelector('form.customer_login') || 
+                               document.querySelector('form#customer_login') || 
+                               document.querySelector('form[action*="/account/login"]');
+              
+              if (loginForm) {
+                const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                
+                // Add a slight delay before submitting to allow the form to update
+                setTimeout(() => {
+                  debugLog('Submitting form');
+                  clearStoredLoginParams(); // Clear stored params before submitting
+                  if (submitButton) {
+                    submitButton.click();
+                  } else {
+                    loginForm.submit();
+                  }
+                  // Keep overlay visible during submission
+                }, 500);
+              } else {
+                debugLog('No login form found');
+                // If no form found, hide the overlay
+                hideLoadingOverlay();
+              }
             }
-          }
+          }, 200);
         } else {
           debugLog('Missing email or access token', { hasEmail: !!customerEmail, hasToken: !!accessToken });
           // If missing email or token, hide the overlay
@@ -530,18 +418,6 @@
         -webkit-box-shadow: 0 0 0 30px white inset !important;
         -webkit-text-fill-color: inherit !important;
         transition: background-color 5000s ease-in-out 0s;
-      }
-      
-      /* Add animation to detect autofill */
-      @keyframes onAutoFillStart { from {} to {} }
-      @keyframes onAutoFillCancel { from {} to {} }
-      
-      input:-webkit-autofill {
-        animation-name: onAutoFillStart;
-      }
-      
-      input:not(:-webkit-autofill) {
-        animation-name: onAutoFillCancel;
       }
     `;
     document.head.appendChild(style);
