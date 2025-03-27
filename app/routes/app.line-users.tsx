@@ -64,6 +64,19 @@ export default function LineUsersPage() {
     plural: 'LINE users',
   };
 
+  // Format customer ID for display
+  const formatCustomerId = (customerId: string | null) => {
+    if (!customerId) return "Not linked";
+    
+    // If it's a gid, extract the ID number
+    if (customerId.startsWith('gid://')) {
+      const parts = customerId.split('/');
+      return parts[parts.length - 1];
+    }
+    
+    return customerId;
+  };
+
   // Determine if the user has a Shopify customer linked
   const getCustomerBadge = (shopifyCustomerId: string | null) => {
     if (shopifyCustomerId) {
@@ -94,7 +107,8 @@ export default function LineUsersPage() {
         email,
         pictureUrl,
         shopifyCustomerId,
-        createdAt
+        createdAt,
+        updatedAt
       }: SerializedLineUser,
       index: number,
     ) => (
@@ -113,7 +127,13 @@ export default function LineUsersPage() {
           {getCustomerBadge(shopifyCustomerId)}
         </IndexTable.Cell>
         <IndexTable.Cell>
+          {formatCustomerId(shopifyCustomerId)}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
           {new Date(createdAt).toLocaleDateString()}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(updatedAt).toLocaleDateString()} {new Date(updatedAt).toLocaleTimeString()}
         </IndexTable.Cell>
       </IndexTable.Row>
     ),
@@ -141,7 +161,9 @@ export default function LineUsersPage() {
                   { title: 'LINE ID' },
                   { title: 'Email' },
                   { title: 'Customer Status' },
+                  { title: 'Customer ID' },
                   { title: 'Joined' },
+                  { title: 'Last Logged In' },
                 ]}
               >
                 {rowMarkup}
