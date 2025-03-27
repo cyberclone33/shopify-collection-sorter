@@ -42,22 +42,12 @@ model SortedCollection {
   @@unique([shop, collectionId], name: "shop_collectionId")
 }
 
-model SocialLogin {
+model LineUser {
   id            String   @id @default(cuid())
   shop          String
-  provider      String   // "line" or "google"
-  
-  // LINE specific fields
-  lineId        String?   // LINE user ID
+  lineId        String   // LINE user ID
   lineAccessToken String?
   lineRefreshToken String?
-  
-  // Google specific fields
-  googleId      String?  // Google user ID
-  googleAccessToken String?
-  googleRefreshToken String?
-  
-  // Common fields
   tokenExpiresAt DateTime?
   displayName   String?
   pictureUrl    String?
@@ -66,6 +56,5 @@ model SocialLogin {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([shop, provider, lineId])
-  @@unique([shop, provider, googleId])
+  @@unique([shop, lineId])
 }

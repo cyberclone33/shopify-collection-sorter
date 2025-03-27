@@ -40,10 +40,5 @@
       "submitting": "提交登入表單...",
       "form_not_found": "找不到登入表單。請使用下方的手動登入按鈕。"
     }
-  },
-  "google_login": {
-    "button_text": "使用 Google 登入",
-    "loading_message": "正在自動登入中⋯請稍候",
-    "captcha_message": "您已從 Google 登入，請完成下方驗證碼以繼續。"
   }
 }

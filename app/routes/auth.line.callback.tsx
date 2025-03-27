@@ -85,8 +85,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             SHOPIFY_ACCESS_TOKEN,
             lineProfile.userId,
             lineProfile.displayName,
-            idTokenData?.email,
-            "line"
+            idTokenData?.email
           );
           
           if (customerId) {
