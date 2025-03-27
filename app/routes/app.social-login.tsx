@@ -10,8 +10,7 @@ import {
   Text,
   Avatar,
   Badge,
-  Tabs,
-  LegacyTabs
+  Tabs
 } from '@shopify/polaris';
 import { useState, useCallback } from "react";
 import { authenticate } from "../shopify.server";
@@ -70,10 +69,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
     
     // Fetch Google users
-    let googleUsers = [];
+    let googleUsers: any[] = [];
     try {
       // Try to fetch Google users if the table exists
-      googleUsers = await prisma.$queryRaw`SELECT * FROM GoogleUser WHERE shop = ${session.shop} ORDER BY createdAt DESC`;
+      const rawGoogleUsers = await prisma.$queryRaw`SELECT * FROM GoogleUser WHERE shop = ${session.shop} ORDER BY createdAt DESC`;
+      googleUsers = Array.isArray(rawGoogleUsers) ? rawGoogleUsers : [];
     } catch (googleError) {
       console.error("Error fetching Google users:", googleError);
       // Continue with empty Google users array
@@ -261,61 +261,60 @@ export default function SocialLoginPage() {
       <Layout>
         <Layout.Section>
           <Card>
-            <LegacyTabs tabs={tabs} selected={selected} onSelect={handleTabChange}>
-              <Card.Section>
-                {selected === 0 ? (
-                  isLoading ? (
-                    <div style={{ textAlign: 'center', padding: '40px' }}>
-                      <Spinner accessibilityLabel="Loading LINE users" size="large" />
-                    </div>
-                  ) : lineUsers?.length > 0 ? (
-                    <IndexTable
-                      resourceName={{ singular: 'LINE user', plural: 'LINE users' }}
-                      itemCount={lineUsers.length}
-                      headings={[
-                        { title: 'Avatar' },
-                        { title: 'Name' },
-                        { title: 'LINE ID' },
-                        { title: 'Email' },
-                        { title: 'Customer Status' },
-                        { title: 'Customer ID' },
-                        { title: 'Joined' },
-                        { title: 'Last Logged In' },
-                      ]}
-                    >
-                      {lineRowMarkup}
-                    </IndexTable>
-                  ) : (
-                    lineEmptyStateMarkup
-                  )
+            <Tabs tabs={tabs} selected={selected} onSelect={handleTabChange} />
+            <div>
+              {selected === 0 ? (
+                isLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <Spinner accessibilityLabel="Loading LINE users" size="large" />
+                  </div>
+                ) : lineUsers?.length > 0 ? (
+                  <IndexTable
+                    resourceName={{ singular: 'LINE user', plural: 'LINE users' }}
+                    itemCount={lineUsers.length}
+                    headings={[
+                      { title: 'Avatar' },
+                      { title: 'Name' },
+                      { title: 'LINE ID' },
+                      { title: 'Email' },
+                      { title: 'Customer Status' },
+                      { title: 'Customer ID' },
+                      { title: 'Joined' },
+                      { title: 'Last Logged In' },
+                    ]}
+                  >
+                    {lineRowMarkup}
+                  </IndexTable>
                 ) : (
-                  isLoading ? (
-                    <div style={{ textAlign: 'center', padding: '40px' }}>
-                      <Spinner accessibilityLabel="Loading Google users" size="large" />
-                    </div>
-                  ) : googleUsers?.length > 0 ? (
-                    <IndexTable
-                      resourceName={{ singular: 'Google user', plural: 'Google users' }}
-                      itemCount={googleUsers.length}
-                      headings={[
-                        { title: 'Avatar' },
-                        { title: 'Name' },
-                        { title: 'Google ID' },
-                        { title: 'Email' },
-                        { title: 'Customer Status' },
-                        { title: 'Customer ID' },
-                        { title: 'Joined' },
-                        { title: 'Last Logged In' },
-                      ]}
-                    >
-                      {googleRowMarkup}
-                    </IndexTable>
-                  ) : (
-                    googleEmptyStateMarkup
-                  )
-                )}
-              </Card.Section>
-            </LegacyTabs>
+                  lineEmptyStateMarkup
+                )
+              ) : (
+                isLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <Spinner accessibilityLabel="Loading Google users" size="large" />
+                  </div>
+                ) : googleUsers?.length > 0 ? (
+                  <IndexTable
+                    resourceName={{ singular: 'Google user', plural: 'Google users' }}
+                    itemCount={googleUsers.length}
+                    headings={[
+                      { title: 'Avatar' },
+                      { title: 'Name' },
+                      { title: 'Google ID' },
+                      { title: 'Email' },
+                      { title: 'Customer Status' },
+                      { title: 'Customer ID' },
+                      { title: 'Joined' },
+                      { title: 'Last Logged In' },
+                    ]}
+                  >
+                    {googleRowMarkup}
+                  </IndexTable>
+                ) : (
+                  googleEmptyStateMarkup
+                )
+              )}
+            </div>
           </Card>
         </Layout.Section>
       </Layout>
