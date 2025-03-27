@@ -20,6 +20,15 @@ async function main() {
   console.log(`DEBUG: Environment variables: DATABASE_URL=${process.env.DATABASE_URL || 'not set'}`);
   
   try {
+    // First, regenerate the Prisma client to ensure all models are available
+    console.log('DEBUG: Regenerating Prisma client...');
+    try {
+      execSync('npx prisma generate', { stdio: 'inherit' });
+      console.log('DEBUG: Successfully regenerated Prisma client');
+    } catch (prismaGenErr) {
+      console.error('DEBUG: Error regenerating Prisma client:', prismaGenErr);
+    }
+    
     // Check if /data directory exists and create it if it doesn't
     console.log('DEBUG: Checking if /data directory exists');
     if (!fs.existsSync('/data')) {
