@@ -58,3 +58,20 @@ model LineUser {
 
   @@unique([shop, lineId])
 }
+
+model GoogleUser {
+  id              String   @id @default(cuid())
+  shop            String
+  googleId        String   // Google user ID
+  googleAccessToken String?
+  googleRefreshToken String?
+  tokenExpiresAt  DateTime?
+  displayName     String?
+  pictureUrl      String?
+  email           String?
+  shopifyCustomerId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([shop, googleId], name: "shop_googleId")
+}

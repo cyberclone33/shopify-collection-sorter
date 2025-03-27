@@ -24,6 +24,23 @@
       "logging_in": "登入中..."
     }
   },
+  "google_login": {
+    "button": {
+      "text": "Google 登入",
+      "alt": "使用 Google 登入",
+      "login": "用Google登入",
+      "link": "連結Google帳號"
+    },
+    "handler": {
+      "welcome": "歡迎, %{name}！",
+      "login_success": "已成功使用 Google 登入",
+      "redirecting": "正在重新導向到您的帳戶...",
+      "login_error": "抱歉，登入時發生問題。請重試或聯繫客服。",
+      "message": "您已成功透過Google驗證。",
+      "complete_login": "完成登入",
+      "logging_in": "登入中..."
+    }
+  },
   "customer": {
     "login": {
       "line_login_title": "LINE 登入",

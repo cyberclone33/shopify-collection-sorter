@@ -24,6 +24,23 @@
       "logging_in": "Logging in..."
     }
   },
+  "google_login": {
+    "button": {
+      "text": "Google Login",
+      "alt": "Login with Google",
+      "login": "Login with Google",
+      "link": "Link with Google"
+    },
+    "handler": {
+      "welcome": "Welcome, %{name}!",
+      "login_success": "Successfully logged in with Google",
+      "redirecting": "Redirecting to your account...",
+      "login_error": "Sorry, there was a problem logging in. Please try again or contact support.",
+      "message": "You've successfully authenticated with Google.",
+      "complete_login": "Complete Login",
+      "logging_in": "Logging in..."
+    }
+  },
   "customer": {
     "login": {
       "line_login_title": "LINE Login",
