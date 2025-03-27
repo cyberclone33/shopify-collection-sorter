@@ -147,42 +147,7 @@ async function main() {
     } catch (err) {
       console.error('DEBUG: Error checking LineUser table:', err.message);
       console.log('DEBUG: LineUser table does not exist or cannot be accessed');
-      
-      // If LineUser table doesn't exist, create it directly
-      console.log('DEBUG: Attempting to create LineUser table directly...');
-      try {
-        const createLineUserTableSQL = `
-          CREATE TABLE IF NOT EXISTS "LineUser" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "shop" TEXT NOT NULL,
-            "lineId" TEXT NOT NULL,
-            "lineAccessToken" TEXT,
-            "lineRefreshToken" TEXT,
-            "tokenExpiresAt" DATETIME,
-            "displayName" TEXT,
-            "pictureUrl" TEXT,
-            "email" TEXT,
-            "shopifyCustomerId" TEXT,
-            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" DATETIME NOT NULL
-          );
-          CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
-        `;
-        
-        await prisma.$executeRawUnsafe(createLineUserTableSQL);
-        console.log('DEBUG: LineUser table created directly via SQL');
-        
-        // Verify the table was created
-        try {
-          await prisma.$queryRaw`SELECT 1 FROM LineUser LIMIT 1`;
-          lineUserTableExists = true;
-          console.log('DEBUG: LineUser table verified to exist after direct creation');
-        } catch (verifyErr) {
-          console.error('DEBUG: Failed to verify LineUser table after creation:', verifyErr.message);
-        }
-      } catch (createErr) {
-        console.error('DEBUG: Error creating LineUser table directly:', createErr.message);
-      }
+      console.log('DEBUG: This should be handled by Prisma migrations. Make sure to run "npx prisma migrate deploy" before starting the app.');
     }
     
     console.log('✅ Database initialization completed');

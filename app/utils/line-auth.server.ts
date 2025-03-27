@@ -122,8 +122,7 @@ export async function saveLineUser(
   tokenData: LineTokenResponse,
   idTokenData: any
 ): Promise<any> {
-  const expiresAt = new Date();
-  expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
+  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
   
   // Convert optional values to null if undefined
   const displayName = lineProfile.displayName || null;
@@ -133,7 +132,7 @@ export async function saveLineUser(
   try {
     console.log(`Attempting to save LINE user data for: ${displayName} (${lineProfile.userId})`);
     
-    // Try using Prisma's type-safe API first
+    // Use Prisma's type-safe API
     try {
       const lineUser = await prisma.LineUser.upsert({
         where: {
@@ -148,8 +147,7 @@ export async function saveLineUser(
           tokenExpiresAt: expiresAt,
           displayName,
           pictureUrl,
-          email,
-          updatedAt: new Date()
+          email
         },
         create: {
           shop,
@@ -166,131 +164,57 @@ export async function saveLineUser(
       console.log(`Successfully saved LINE user data for: ${displayName} (${lineProfile.userId})`);
       return lineUser;
     } catch (prismaError) {
-      console.error('Error using Prisma type-safe API, falling back to raw query:', prismaError);
+      console.error('Error using Prisma type-safe API:', prismaError);
       
-      // Check if the error is "no such table" and try to create it
+      // Only for deployment/initialization scenarios where migrations haven't run
       if (prismaError instanceof Error && prismaError.message.includes('no such table')) {
-        console.log('Attempting to create missing LineUser table...');
-        try {
-          // Create the LineUser table if it doesn't exist
-          await prisma.$executeRaw`
-            CREATE TABLE IF NOT EXISTS "LineUser" (
-              "id" TEXT PRIMARY KEY,
-              "shop" TEXT NOT NULL,
-              "lineId" TEXT NOT NULL,
-              "lineAccessToken" TEXT,
-              "lineRefreshToken" TEXT,
-              "tokenExpiresAt" DATETIME,
-              "displayName" TEXT,
-              "pictureUrl" TEXT,
-              "email" TEXT,
-              "shopifyCustomerId" TEXT,
-              "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              "updatedAt" DATETIME NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId");
-          `;
-          console.log('LineUser table created successfully');
-          
-          // Now try to insert/update the record using raw SQL
-          const id = crypto.randomUUID();
-          const now = new Date();
-          const sqliteTimestamp = Math.floor(now.getTime() / 1000); // Convert to Unix timestamp (seconds)
-          
-          // Check if a record already exists
-          const existingRecords = await prisma.$queryRaw`
-            SELECT id, strftime('%s', updatedAt) as updatedAt FROM "LineUser" 
-            WHERE shop = ${shop} AND lineId = ${lineProfile.userId}
-            LIMIT 1
-          `;
-          
-          if (Array.isArray(existingRecords) && existingRecords.length > 0) {
-            // Update existing record
-            const existingId = existingRecords[0].id;
-            const updatedAt = new Date(parseInt(existingRecords[0].updatedAt) * 1000); // Convert to Date object
-            await prisma.$executeRaw`
-              UPDATE "LineUser" SET
-                lineAccessToken = ${tokenData.access_token},
-                lineRefreshToken = ${tokenData.refresh_token},
-                tokenExpiresAt = datetime(${Math.floor(expiresAt.getTime() / 1000)}, 'unixepoch'),
-                displayName = ${displayName},
-                pictureUrl = ${pictureUrl},
-                email = ${email},
-                updatedAt = strftime('%Y-%m-%d %H:%M:%f', 'now')
-              WHERE id = ${existingId}
-            `;
-            console.log(`Updated existing LINE user record with ID: ${existingId}`);
-            return {
-              id: existingId,
-              shop,
-              lineId: lineProfile.userId,
-              lineAccessToken: tokenData.access_token,
-              lineRefreshToken: tokenData.refresh_token,
-              tokenExpiresAt: expiresAt,
-              displayName,
-              pictureUrl,
-              email,
-              shopifyCustomerId: null,
-              createdAt: new Date(now),
-              updatedAt: now
-            };
-          } else {
-            // Insert new record
-            await prisma.$executeRaw`
-              INSERT INTO "LineUser" (
-                id, shop, lineId, lineAccessToken, lineRefreshToken, 
-                tokenExpiresAt, displayName, pictureUrl, email, 
-                createdAt, updatedAt
-              ) VALUES (
-                ${id}, ${shop}, ${lineProfile.userId}, ${tokenData.access_token}, ${tokenData.refresh_token},
-                datetime(${Math.floor(expiresAt.getTime() / 1000)}, 'unixepoch'), ${displayName}, ${pictureUrl}, ${email},
-                strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
-              )
-            `;
-            console.log(`Inserted new LINE user record with ID: ${id}`);
-            return {
-              id,
-              shop,
-              lineId: lineProfile.userId,
-              lineAccessToken: tokenData.access_token,
-              lineRefreshToken: tokenData.refresh_token,
-              tokenExpiresAt: expiresAt,
-              displayName,
-              pictureUrl,
-              email,
-              shopifyCustomerId: null,
-              createdAt: new Date(now),
-              updatedAt: new Date(now) // Use the current time
-            };
-          }
-        } catch (createError) {
-          console.error('Failed to create or insert into LineUser table:', createError);
-          throw createError;
-        }
+        console.error('LineUser table does not exist. This should be handled by Prisma migrations.');
+        console.error('As a temporary fallback, returning a mock object to continue the authentication flow.');
+        
+        // Return a mock object to ensure the authentication flow continues
+        return {
+          id: crypto.randomUUID(),
+          shop,
+          lineId: lineProfile.userId,
+          lineAccessToken: tokenData.access_token,
+          lineRefreshToken: tokenData.refresh_token,
+          tokenExpiresAt: expiresAt,
+          displayName,
+          pictureUrl,
+          email,
+          shopifyCustomerId: null,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
       }
+      
       throw prismaError;
-    } } catch (error) {
-      console.error("Error saving LINE user:", error);
-      
-      // For debugging purposes, log more details about the error
-      if (error instanceof Error) {
-        console.error(`Error name: ${error.name}, message: ${error.message}`);
-        console.error(`Stack trace: ${error.stack}`);
-      }
-      
-      // Return a mock object to ensure the authentication flow continues
-      return {
-        shop,
-        lineId: lineProfile.userId,
-        lineAccessToken: tokenData.access_token,
-        lineRefreshToken: tokenData.refresh_token,
-        tokenExpiresAt: expiresAt,
-        displayName,
-        pictureUrl,
-        email
-      };
     }
-  
+  } catch (error) {
+    console.error("Error saving LINE user:", error);
+    
+    // For debugging purposes, log more details about the error
+    if (error instanceof Error) {
+      console.error(`Error name: ${error.name}, message: ${error.message}`);
+      console.error(`Stack trace: ${error.stack}`);
+    }
+    
+    // Return a mock object to ensure the authentication flow continues
+    return {
+      id: crypto.randomUUID(),
+      shop,
+      lineId: lineProfile.userId,
+      lineAccessToken: tokenData.access_token,
+      lineRefreshToken: tokenData.refresh_token,
+      tokenExpiresAt: expiresAt,
+      displayName,
+      pictureUrl,
+      email,
+      shopifyCustomerId: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
 }
 
 /**
