@@ -1,12 +1,10 @@
 import { LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { 
-  getLineAccessToken, 
-  getLineProfile, 
-  parseIdToken,
-  saveLineUser
-} from "../utils/line-auth.server";
+  getGoogleAccessToken, 
+  getGoogleProfile, 
+  saveGoogleUser
+} from "../utils/google-auth.server";
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
-import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 
 // Constants for Shopify store domain and API tokens
@@ -34,7 +32,7 @@ function generateSecurePassword(length = 32): string {
 }
 
 /**
- * This route handles the callback from LINE OAuth
+ * This route handles the callback from Google OAuth
  * It exchanges the authorization code for an access token,
  * fetches the user's profile, and creates/updates the user in our database
  */
@@ -45,15 +43,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const error = url.searchParams.get("error");
   const errorDescription = url.searchParams.get("error_description");
 
-  // Handle errors from LINE
+  // Handle errors from Google
   if (error) {
-    console.error(`LINE OAuth error: ${error} - ${errorDescription}`);
+    console.error(`Google OAuth error: ${error} - ${errorDescription}`);
     return redirect(`/?error=${error}`);
   }
 
   // Validate required parameters
   if (!code || !state) {
-    console.error("Missing required parameters from LINE callback");
+    console.error("Missing required parameters from Google callback");
     return redirect("/?error=invalid_request");
   }
 
@@ -63,19 +61,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   
   try {
     // Exchange code for access token
-    const tokenData = await getLineAccessToken(code);
+    const tokenData = await getGoogleAccessToken(code);
     
-    // Get user profile from LINE
-    const lineProfile = await getLineProfile(tokenData.access_token);
+    // Get user profile from Google
+    const googleProfile = await getGoogleProfile(tokenData.access_token);
     
-    // Parse ID token to get additional user info (like email)
-    const idTokenData = tokenData.id_token ? parseIdToken(tokenData.id_token) : null;
+    console.log(`Successfully authenticated Google user: ${googleProfile.name}`);
     
-    console.log(`Successfully authenticated LINE user: ${lineProfile.displayName}`);
-    
-    // Try to save LINE user data to our database
+    // Try to save Google user data to our database
     try {
-      const lineUser = await saveLineUser(shop, lineProfile, tokenData, idTokenData);
+      const googleUser = await saveGoogleUser(shop, googleProfile, tokenData);
       
       // Try to create or link Shopify customer using Admin API
       if (SHOPIFY_ACCESS_TOKEN) {
@@ -83,16 +78,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
           const customerId = await createOrLinkShopifyCustomer(
             shop,
             SHOPIFY_ACCESS_TOKEN,
-            lineProfile.userId,
-            lineProfile.displayName,
-            idTokenData?.email,
-            "line"
+            googleProfile.id,
+            googleProfile.name,
+            googleProfile.email
           );
           
           if (customerId) {
-            console.log(`Successfully linked LINE user to Shopify customer: ${customerId}`);
+            console.log(`Successfully linked Google user to Shopify customer: ${customerId}`);
             
-            // Generate a secure random password instead of using LINE access token
+            // Generate a secure random password instead of using Google access token
             const password = generateSecurePassword(32);
             
             // Set the password for the customer using Admin API
@@ -101,10 +95,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
               
               // Redirect to login page with all necessary parameters
               const params = new URLSearchParams({
-                line_login: 'success',
+                google_login: 'success',
                 customer_id: customerId,
-                name: encodeURIComponent(lineProfile.displayName),
-                customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
+                name: encodeURIComponent(googleProfile.name),
+                customer_email: googleProfile.email,
                 access_token: password,
                 return_url: '/account'
               });
@@ -125,12 +119,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     
     // Fallback: If we couldn't create/link a customer or don't have an access token,
-    // redirect to the login page with LINE user info
+    // redirect to the login page with Google user info
     const params = new URLSearchParams({
-      line_login: 'success',
-      line_id: lineProfile.userId,
-      name: encodeURIComponent(lineProfile.displayName),
-      customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
+      google_login: 'success',
+      google_id: googleProfile.id,
+      name: encodeURIComponent(googleProfile.name),
+      customer_email: googleProfile.email,
       access_token: tokenData.access_token,
       return_url: '/account'
     });
@@ -138,7 +132,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return redirect(`https://${shop}/account/login?${params.toString()}`);
     
   } catch (error) {
-    console.error("Error processing LINE callback:", error);
+    console.error("Error processing Google callback:", error);
     return redirect("/?error=server_error");
   }
 }

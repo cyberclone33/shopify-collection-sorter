@@ -87,14 +87,15 @@ export async function createShopifyCustomer(
 }
 
 /**
- * Create or find a Shopify customer and link to LINE user
+ * Create or find a Shopify customer and link to social login
  */
 export async function createOrLinkShopifyCustomer(
   shop: string,
   accessToken: string,
-  lineUserId: string,
+  socialUserId: string,
   displayName: string,
-  email?: string
+  email?: string,
+  provider: string = "line" // Default to "line" for backward compatibility
 ): Promise<string | null> {
   try {
     let customerId = null;
@@ -109,13 +110,22 @@ export async function createOrLinkShopifyCustomer(
       customerId = await createShopifyCustomer(shop, accessToken, displayName, email);
     }
     
-    // If we have a customer ID, update the LINE user record
+    // If we have a customer ID, update the social login record
     if (customerId) {
-      await prisma.$executeRaw`
-        UPDATE "LineUser"
-        SET "shopifyCustomerId" = ${customerId}
-        WHERE "shop" = ${shop} AND "lineId" = ${lineUserId}
-      `;
+      // Determine which ID field to use based on provider
+      if (provider === "google") {
+        await prisma.$executeRaw`
+          UPDATE "SocialLogin"
+          SET "shopifyCustomerId" = ${customerId}
+          WHERE "shop" = ${shop} AND "provider" = 'google' AND "googleId" = ${socialUserId}
+        `;
+      } else {
+        await prisma.$executeRaw`
+          UPDATE "SocialLogin"
+          SET "shopifyCustomerId" = ${customerId}
+          WHERE "shop" = ${shop} AND "provider" = 'line' AND "lineId" = ${socialUserId}
+        `;
+      }
     }
     
     return customerId;
