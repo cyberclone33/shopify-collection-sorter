@@ -53,6 +53,34 @@
       text-align: center;
       color: #d32f2f;
     }
+    
+    .google-login-autofill-message {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #FF9800;
+      border-radius: 5px;
+      background-color: #FFF3E0;
+      text-align: center;
+      font-weight: bold;
+    }
+    
+    .captcha-container {
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+      margin-top: 15px;
+      padding: 10px;
+    }
+    
+    .captcha-container.show {
+      opacity: 1;
+    }
+    
+    .countdown {
+      font-size: 18px;
+      color: #4285F4;
+      font-weight: bold;
+      margin: 10px 0;
+    }
   </style>
   {% endif %}
 </div>
@@ -139,6 +167,158 @@
       }
     }
     
+    // Flags to track state
+    let autofillDetected = false;
+    let captchaInitiated = false;
+    let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    
+    // Function to detect iOS autofill
+    function detectIOSAutofill() {
+      // Monitor password fields every 100ms for changes
+      const passwordInputs = document.querySelectorAll('input[type="password"]');
+      passwordInputs.forEach(input => {
+        const initialValue = input.value;
+        
+        // Check if value changed without direct user interaction
+        if (initialValue === '' && input.value !== '') {
+          debugLog('iOS autofill detected on password field');
+          handleAutofill();
+        }
+      });
+    }
+    
+    // Setup iOS autofill detection interval
+    let autofillCheckInterval;
+    
+    // Function to handle autofill detection
+    function handleAutofill() {
+      if (autofillDetected) return; // Only handle once
+      
+      autofillDetected = true;
+      debugLog('Autofill detected, delaying CAPTCHA rendering');
+      
+      // Clear the interval to stop checking
+      if (autofillCheckInterval) {
+        clearInterval(autofillCheckInterval);
+      }
+      
+      // Find login form
+      const loginForm = document.querySelector('form.customer_login') || 
+                      document.querySelector('form#customer_login') || 
+                      document.querySelector('form[action*="/account/login"]');
+      
+      if (!loginForm) return;
+      
+      // Add message about autofill
+      const autofillMessage = document.createElement('div');
+      autofillMessage.className = 'google-login-autofill-message';
+      autofillMessage.innerHTML = `
+        <p>已偵測到密碼自動填入</p>
+        <p>Password autofill detected</p>
+        <div class="countdown">2</div>
+      `;
+      loginForm.insertBefore(autofillMessage, loginForm.firstChild);
+      
+      // Start countdown
+      let countdown = 2;
+      const countdownEl = autofillMessage.querySelector('.countdown');
+      
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdownEl) countdownEl.textContent = countdown;
+        
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+          
+          // Hide autofill message
+          autofillMessage.style.display = 'none';
+          
+          // Fill the login form with Google credentials
+          const params = getUrlParams();
+          const storedParams = getStoredLoginParams();
+          const loginParams = params.google_login === 'success' ? params : storedParams;
+          
+          if (loginParams && loginParams.google_login === 'success') {
+            const customerEmail = loginParams.customer_email ? decodeURIComponent(loginParams.customer_email) : '';
+            const accessToken = loginParams.access_token || '';
+            
+            // Re-fill form fields after autofill
+            const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
+            const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+            
+            emailInputs.forEach(input => {
+              input.value = customerEmail;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
+            passwordInputs.forEach(input => {
+              input.value = accessToken;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
+            // Now show CAPTCHA if required
+            showCaptchaWithDelay();
+          }
+        }
+      }, 1000);
+    }
+    
+    // Function to show CAPTCHA with delay
+    function showCaptchaWithDelay() {
+      if (captchaInitiated) return; // Only initialize once
+      captchaInitiated = true;
+      
+      // Check if CAPTCHA is required
+      if (!isCaptchaRequired()) {
+        debugLog('No CAPTCHA required');
+        return;
+      }
+      
+      debugLog('Showing CAPTCHA with delay');
+      
+      // Find CAPTCHA element
+      const captchaElement = document.querySelector('.g-recaptcha') || 
+                           document.querySelector('[data-sitekey]') || 
+                           document.querySelector('[data-recaptcha-sitekey]');
+      
+      if (!captchaElement) {
+        debugLog('CAPTCHA element not found');
+        return;
+      }
+      
+      // Create a container for CAPTCHA with controlled visibility
+      const captchaContainer = document.createElement('div');
+      captchaContainer.className = 'captcha-container';
+      captchaContainer.innerHTML = `
+        <p style="font-weight: bold; margin-bottom: 10px;">請完成下方驗證碼以繼續</p>
+        <p style="margin-bottom: 10px;">Please complete the CAPTCHA below to continue</p>
+      `;
+      
+      // Move CAPTCHA into our container
+      const captchaParent = captchaElement.parentNode;
+      captchaParent.insertBefore(captchaContainer, captchaElement);
+      captchaContainer.appendChild(captchaElement);
+      
+      // Force CAPTCHA to be visible and render properly
+      captchaElement.style.display = 'block';
+      captchaElement.style.visibility = 'visible';
+      captchaElement.style.opacity = '1';
+      
+      // Show captcha with delay
+      setTimeout(() => {
+        captchaContainer.classList.add('show');
+        
+        // Scroll to CAPTCHA
+        captchaContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Highlight CAPTCHA
+        captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
+        captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+      }, 500);
+    }
+    
     // Handle visibility change to warn about CAPTCHA issues when switching tabs
     document.addEventListener('visibilitychange', function() {
       const params = getUrlParams();
@@ -153,9 +333,6 @@
         }
       }
     });
-    
-    // Flag to track if we've already processed autofill
-    let autofillProcessed = false;
     
     // Process Google login if parameters are present
     function processGoogleLogin() {
@@ -226,6 +403,19 @@
             input.setAttribute('autocomplete', 'off');
           });
           
+          // Start autofill detection on iOS
+          if (isIOS) {
+            debugLog('iOS detected, setting up autofill detection');
+            autofillCheckInterval = setInterval(detectIOSAutofill, 100);
+            
+            // Cleanup interval after 10 seconds to prevent performance issues
+            setTimeout(() => {
+              if (autofillCheckInterval) {
+                clearInterval(autofillCheckInterval);
+              }
+            }, 10000);
+          }
+          
           // Check if CAPTCHA is present
           if (isCaptchaRequired()) {
             debugLog('CAPTCHA detected, waiting for user interaction');
@@ -252,15 +442,13 @@
               // Insert at the top of the form
               loginForm.insertBefore(messageDiv, loginForm.firstChild);
               
-              // Scroll to and highlight the CAPTCHA
-              const captchaElement = document.querySelector('.g-recaptcha') || 
-                                    document.querySelector('[data-sitekey]') || 
-                                    document.querySelector('[data-recaptcha-sitekey]');
-              
-              if (captchaElement) {
-                captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
-                captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+              // On iOS, delay showing CAPTCHA by default
+              if (isIOS) {
+                debugLog('iOS detected, handling autofill right away');
+                handleAutofill();
+              } else {
+                // Just show CAPTCHA normally on non-iOS
+                showCaptchaWithDelay();
               }
               
               // Add event listener for form submission to clear stored params
@@ -268,28 +456,12 @@
                 clearStoredLoginParams();
               });
               
-              // Handle autofill events
+              // Handle autofill events 
               document.addEventListener('animationstart', function(e) {
                 // This catches Chrome/Safari/Firefox autofill which triggers a special animation
-                if (e.animationName.indexOf('autofill') !== -1 && !autofillProcessed) {
-                  debugLog('Autofill detected');
-                  autofillProcessed = true;
-                  
-                  // Give the browser a moment to complete the autofill
-                  setTimeout(() => {
-                    // Re-fill our values to override any autofilled values
-                    emailInputs.forEach(input => {
-                      input.value = customerEmail;
-                      input.dispatchEvent(new Event('input', { bubbles: true }));
-                      input.dispatchEvent(new Event('change', { bubbles: true }));
-                    });
-                    
-                    passwordInputs.forEach(input => {
-                      input.value = accessToken;
-                      input.dispatchEvent(new Event('input', { bubbles: true }));
-                      input.dispatchEvent(new Event('change', { bubbles: true }));
-                    });
-                  }, 100);
+                if (e.animationName.indexOf('autofill') !== -1 && !autofillDetected) {
+                  debugLog('Autofill animation detected');
+                  handleAutofill();
                 }
               }, true);
             }
