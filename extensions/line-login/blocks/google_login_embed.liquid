@@ -20,7 +20,7 @@
   <div id="google-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
     <div id="google-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
       <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(66, 133, 244, 0.2); border-top-color: #4285F4; border-radius: 50%; animation: google-login-spin 1s linear infinite;"></div>
-      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 🐾</p>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
       <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Google...</p>
       <p id="google-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold;">請不要切換分頁，否則可能需要重新驗證 / Please don't switch tabs or you may need to re-verify</p>
     </div>
@@ -154,6 +154,9 @@
       }
     });
     
+    // Flag to track if we've already processed autofill
+    let autofillProcessed = false;
+    
     // Process Google login if parameters are present
     function processGoogleLogin() {
       const params = getUrlParams();
@@ -208,6 +211,9 @@
             // Trigger input events to ensure any validation or listeners are triggered
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // Disable autofill by setting autocomplete attribute
+            input.setAttribute('autocomplete', 'off');
           });
           
           passwordInputs.forEach(input => {
@@ -215,6 +221,9 @@
             // Trigger input events to ensure any validation or listeners are triggered
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // Disable autofill by setting autocomplete attribute
+            input.setAttribute('autocomplete', 'off');
           });
           
           // Check if CAPTCHA is present
@@ -229,6 +238,9 @@
                              document.querySelector('form[action*="/account/login"]');
             
             if (loginForm) {
+              // Set autocomplete off on the form to prevent browser autofill
+              loginForm.setAttribute('autocomplete', 'off');
+              
               // Create a message to guide the user
               const messageDiv = document.createElement('div');
               messageDiv.className = 'google-login-message';
@@ -255,6 +267,31 @@
               loginForm.addEventListener('submit', function() {
                 clearStoredLoginParams();
               });
+              
+              // Handle autofill events
+              document.addEventListener('animationstart', function(e) {
+                // This catches Chrome/Safari/Firefox autofill which triggers a special animation
+                if (e.animationName.indexOf('autofill') !== -1 && !autofillProcessed) {
+                  debugLog('Autofill detected');
+                  autofillProcessed = true;
+                  
+                  // Give the browser a moment to complete the autofill
+                  setTimeout(() => {
+                    // Re-fill our values to override any autofilled values
+                    emailInputs.forEach(input => {
+                      input.value = customerEmail;
+                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                      input.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                    
+                    passwordInputs.forEach(input => {
+                      input.value = accessToken;
+                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                      input.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                  }, 100);
+                }
+              }, true);
             }
           } else {
             debugLog('No CAPTCHA detected, attempting to submit form');
@@ -264,6 +301,9 @@
                              document.querySelector('form[action*="/account/login"]');
             
             if (loginForm) {
+              // Set autocomplete off on the form to prevent browser autofill
+              loginForm.setAttribute('autocomplete', 'off');
+              
               const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
               
               // Add a slight delay before submitting to allow the form to update
@@ -306,6 +346,33 @@
         loginForm.submit();
       }
     };
+    
+    // Add CSS to prevent autofill styling
+    const style = document.createElement('style');
+    style.textContent = `
+      /* Change the background color of autofilled inputs */
+      input:-webkit-autofill,
+      input:-webkit-autofill:hover,
+      input:-webkit-autofill:focus,
+      input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px white inset !important;
+        -webkit-text-fill-color: inherit !important;
+        transition: background-color 5000s ease-in-out 0s;
+      }
+      
+      /* Add animation to detect autofill */
+      @keyframes onAutoFillStart { from {} to {} }
+      @keyframes onAutoFillCancel { from {} to {} }
+      
+      input:-webkit-autofill {
+        animation-name: onAutoFillStart;
+      }
+      
+      input:not(:-webkit-autofill) {
+        animation-name: onAutoFillCancel;
+      }
+    `;
+    document.head.appendChild(style);
   });
 </script>
 
