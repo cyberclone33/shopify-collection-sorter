@@ -22,6 +22,7 @@
       <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(66, 133, 244, 0.2); border-top-color: #4285F4; border-radius: 50%; animation: google-login-spin 1s linear infinite;"></div>
       <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 🐾</p>
       <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Google...</p>
+      <p id="google-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold;">請不要切換分頁，否則可能需要重新驗證 / Please don't switch tabs or you may need to re-verify</p>
     </div>
   </div>
   
@@ -67,6 +68,24 @@
   window.googleLoginConfig.debug = true;
   
   document.addEventListener('DOMContentLoaded', function() {
+    // Store login parameters in sessionStorage to persist across page refreshes and tab switches
+    function storeLoginParams(params) {
+      if (params && Object.keys(params).length > 0) {
+        sessionStorage.setItem('googleLoginParams', JSON.stringify(params));
+      }
+    }
+    
+    // Retrieve login parameters from sessionStorage
+    function getStoredLoginParams() {
+      const storedParams = sessionStorage.getItem('googleLoginParams');
+      return storedParams ? JSON.parse(storedParams) : null;
+    }
+    
+    // Clear stored login parameters
+    function clearStoredLoginParams() {
+      sessionStorage.removeItem('googleLoginParams');
+    }
+    
     // Function to get URL parameters
     function getUrlParams() {
       const params = {};
@@ -120,21 +139,49 @@
       }
     }
     
+    // Handle visibility change to warn about CAPTCHA issues when switching tabs
+    document.addEventListener('visibilitychange', function() {
+      const params = getUrlParams();
+      const storedParams = getStoredLoginParams();
+      
+      // Only show warning if we're in the middle of a Google login process
+      if ((params.google_login === 'success' || (storedParams && storedParams.google_login === 'success')) && 
+          document.visibilityState === 'hidden') {
+        const captchaWarning = document.getElementById('google-captcha-warning');
+        if (captchaWarning) {
+          captchaWarning.style.display = 'block';
+        }
+      }
+    });
+    
     // Process Google login if parameters are present
     function processGoogleLogin() {
       const params = getUrlParams();
+      let loginParams = params;
+      
+      // If no params in URL but we have stored params, use those (for tab switching recovery)
+      if (!params.google_login && !params.customer_email) {
+        const storedParams = getStoredLoginParams();
+        if (storedParams && storedParams.google_login === 'success') {
+          loginParams = storedParams;
+          debugLog('Using stored login parameters', loginParams);
+        }
+      } else if (params.google_login === 'success') {
+        // Store the parameters for potential tab switching recovery
+        storeLoginParams(params);
+      }
       
       // Check if this is a Google login redirect
-      if (params.google_login === 'success') {
+      if (loginParams.google_login === 'success') {
         // Show loading overlay
         showLoadingOverlay();
         
         // Extract customer information
-        const customerId = params.customer_id || params.google_id || '';
-        const customerName = params.name ? decodeURIComponent(params.name) : '';
-        const customerEmail = params.customer_email ? decodeURIComponent(params.customer_email) : '';
-        const accessToken = params.access_token || '';
-        const returnUrl = params.return_url || '/account';
+        const customerId = loginParams.customer_id || loginParams.google_id || '';
+        const customerName = loginParams.name ? decodeURIComponent(loginParams.name) : '';
+        const customerEmail = loginParams.customer_email ? decodeURIComponent(loginParams.customer_email) : '';
+        const accessToken = loginParams.access_token || '';
+        const returnUrl = loginParams.return_url || '/account';
         
         debugLog('Processing Google login', {
           customerId,
@@ -186,7 +233,8 @@
               const messageDiv = document.createElement('div');
               messageDiv.className = 'google-login-message';
               messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 Google 登入，請完成下方驗證碼以繼續。</p>' + 
-                                    '<p>You\'ve logged in with Google. Please complete the CAPTCHA below to continue.</p>';
+                                    '<p>You\'ve logged in with Google. Please complete the CAPTCHA below to continue.</p>' +
+                                    '<p style="color: #d32f2f;">請不要切換分頁，否則可能需要重新驗證 / Please don\'t switch tabs during verification</p>';
               messageDiv.style.color = '#4285F4'; // Google blue color
               
               // Insert at the top of the form
@@ -202,6 +250,11 @@
                 captchaElement.style.boxShadow = '0 0 10px 2px rgba(66, 133, 244, 0.7)';
                 captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
               }
+              
+              // Add event listener for form submission to clear stored params
+              loginForm.addEventListener('submit', function() {
+                clearStoredLoginParams();
+              });
             }
           } else {
             debugLog('No CAPTCHA detected, attempting to submit form');
@@ -216,6 +269,7 @@
               // Add a slight delay before submitting to allow the form to update
               setTimeout(() => {
                 debugLog('Submitting form');
+                clearStoredLoginParams(); // Clear stored params before submitting
                 if (submitButton) {
                   submitButton.click();
                 } else {
@@ -239,6 +293,19 @@
     
     // Call the function to process Google login
     processGoogleLogin();
+    
+    // Add event listener for CAPTCHA completion
+    window.onRecaptchaSuccess = function() {
+      debugLog('CAPTCHA completed successfully');
+      const loginForm = document.querySelector('form.customer_login') || 
+                       document.querySelector('form#customer_login') || 
+                       document.querySelector('form[action*="/account/login"]');
+      
+      if (loginForm) {
+        clearStoredLoginParams(); // Clear stored params before submitting
+        loginForm.submit();
+      }
+    };
   });
 </script>
 
