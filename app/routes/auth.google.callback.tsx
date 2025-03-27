@@ -15,9 +15,9 @@ const SHOPIFY_STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN || "";
 
 /**
  * Generate a secure random password
- * Creates a 32-character string with numbers, lowercase and uppercase letters
+ * Creates a shorter string with numbers, lowercase and uppercase letters
  */
-function generateSecurePassword(length = 32): string {
+function generateSecurePassword(length = 16): string {
   const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let password = '';
   
@@ -71,6 +71,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     
     console.log(`Successfully authenticated Google user: ${googleProfile.name}`);
     
+    // Generate a shorter, Shopify-compatible password
+    const password = generateSecurePassword(16);
+    
     // Try to save Google user data to our database
     try {
       const googleUser = await saveGoogleUser(shop, googleProfile, tokenData);
@@ -83,33 +86,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
             SHOPIFY_ACCESS_TOKEN,
             googleProfile.sub,
             googleProfile.name,
-            googleProfile.email
+            googleProfile.email,
+            password // Pass the password to be set during customer creation
           );
           
           if (customerId) {
             console.log(`Successfully linked Google user to Shopify customer: ${customerId}`);
             
-            // Generate a secure random password instead of using Google access token
-            const password = generateSecurePassword(32);
+            // Redirect to login page with all necessary parameters
+            const params = new URLSearchParams({
+              google_login: 'success',
+              customer_id: customerId,
+              name: encodeURIComponent(googleProfile.name),
+              customer_email: googleProfile.email || `google_${googleProfile.sub}@example.com`,
+              access_token: password, // Use our generated password
+              return_url: '/account'
+            });
             
-            // Set the password for the customer using Admin API
-            try {
-              await setCustomerPassword(shop, customerId, password);
-              
-              // Redirect to login page with all necessary parameters
-              const params = new URLSearchParams({
-                google_login: 'success',
-                customer_id: customerId,
-                name: encodeURIComponent(googleProfile.name),
-                customer_email: googleProfile.email || `google_${googleProfile.sub}@example.com`,
-                access_token: password,
-                return_url: '/account'
-              });
-              
-              return redirect(`https://${shop}/account/login?${params.toString()}`);
-            } catch (passwordError) {
-              console.error("Error setting customer password:", passwordError);
-            }
+            return redirect(`https://${shop}/account/login?${params.toString()}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -122,13 +116,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     
     // Fallback: If we couldn't create/link a customer or don't have an access token,
-    // redirect to the login page with Google user info
+    // redirect to the login page with Google user info and a simple password
     const params = new URLSearchParams({
       google_login: 'success',
       google_id: googleProfile.sub,
       name: encodeURIComponent(googleProfile.name),
       customer_email: googleProfile.email || `google_${googleProfile.sub}@example.com`,
-      access_token: tokenData.access_token,
+      access_token: password, // Use our generated password instead of the Google token
       return_url: '/account'
     });
     
@@ -137,32 +131,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
   } catch (error) {
     console.error("Error processing Google callback:", error);
     return redirect("/?error=server_error");
-  }
-}
-
-/**
- * Set a password for a customer using the Shopify Admin API
- */
-async function setCustomerPassword(shop: string, customerId: string, password: string): Promise<void> {
-  const adminApiEndpoint = `https://${shop}/admin/api/2023-10/customers/${customerId}.json`;
-  
-  const response = await fetch(adminApiEndpoint, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN
-    },
-    body: JSON.stringify({
-      customer: {
-        id: customerId,
-        password: password,
-        password_confirmation: password
-      }
-    })
-  });
-  
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`Failed to set customer password: ${JSON.stringify(errorData)}`);
   }
 }

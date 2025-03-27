@@ -46,16 +46,24 @@ export async function createShopifyCustomer(
   shop: string, 
   accessToken: string, 
   firstName: string, 
-  email?: string
+  email?: string,
+  password?: string
 ): Promise<string | null> {
   try {
-    const customerData = {
+    const customerData: any = {
       customer: {
         first_name: firstName,
         email: email,
         accepts_marketing: true
       }
     };
+    
+    // Add password if provided
+    if (password) {
+      customerData.customer.password = password;
+      customerData.customer.password_confirmation = password;
+      customerData.customer.send_email_welcome = false;
+    }
     
     const response = await fetch(
       `https://${shop}/admin/api/2024-01/customers.json`,
@@ -87,14 +95,54 @@ export async function createShopifyCustomer(
 }
 
 /**
- * Create or find a Shopify customer and link to LINE user
+ * Set a password for an existing customer
+ */
+export async function setCustomerPassword(
+  shop: string, 
+  accessToken: string, 
+  customerId: string, 
+  password: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `https://${shop}/admin/api/2024-01/customers/${customerId}.json`,
+      {
+        method: 'PUT',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          customer: {
+            id: customerId,
+            password: password,
+            password_confirmation: password
+          }
+        })
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Shopify API error: ${response.status}`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error setting customer password:", error);
+    return false;
+  }
+}
+
+/**
+ * Create or find a Shopify customer and link to social login user
  */
 export async function createOrLinkShopifyCustomer(
   shop: string,
   accessToken: string,
-  lineUserId: string,
+  socialUserId: string,
   displayName: string,
-  email?: string
+  email?: string,
+  password?: string
 ): Promise<string | null> {
   try {
     let customerId = null;
@@ -106,16 +154,35 @@ export async function createOrLinkShopifyCustomer(
     
     // If no customer found, create a new one
     if (!customerId) {
-      customerId = await createShopifyCustomer(shop, accessToken, displayName, email);
+      customerId = await createShopifyCustomer(shop, accessToken, displayName, email, password);
+    } else if (password) {
+      // If customer exists and password provided, update the password
+      await setCustomerPassword(shop, accessToken, customerId, password);
     }
     
-    // If we have a customer ID, update the LINE user record
+    // If we have a customer ID, update the user record
     if (customerId) {
-      await prisma.$executeRaw`
-        UPDATE "LineUser"
-        SET "shopifyCustomerId" = ${customerId}
-        WHERE "shop" = ${shop} AND "lineId" = ${lineUserId}
-      `;
+      // Try to update LINE user if this is a LINE login
+      try {
+        await prisma.$executeRaw`
+          UPDATE "LineUser"
+          SET "shopifyCustomerId" = ${customerId}
+          WHERE "shop" = ${shop} AND "lineId" = ${socialUserId}
+        `;
+      } catch (lineError) {
+        console.log("Not a LINE user or error updating LINE user:", lineError);
+      }
+      
+      // Try to update Google user if this is a Google login
+      try {
+        await prisma.$executeRaw`
+          UPDATE "GoogleUser"
+          SET "shopifyCustomerId" = ${customerId}
+          WHERE "shop" = ${shop} AND "googleId" = ${socialUserId}
+        `;
+      } catch (googleError) {
+        console.log("Not a Google user or error updating Google user:", googleError);
+      }
     }
     
     return customerId;
