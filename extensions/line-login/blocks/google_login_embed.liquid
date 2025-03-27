@@ -42,6 +42,16 @@
       background-color: #f0f8ff;
       text-align: center;
     }
+    
+    .google-login-error {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #ff4b4b;
+      border-radius: 5px;
+      background-color: #fff0f0;
+      text-align: center;
+      color: #d32f2f;
+    }
   </style>
   {% endif %}
 </div>
@@ -54,7 +64,7 @@
   window.googleLoginConfig.storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
   
   // Debug mode
-  window.googleLoginConfig.debug = false;
+  window.googleLoginConfig.debug = true;
   
   document.addEventListener('DOMContentLoaded', function() {
     // Function to get URL parameters
@@ -102,8 +112,34 @@
         }, 300);
       }
     }
-
-    // Process Google login if parameters are present
+    
+    // Function to log debug messages
+    function debugLog(...args) {
+      if (window.googleLoginConfig.debug) {
+        console.log('[Google Login]', ...args);
+      }
+    }
+    
+    // Function to display error message
+    function showErrorMessage(message) {
+      hideLoadingOverlay();
+      
+      const loginForm = document.querySelector('form.customer_login') || 
+                        document.querySelector('form#customer_login') || 
+                        document.querySelector('form[action*="/account/login"]');
+      
+      if (loginForm) {
+        // Create error message element
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'google-login-error';
+        errorDiv.innerHTML = `<p style="font-weight: bold;">Google 登入發生錯誤</p><p>${message}</p>`;
+        
+        // Insert at the top of the form
+        loginForm.insertBefore(errorDiv, loginForm.firstChild);
+      }
+    }
+    
+    // Function to process Google login
     function processGoogleLogin() {
       const params = getUrlParams();
       
@@ -119,11 +155,54 @@
         const accessToken = params.access_token || '';
         const returnUrl = params.return_url || '/account';
         
+        debugLog('Processing Google login', {
+          customerId,
+          customerName,
+          customerEmail,
+          accessToken: accessToken ? '**********' : 'missing',
+          returnUrl
+        });
+        
         // If we have email and access token, proceed with login
         if (customerEmail && accessToken) {
+          // Try to use our hidden form first for more reliable login
+          const hiddenForm = document.getElementById('google-shopify-auto-login');
+          if (hiddenForm) {
+            debugLog('Using hidden form for login');
+            
+            // Set form values
+            const emailInput = document.getElementById('google-customer-email');
+            const passwordInput = document.getElementById('google-customer-password');
+            const returnToInput = document.getElementById('google-return-to');
+            
+            if (emailInput && passwordInput) {
+              emailInput.value = customerEmail;
+              passwordInput.value = accessToken;
+              
+              if (returnToInput) {
+                returnToInput.value = returnUrl;
+              }
+              
+              // Submit the hidden form after a short delay
+              setTimeout(() => {
+                hiddenForm.submit();
+              }, 500);
+              
+              return; // Exit early since we're using the hidden form
+            }
+          }
+          
+          // Fallback to filling the visible form
+          debugLog('Falling back to visible form filling');
+          
           // Find all possible email and password fields on the page
           const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
           const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+          
+          debugLog('Found form elements', {
+            emailInputs: emailInputs.length,
+            passwordInputs: passwordInputs.length
+          });
           
           // Fill all email and password fields found
           emailInputs.forEach(input => {
@@ -142,6 +221,7 @@
           
           // Check if CAPTCHA is present
           if (isCaptchaRequired()) {
+            debugLog('CAPTCHA detected, waiting for user interaction');
             // Hide loading overlay since user interaction is needed
             hideLoadingOverlay();
             
@@ -173,6 +253,7 @@
               }
             }
           } else {
+            debugLog('No CAPTCHA detected, attempting to submit form');
             // If no CAPTCHA, try to auto-submit the form
             const loginForm = document.querySelector('form.customer_login') || 
                              document.querySelector('form#customer_login') || 
@@ -183,21 +264,26 @@
               
               // Add a slight delay before submitting to allow the form to update
               setTimeout(() => {
+                debugLog('Submitting form');
                 if (submitButton) {
                   submitButton.click();
                 } else {
                   loginForm.submit();
                 }
                 // Keep overlay visible during submission
-              }, 500);
+              }, 1000); // Increased delay for form submission
             } else {
+              debugLog('No login form found');
               // If no form found, hide the overlay
               hideLoadingOverlay();
+              showErrorMessage('無法找到登入表單。請手動輸入您的電子郵件和密碼。(Login form not found. Please enter your email and password manually.)');
             }
           }
         } else {
+          debugLog('Missing email or access token', { hasEmail: !!customerEmail, hasToken: !!accessToken });
           // If missing email or token, hide the overlay
           hideLoadingOverlay();
+          showErrorMessage('登入資訊不完整。請手動輸入您的電子郵件和密碼。(Login information incomplete. Please enter your email and password manually.)');
         }
       }
     }
@@ -216,7 +302,7 @@
       "type": "text",
       "id": "storefront_api_token",
       "label": "Storefront API Token",
-      "info": "Optional: Your Storefront API access token. If not provided, will use the shop's default token."
+      "info": "Optional: Enter your Storefront API token if needed for additional functionality"
     }
   ]
 }
