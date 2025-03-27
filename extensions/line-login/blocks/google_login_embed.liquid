@@ -114,6 +114,17 @@
     
     // Function to show loading overlay
     function showLoadingOverlay() {
+      // Blur any active element to hide cursor
+      if (document.activeElement) {
+        document.activeElement.blur();
+      }
+      
+      // Extra safety: blur all input fields
+      const allInputs = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+      allInputs.forEach(input => {
+        input.blur();
+      });
+      
       const overlay = document.getElementById('google-login-overlay');
       if (overlay) {
         overlay.classList.add('show');
