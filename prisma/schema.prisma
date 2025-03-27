@@ -53,8 +53,8 @@ model LineUser {
   pictureUrl    String?
   email         String?
   shopifyCustomerId String? // Link to Shopify customer
-  createdAt     DateTime @default(now()) @db.Text
-  updatedAt     DateTime @updatedAt @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([shop, lineId])
 }
