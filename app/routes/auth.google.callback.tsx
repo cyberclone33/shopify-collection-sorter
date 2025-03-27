@@ -104,8 +104,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
               return_url: '/account'
             });
             
-            // Redirect to the login page with the parameters
-            return redirect(`/account/login?${params.toString()}`);
+            // Redirect to the Shopify store login page with the parameters
+            return redirect(`https://${shop}/account/login?${params.toString()}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -128,8 +128,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return_url: '/account'
     });
     
-    // Redirect to the login page with the parameters (without the domain)
-    return redirect(`/account/login?${params.toString()}`);
+    // Redirect to the Shopify store login page with the parameters
+    return redirect(`https://${shop}/account/login?${params.toString()}`);
     
   } catch (error) {
     console.error("Error processing Google callback:", error);
