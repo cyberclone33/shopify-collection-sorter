@@ -17,7 +17,7 @@ const SHOPIFY_STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN || "";
  * Generate a secure random password
  * Creates a shorter string with numbers, lowercase and uppercase letters
  */
-function generateSecurePassword(length = 16): string {
+function generateSecurePassword(length = 12): string {
   const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let password = '';
   
@@ -71,8 +71,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     
     console.log(`Successfully authenticated Google user: ${googleProfile.name}`);
     
-    // Generate a shorter, Shopify-compatible password
-    const password = generateSecurePassword(16);
+    // Generate a shorter, Shopify-compatible password (12 characters like LINE login)
+    const password = generateSecurePassword(12);
     
     // Try to save Google user data to our database
     try {
@@ -94,6 +94,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             console.log(`Successfully linked Google user to Shopify customer: ${customerId}`);
             
             // Redirect to login page with all necessary parameters
+            // Use the same parameter structure as LINE login
             const params = new URLSearchParams({
               google_login: 'success',
               customer_id: customerId,
@@ -103,7 +104,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
               return_url: '/account'
             });
             
-            return redirect(`https://${shop}/account/login?${params.toString()}`);
+            // Redirect to the login page with the parameters
+            return redirect(`/account/login?${params.toString()}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -126,7 +128,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return_url: '/account'
     });
     
-    return redirect(`https://${shop}/account/login?${params.toString()}`);
+    // Redirect to the login page with the parameters (without the domain)
+    return redirect(`/account/login?${params.toString()}`);
     
   } catch (error) {
     console.error("Error processing Google callback:", error);
