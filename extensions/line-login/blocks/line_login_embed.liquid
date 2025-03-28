@@ -168,44 +168,58 @@
     // Function to show CAPTCHA warning
     function showCaptchaWarning() {
       try {
+        // Get message box and other elements
+        const messageBox = document.querySelector('#line-login-message');
+        
         // Hide loading overlay since user interaction is needed
         const overlay = document.getElementById('line-login-overlay');
         if (overlay) {
-          overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
-        }
-        
-        // Keep the form visible but still try to submit
-        document.body.classList.remove('line-login-in-progress');
-        
-        // Add a helper message for the user
-        const loginForm = document.querySelector('form.customer_login') || 
-                         document.querySelector('form#customer_login') || 
-                         document.querySelector('form[action*="/account/login"]');
-        
-        if (loginForm) {
-          // Create a message to guide the user
-          const messageDiv = document.createElement('div');
-          messageDiv.className = 'line-login-message';
-          messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
-                                '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
-          messageDiv.style.color = '#06C755'; // LINE green color
+          overlay.style.backgroundColor = 'rgba(0,0,0,0.2)';
           
-          // Insert at the top of the form
-          loginForm.insertBefore(messageDiv, loginForm.firstChild);
-          
-          // Scroll to and highlight the CAPTCHA
-          const captchaElement = document.querySelector('.g-recaptcha') || 
-                                document.querySelector('[data-sitekey]') || 
-                                document.querySelector('[data-recaptcha-sitekey]');
-          
-          if (captchaElement) {
-            captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
-            captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+          // Move the message box to the top to avoid covering the CAPTCHA
+          if (messageBox) {
+            messageBox.style.marginTop = '-200px';
           }
         }
+        
+        // Remove the class that hides the form to ensure CAPTCHA is visible
+        document.body.classList.remove('line-login-in-progress');
+        
+        // Ensure the login form is visible
+        const loginForm = document.querySelector('form.customer_login') || 
+                          document.querySelector('form#customer_login') || 
+                          document.querySelector('form[action*="/account/login"]');
+        if (loginForm) {
+          loginForm.style.opacity = '1';
+          loginForm.style.pointerEvents = 'auto';
+          loginForm.style.position = 'static';
+          loginForm.style.zIndex = 'auto';
+          
+          // Add a message to guide the user if it doesn't exist yet
+          if (!document.querySelector('.line-login-message')) {
+            // Create a message to guide the user
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'line-login-message';
+            messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
+                                  '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
+            messageDiv.style.color = '#06C755'; // LINE green color
+            
+            // Insert at the top of the form
+            loginForm.insertBefore(messageDiv, loginForm.firstChild);
+          }
+        }
+        
+        // Ensure the CAPTCHA is visible by scrolling to it if needed
+        const captcha = document.querySelector('.g-recaptcha') || 
+                       document.querySelector('[data-sitekey]') ||
+                       document.querySelector('[data-recaptcha-sitekey]');
+        if (captcha) {
+          setTimeout(() => {
+            captcha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
+        }
       } catch (e) {
-        // Fallback: just hide the overlay completely if there's an error
+        // Silent error - just hide the overlay completely if there's an error
         hideLoadingOverlay();
         document.body.classList.remove('line-login-in-progress');
       }

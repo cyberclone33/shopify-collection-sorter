@@ -1,9 +1,37 @@
-import { ActionFunctionArgs, json } from "@remix-run/node";
+import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/node";
 import jwt from "jsonwebtoken";
 import { LineJwtPayload } from "../utils/line-auth.server";
 
 // JWT Secret key - should match the one used to create the token
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-for-development-only";
+
+/**
+ * Loader function to handle GET and OPTIONS requests
+ */
+export async function loader({ request }: LoaderFunctionArgs) {
+  // Handle CORS for OPTIONS requests
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }
+
+  // For GET requests, return a simple message
+  return json(
+    { message: "LINE verification endpoint" },
+    {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    }
+  );
+}
 
 /**
  * Verify a JWT token for LINE login
