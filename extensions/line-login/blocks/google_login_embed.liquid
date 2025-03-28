@@ -461,6 +461,34 @@
       }
     }
     
+    // Function to fix duplicate IDs on the page 
+    function fixDuplicateIds() {
+      try {
+        debugLog('Checking for duplicate IDs on the page');
+        
+        // Find all elements with common Shopify IDs that might be duplicated
+        const commonIds = ['customer-email', 'customer-password', 'customer_email', 'customer_password'];
+        
+        commonIds.forEach(id => {
+          const elements = document.querySelectorAll(`#${id}`);
+          
+          if (elements.length > 1) {
+            debugLog(`Found ${elements.length} elements with duplicate ID: ${id}`);
+            
+            // Fix all but the first element by adding a suffix
+            for (let i = 1; i < elements.length; i++) {
+              const element = elements[i];
+              const newId = `${id}-${i}`;
+              element.id = newId;
+              debugLog(`Fixed duplicate ID: changed ${id} to ${newId}`);
+            }
+          }
+        });
+      } catch (e) {
+        debugLog('Error fixing duplicate IDs:', e.message);
+      }
+    }
+    
     // Main function to process Google login from JWT token
     function processGoogleLogin() {
       debugLog('Checking for Google Login JWT token');
@@ -497,9 +525,13 @@
     // Run the main function once DOM is loaded
     if (document.readyState === 'loading') {
       debugLog('Document still loading, adding DOMContentLoaded listener');
-      document.addEventListener('DOMContentLoaded', processGoogleLogin);
+      document.addEventListener('DOMContentLoaded', function() {
+        fixDuplicateIds();
+        processGoogleLogin();
+      });
     } else {
-      debugLog('Document already loaded, running processGoogleLogin immediately');
+      debugLog('Document already loaded, running immediately');
+      fixDuplicateIds();
       processGoogleLogin();
     }
     
