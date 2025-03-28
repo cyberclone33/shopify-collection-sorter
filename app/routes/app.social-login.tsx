@@ -48,9 +48,32 @@ type SerializedGoogleUser = Omit<GoogleUser, 'createdAt' | 'updatedAt' | 'tokenE
   tokenExpiresAt: string | null;
 };
 
+// Type for FacebookUser
+type FacebookUser = {
+  id: string;
+  shop: string;
+  facebookId: string;
+  facebookAccessToken: string | null;
+  tokenExpiresAt: Date | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+  email: string | null;
+  shopifyCustomerId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// Type for serialized FacebookUser
+type SerializedFacebookUser = Omit<FacebookUser, 'createdAt' | 'updatedAt' | 'tokenExpiresAt'> & {
+  createdAt: string;
+  updatedAt: string;
+  tokenExpiresAt: string | null;
+};
+
 interface LoaderData {
   lineUsers: SerializedLineUser[];
   googleUsers: SerializedGoogleUser[];
+  facebookUsers: SerializedFacebookUser[];
   error?: string;
 }
 
@@ -79,6 +102,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
       // Continue with empty Google users array
     }
     
+    // Fetch Facebook users
+    let facebookUsers: any[] = [];
+    try {
+      // Try to fetch Facebook users if the table exists
+      const rawFacebookUsers = await prisma.$queryRaw`SELECT * FROM FacebookUser WHERE shop = ${session.shop} ORDER BY createdAt DESC`;
+      facebookUsers = Array.isArray(rawFacebookUsers) ? rawFacebookUsers : [];
+    } catch (facebookError) {
+      console.error("Error fetching Facebook users:", facebookError);
+      // Continue with empty Facebook users array
+    }
+    
     return json<LoaderData>({ 
       lineUsers: lineUsers.map((lineUser) => ({
         ...lineUser,
@@ -91,16 +125,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
         createdAt: new Date(googleUser.createdAt).toISOString(),
         updatedAt: new Date(googleUser.updatedAt).toISOString(),
         tokenExpiresAt: googleUser.tokenExpiresAt ? new Date(googleUser.tokenExpiresAt).toISOString() : null,
+      })),
+      facebookUsers: facebookUsers.map((facebookUser: any) => ({
+        ...facebookUser,
+        createdAt: new Date(facebookUser.createdAt).toISOString(),
+        updatedAt: new Date(facebookUser.updatedAt).toISOString(),
+        tokenExpiresAt: facebookUser.tokenExpiresAt ? new Date(facebookUser.tokenExpiresAt).toISOString() : null,
       }))
     });
   } catch (error) {
     console.error("Error fetching social login users:", error);
-    return json<LoaderData>({ lineUsers: [], googleUsers: [], error: "Failed to fetch social login users" });
+    return json<LoaderData>({ lineUsers: [], googleUsers: [], facebookUsers: [], error: "Failed to fetch social login users" });
   }
 }
 
 export default function SocialLoginPage() {
-  const { lineUsers, googleUsers } = useLoaderData<LoaderData>();
+  const { lineUsers, googleUsers, facebookUsers } = useLoaderData<LoaderData>();
   const [isLoading, setIsLoading] = useState(false);
   const [selected, setSelected] = useState(0);
   
@@ -121,6 +161,12 @@ export default function SocialLoginPage() {
       content: `Google Users (${googleUsers.length})`,
       accessibilityLabel: 'Google Users',
       panelID: 'google-users-panel',
+    },
+    {
+      id: 'facebook-users',
+      content: `Facebook Users (${facebookUsers.length})`,
+      accessibilityLabel: 'Facebook Users',
+      panelID: 'facebook-users-panel',
     },
   ];
   
@@ -165,6 +211,18 @@ export default function SocialLoginPage() {
     >
       <p>
         No users have authenticated with Google yet. Once they do, they'll appear here.
+      </p>
+    </EmptyState>
+  );
+  
+  // Handle empty state for Facebook users
+  const facebookEmptyStateMarkup = (
+    <EmptyState
+      heading="No Facebook users found"
+      image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+    >
+      <p>
+        No users have authenticated with Facebook yet. Once they do, they'll appear here.
       </p>
     </EmptyState>
   );
@@ -252,6 +310,48 @@ export default function SocialLoginPage() {
       </IndexTable.Row>
     ),
   );
+  
+  // Create table rows for Facebook users
+  const facebookRowMarkup = facebookUsers?.map(
+    (
+      {
+        id,
+        facebookId,
+        displayName,
+        email,
+        pictureUrl,
+        shopifyCustomerId,
+        createdAt,
+        updatedAt
+      }: SerializedFacebookUser,
+      index: number,
+    ) => (
+      <IndexTable.Row id={id} key={id} position={index}>
+        <IndexTable.Cell>
+          <Avatar source={pictureUrl || undefined} customer name={displayName || "Unknown"} />
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text variant="bodyMd" fontWeight="bold" as="span">
+            {displayName || "N/A"}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{facebookId}</IndexTable.Cell>
+        <IndexTable.Cell>{email || "N/A"}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {getCustomerBadge(shopifyCustomerId)}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {formatCustomerId(shopifyCustomerId)}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(createdAt).toLocaleDateString()}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(updatedAt).toLocaleDateString()} {new Date(updatedAt).toLocaleTimeString()}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    ),
+  );
 
   return (
     <Page 
@@ -288,7 +388,7 @@ export default function SocialLoginPage() {
                 ) : (
                   lineEmptyStateMarkup
                 )
-              ) : (
+              ) : selected === 1 ? (
                 isLoading ? (
                   <div style={{ textAlign: 'center', padding: '40px' }}>
                     <Spinner accessibilityLabel="Loading Google users" size="large" />
@@ -312,6 +412,31 @@ export default function SocialLoginPage() {
                   </IndexTable>
                 ) : (
                   googleEmptyStateMarkup
+                )
+              ) : (
+                isLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <Spinner accessibilityLabel="Loading Facebook users" size="large" />
+                  </div>
+                ) : facebookUsers?.length > 0 ? (
+                  <IndexTable
+                    resourceName={{ singular: 'Facebook user', plural: 'Facebook users' }}
+                    itemCount={facebookUsers.length}
+                    headings={[
+                      { title: 'Avatar' },
+                      { title: 'Name' },
+                      { title: 'Facebook ID' },
+                      { title: 'Email' },
+                      { title: 'Customer Status' },
+                      { title: 'Customer ID' },
+                      { title: 'Joined' },
+                      { title: 'Last Logged In' },
+                    ]}
+                  >
+                    {facebookRowMarkup}
+                  </IndexTable>
+                ) : (
+                  facebookEmptyStateMarkup
                 )
               )}
             </div>
