@@ -183,6 +183,17 @@ export async function createOrLinkShopifyCustomer(
       } catch (googleError) {
         console.log("Not a Google user or error updating Google user:", googleError);
       }
+      
+      // Try to update Facebook user if this is a Facebook login
+      try {
+        await prisma.$executeRaw`
+          UPDATE "FacebookUser"
+          SET "shopifyCustomerId" = ${customerId}
+          WHERE "shop" = ${shop} AND "facebookId" = ${socialUserId}
+        `;
+      } catch (facebookError) {
+        console.log("Not a Facebook user or error updating Facebook user:", facebookError);
+      }
     }
     
     return customerId;
