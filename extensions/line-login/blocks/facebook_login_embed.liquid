@@ -281,11 +281,33 @@
                   let passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
                   const returnToInput = loginForm.querySelector('input[name="return_to"]');
                   
+                  // Try alternative selectors if the standard ones don't work
+                  if (!emailInput) {
+                    emailInput = document.getElementById('customer-email') || 
+                                document.getElementById('customer_email');
+                  }
+                  
+                  if (!passwordInput) {
+                    passwordInput = document.getElementById('customer-password') || 
+                                  document.getElementById('customer_password');
+                  }
+                  
                   // If we found the inputs, fill them
                   if (emailInput && passwordInput) {
                     // Fill in the form
                     emailInput.value = customerEmail;
                     passwordInput.value = accessToken;
+                    
+                    // Trigger input events to update any validators
+                    try {
+                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      
+                      // Also trigger change events
+                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    } catch (e) {
+                    }
                     
                     // Set return URL if available
                     if (returnToInput && returnUrl) {
@@ -302,6 +324,17 @@
                         const submitButton = loginForm.querySelector('button[type="submit"], input[type="submit"]');
                         if (submitButton) {
                           submitButton.click();
+                          
+                          // Check if form submission was successful after a short delay
+                          setTimeout(() => {
+                            // If we're still on the login page, show a message to complete CAPTCHA manually
+                            if (window.location.href.includes('/account/login')) {
+                              showCaptchaWarning();
+                            }
+                          }, 1000);
+                        } else {
+                          // Fall back to form.submit() if no button found
+                          loginForm.submit();
                         }
                       } catch (submitError) {
                         // Silent error - user will need to complete CAPTCHA manually
@@ -355,28 +388,31 @@
     function processFacebookLogin() {
       const params = getUrlParams();
       
-      // Check if we have a token in the URL
-      if (params.token) {
-        // Store token in case we need it later
-        storeLoginParams({ token: params.token });
-        
-        // Process the token
-        verifyAndProcessJWT(params.token);
-        
-        // Clean up URL to remove token
-        try {
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.delete('token');
-          window.history.replaceState({}, document.title, newUrl.toString());
-        } catch (e) {
-          // Silent error - URL cleanup is not critical
+      // Check if we have a token in the URL that's specifically for Facebook
+      if (params.facebook_token || (params.code && window.location.href.includes('facebook'))) {
+        // If we have a Facebook token, process it
+        if (params.facebook_token) {
+          // Store token in case we need it later
+          storeLoginParams({ facebook_token: params.facebook_token });
+          
+          // Process the token
+          verifyAndProcessJWT(params.facebook_token);
+          
+          // Clean up URL to remove token
+          try {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('facebook_token');
+            window.history.replaceState({}, document.title, newUrl.toString());
+          } catch (e) {
+            // Silent error - URL cleanup is not critical
+          }
         }
       } else {
         // Check if we have stored parameters from a previous attempt
         const storedParams = getStoredLoginParams();
-        if (storedParams && storedParams.token) {
+        if (storedParams && storedParams.facebook_token) {
           // Process stored token
-          verifyAndProcessJWT(storedParams.token);
+          verifyAndProcessJWT(storedParams.facebook_token);
           
           // Clear stored params after processing
           clearStoredLoginParams();
@@ -386,8 +422,10 @@
     
     // Check if we're on the login page
     if (window.location.pathname.includes('/account/login')) {
-      // Process Facebook login
-      processFacebookLogin();
+      // Wait for DOM to be ready before processing login
+      document.addEventListener('DOMContentLoaded', function() {
+        processFacebookLogin();
+      });
     }
   })(); // End of immediately executing function
 </script>
@@ -396,6 +434,7 @@
 {
   "name": "Facebook Login Processor",
   "target": "section",
+  "templates": ["customers/login", "customers/account", "customers/register"],
   "settings": [
     {
       "type": "text",

@@ -108,7 +108,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             const token = await createGoogleJWT(jwtPayload);
             
             // Redirect with only the JWT token in URL (much more secure)
-            return redirect(`https://${shop}/account/login?token=${encodeURIComponent(token)}`);
+            return redirect(`https://${shop}/account/login?google_token=${encodeURIComponent(token)}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -135,7 +135,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const token = await createGoogleJWT(jwtPayload);
     
     // Redirect with only the JWT token in URL
-    return redirect(`https://${shop}/account/login?token=${encodeURIComponent(token)}`);
+    return redirect(`https://${shop}/account/login?google_token=${encodeURIComponent(token)}`);
     
   } catch (error) {
     console.error("Error processing Google callback:", error);

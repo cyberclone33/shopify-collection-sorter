@@ -83,8 +83,9 @@
   
   // URL for JWT verification API endpoint
   window.lineLoginConfig.jwtVerifyUrl = 'https://shopify-collection-sorter.onrender.com/auth/line/verify';
-  
-  document.addEventListener('DOMContentLoaded', function() {
+
+  // Immediately executing function to avoid sandboxing issues
+  (function() {
     // Function to store login parameters in session storage
     function storeLoginParams(params) {
       if (params && Object.keys(params).length > 0) {
@@ -412,86 +413,60 @@
     function processLineLogin() {
       const params = getUrlParams();
       
-      // Check if we have a JWT token in the URL
-      if (params.token) {
-        storeLoginParams({ token: params.token });
+      // Check if we have LINE-specific parameters in the URL
+      if (params.line_token || (params.code && window.location.href.includes('line'))) {
+        // Show loading overlay
+        showLoadingOverlay();
         
-        // Verify and process the JWT
-        verifyAndProcessJWT(params.token);
-        
-        // Remove token from URL for security
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('token');
-          window.history.replaceState({}, document.title, url.toString());
-        } catch (e) {
-          // Silent error
-        }
-      } 
-      // BACKWARD COMPATIBILITY: Check for old-style URL parameters
-      else if (params.line_login === 'success') {
-        // Extract customer information from URL parameters
-        const customerId = params.customer_id || params.line_id || '';
-        const customerName = params.name ? decodeURIComponent(params.name) : '';
-        const customerEmail = params.customer_email ? decodeURIComponent(params.customer_email) : '';
-        const accessToken = params.access_token || '';
-        const returnUrl = params.return_url || '/account';
-        
-        // Process with the old-style parameters
-        processLineLoginWithData({
-          line_login: 'success',
-          customer_id: customerId,
-          customer_email: customerEmail,
-          name: customerName,
-          access_token: accessToken,
-          return_url: returnUrl
-        });
-        
-        // Store parameters for potential tab switching recovery
-        storeLoginParams({
-          line_login: 'success',
-          customer_id: customerId,
-          customer_email: customerEmail,
-          name: customerName,
-          access_token: accessToken,
-          return_url: returnUrl
-        });
-      }
-      else {
-        // Check for stored token or parameters (in case of page refresh)
-        const storedParams = getStoredLoginParams();
-        if (storedParams && storedParams.token) {
-          verifyAndProcessJWT(storedParams.token);
+        // Process the token if available
+        if (params.line_token) {
+          storeLoginParams({ line_token: params.line_token });
+          verifyAndProcessJWT(params.line_token);
+          
+          // Clean up URL to remove token
+          try {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('line_token');
+            window.history.replaceState({}, document.title, newUrl.toString());
+          } catch (e) {
+            // Silent error - URL cleanup is not critical
+          }
         } 
-        // BACKWARD COMPATIBILITY: Check for stored old-style parameters
-        else if (storedParams && storedParams.line_login === 'success') {
-          processLineLoginWithData(storedParams);
+        // Process legacy parameters if available
+        else if (params.code && params.state) {
+          processLegacyLineLogin(params);
+        }
+      } else {
+        // Check if we have stored parameters from a previous attempt
+        const storedParams = getStoredLoginParams();
+        if (storedParams && storedParams.line_token) {
+          // Process stored token
+          verifyAndProcessJWT(storedParams.line_token);
+          
+          // Clear stored params after processing
+          clearStoredLoginParams();
         }
       }
     }
     
-    // Run when page loads
-    processLineLogin();
-  });
+    // Run when page loads and DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      processLineLogin();
+    });
+  })();
 </script>
 
 {% schema %}
 {
-  "name": "LINE Login",
+  "name": "LINE Login Processor",
   "target": "section",
+  "templates": ["customers/login", "customers/account", "customers/register"],
   "settings": [
     {
       "type": "text",
       "id": "storefront_api_token",
       "label": "Storefront API Token",
-      "info": "Your Shopify Storefront API access token"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_debug_info",
-      "label": "Show Debug Info",
-      "default": false,
-      "info": "Show debug information for LINE login"
+      "info": "Optional: Enter your Storefront API token if not set in theme settings"
     }
   ]
 }

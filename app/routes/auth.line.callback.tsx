@@ -110,7 +110,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               );
               
               // Redirect to login page with JWT token
-              return redirect(`https://${shop}/account/login?token=${jwt}`);
+              return redirect(`https://${shop}/account/login?line_token=${jwt}`);
             } catch (passwordError) {
               console.error("Error setting customer password:", passwordError);
             }
@@ -136,7 +136,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       '/account'
     );
     
-    return redirect(`https://${shop}/account/login?token=${jwt}`);
+    return redirect(`https://${shop}/account/login?line_token=${jwt}`);
     
   } catch (error) {
     console.error("Error processing LINE callback:", error);

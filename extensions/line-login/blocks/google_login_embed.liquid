@@ -467,25 +467,28 @@
     function processGoogleLogin() {
       const params = getUrlParams();
       
-      // Check if we have a JWT token in the URL
-      if (params.token) {
-        storeLoginParams({ token: params.token });
-        
-        // Verify and process the JWT
-        verifyAndProcessJWT(params.token);
-        
-        // Remove token from URL to prevent leakage in browser history
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('token');
-          window.history.replaceState({}, document.title, url.toString());
-        } catch (e) {
+      // Check if we have a JWT token in the URL that's specifically for Google
+      if (params.google_token || (params.code && window.location.href.includes('google'))) {
+        // If we have a Google token, process it
+        if (params.google_token) {
+          storeLoginParams({ google_token: params.google_token });
+          
+          // Verify and process the JWT
+          verifyAndProcessJWT(params.google_token);
+          
+          // Remove token from URL to prevent leakage in browser history
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('google_token');
+            window.history.replaceState({}, document.title, url.toString());
+          } catch (e) {
+          }
         }
       } else {
         // Check for stored token (in case of page refresh)
         const storedParams = getStoredLoginParams();
-        if (storedParams && storedParams.token) {
-          verifyAndProcessJWT(storedParams.token);
+        if (storedParams && storedParams.google_token) {
+          verifyAndProcessJWT(storedParams.google_token);
         } else {
         }
       }
