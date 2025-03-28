@@ -69,6 +69,15 @@
       caret-color: transparent !important;
     }
   </style>
+  
+  <!-- Debug panel for development -->
+  <div id="google-login-debug-panel" style="position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #00ff00; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; max-width: 500px; max-height: 300px; overflow: auto; display: none;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+      <strong>Google Login Debug</strong>
+      <button onclick="document.getElementById('google-login-debug-panel').style.display='none'" style="background: none; border: none; color: white; cursor: pointer;">×</button>
+    </div>
+    <div id="google-login-debug-content"></div>
+  </div>
   {% endif %}
 </div>
 
@@ -85,26 +94,30 @@
   // Debug mode
   window.googleLoginConfig.debug = true;
   
-  // URL for JWT verification API endpoint
-  window.googleLoginConfig.jwtVerifyUrl = 'https://{{ request.host | split: ":" | first }}/auth/google/verify';
+  // URL for JWT verification API endpoint - FIXED to use the correct Render app URL from logs
+  window.googleLoginConfig.jwtVerifyUrl = 'https://shopify-collection-sorter.onrender.com/auth/google/verify';
   
   document.addEventListener('DOMContentLoaded', function() {
     // Store login parameters in sessionStorage to persist across page refreshes and tab switches
     function storeLoginParams(params) {
       if (params && Object.keys(params).length > 0) {
         sessionStorage.setItem('googleLoginParams', JSON.stringify(params));
+        debugLog('Stored login params:', params);
       }
     }
     
     // Retrieve login parameters from sessionStorage
     function getStoredLoginParams() {
       const storedParams = sessionStorage.getItem('googleLoginParams');
-      return storedParams ? JSON.parse(storedParams) : null;
+      const params = storedParams ? JSON.parse(storedParams) : null;
+      debugLog('Retrieved stored params:', params);
+      return params;
     }
     
     // Clear stored login parameters
     function clearStoredLoginParams() {
       sessionStorage.removeItem('googleLoginParams');
+      debugLog('Cleared stored login params');
     }
     
     // Function to get URL parameters
@@ -123,14 +136,17 @@
         }
       }
       
+      debugLog('URL parameters:', params);
       return params;
     }
 
     // Function to check if CAPTCHA is required on the page
     function isCaptchaRequired() {
-      return document.querySelector('.g-recaptcha') !== null || 
+      const hasCaptcha = document.querySelector('.g-recaptcha') !== null || 
              document.querySelector('[data-sitekey]') !== null ||
              document.querySelector('[data-recaptcha-sitekey]') !== null;
+      debugLog('CAPTCHA required:', hasCaptcha);
+      return hasCaptcha;
     }
     
     // Function to show loading overlay
@@ -138,6 +154,9 @@
       const overlay = document.getElementById('google-login-overlay');
       if (overlay) {
         overlay.classList.add('show');
+        debugLog('Showing loading overlay');
+      } else {
+        debugLog('ERROR: Loading overlay element not found');
       }
     }
     
@@ -150,6 +169,9 @@
         setTimeout(() => {
           overlay.style.display = 'none';
         }, 300);
+        debugLog('Hiding loading overlay');
+      } else {
+        debugLog('ERROR: Loading overlay element not found');
       }
     }
     
@@ -157,6 +179,42 @@
     function debugLog(...args) {
       if (window.googleLoginConfig.debug) {
         console.log('[Google Login]', ...args);
+        
+        // Add to debug panel if it exists
+        const debugPanel = document.getElementById('google-login-debug-panel');
+        const debugContent = document.getElementById('google-login-debug-content');
+        
+        if (debugPanel && debugContent) {
+          debugPanel.style.display = 'block';
+          
+          // Format the debug message
+          const message = args.map(arg => {
+            if (typeof arg === 'object') {
+              try {
+                return JSON.stringify(arg);
+              } catch (e) {
+                return String(arg);
+              }
+            }
+            return String(arg);
+          }).join(' ');
+          
+          // Add timestamp
+          const timestamp = new Date().toISOString().split('T')[1].substring(0, 8);
+          const logEntry = document.createElement('div');
+          logEntry.innerHTML = `<span style="opacity: 0.6;">[${timestamp}]</span> ${message}`;
+          
+          // Add to panel
+          debugContent.appendChild(logEntry);
+          
+          // Auto-scroll to bottom
+          debugPanel.scrollTop = debugPanel.scrollHeight;
+          
+          // Limit entries
+          while (debugContent.children.length > 50) {
+            debugContent.removeChild(debugContent.firstChild);
+          }
+        }
       }
     }
     
@@ -171,6 +229,7 @@
         
         // Find all login forms
         const loginForms = document.querySelectorAll('form.customer_login, form#customer_login, form[action*="/account/login"]');
+        debugLog('Found login forms:', loginForms.length);
         
         loginForms.forEach(form => {
           // First attempt: Add autocomplete="off" to form and all inputs
@@ -181,6 +240,8 @@
           setTimeout(() => {
             const emailInputs = form.querySelectorAll('input[type="email"], input[name="customer[email]"]');
             const passwordInputs = form.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+            
+            debugLog('Found form inputs:', {emails: emailInputs.length, passwords: passwordInputs.length});
             
             emailInputs.forEach(input => {
               // Get current attributes
@@ -247,6 +308,13 @@
         debugLog('Verifying JWT token server-side');
         showLoadingOverlay();
         
+        // Enhanced token validation
+        if (!token || typeof token !== 'string' || token.length < 20) {
+          throw new Error('Invalid token format');
+        }
+        
+        debugLog('Token validation passed, sending to server:', token.substring(0, 15) + '...');
+        
         // Send token to backend for verification
         const response = await fetch(window.googleLoginConfig.jwtVerifyUrl, {
           method: 'POST',
@@ -257,8 +325,11 @@
           body: JSON.stringify({ token })
         });
         
+        debugLog('Server response status:', response.status);
+        
         if (!response.ok) {
-          throw new Error(`JWT verification failed: ${response.statusText}`);
+          const errorText = await response.text();
+          throw new Error(`JWT verification failed: ${response.statusText}. Details: ${errorText}`);
         }
         
         // Get the verified data
@@ -269,7 +340,7 @@
         processGoogleLoginWithData(userData);
         
       } catch (error) {
-        debugLog('Error verifying JWT:', error);
+        debugLog('Error verifying JWT:', error.message);
         hideLoadingOverlay();
         
         // Add error message to the page
@@ -286,6 +357,8 @@
     // Process the Google login with verified data
     function processGoogleLoginWithData(userData) {
       if (userData && userData.google_login === 'success') {
+        debugLog('Processing successful login data');
+        
         // Add class to body to hide login forms
         document.body.classList.add('google-login-in-progress');
         
@@ -297,7 +370,11 @@
         const accessToken = userData.access_token;
         const returnUrl = userData.return_url || '/account';
         
-        debugLog('Processing login with verified data', { email: customerEmail });
+        debugLog('Processing login with verified data', { 
+          email: customerEmail,
+          hasToken: !!accessToken,
+          returnUrl
+        });
         
         if (customerEmail && accessToken) {
           // Wait a bit to make sure our autofill protection has been applied
@@ -305,6 +382,11 @@
             // Find all possible email and password fields on the page
             const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
             const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
+            
+            debugLog('Available login inputs:', {
+              emailInputs: emailInputs.length,
+              passwordInputs: passwordInputs.length
+            });
             
             // First, try using the hidden form
             const hiddenForm = document.getElementById('google-shopify-auto-login');
@@ -319,6 +401,11 @@
               if (hiddenEmailInput && hiddenPasswordInput) {
                 hiddenEmailInput.value = customerEmail;
                 hiddenPasswordInput.value = accessToken;
+                
+                debugLog('Set hidden form values:', {
+                  email: hiddenEmailInput.value,
+                  password: hiddenPasswordInput.value ? '(set)' : '(not set)'
+                });
                 
                 if (hiddenReturnToInput) {
                   hiddenReturnToInput.value = returnUrl;
@@ -337,9 +424,16 @@
                 } else {
                   debugLog('No CAPTCHA detected, submitting hidden form');
                   setTimeout(() => {
-                    hiddenForm.submit();
+                    try {
+                      hiddenForm.submit();
+                      debugLog('Hidden form submitted');
+                    } catch (e) {
+                      debugLog('Error submitting hidden form:', e.message);
+                    }
                   }, 250);
                 }
+              } else {
+                debugLog('ERROR: Hidden form inputs not found');
               }
             } else {
               debugLog('No hidden form found, attempting to populate visible form');
@@ -350,16 +444,31 @@
                               document.querySelector('form[action*="/account/login"]');
               
               if (loginForm) {
-                debugLog('Found visible login form, populating fields');
+                debugLog('Found visible login form', loginForm);
                 
                 // Find email and password inputs within this form
                 const formEmailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
                 const formPasswordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
                 const formReturnToInput = loginForm.querySelector('input[name="return_to"]');
                 
+                debugLog('Visible form inputs:', {
+                  email: !!formEmailInput,
+                  password: !!formPasswordInput,
+                  returnTo: !!formReturnToInput
+                });
+                
                 if (formEmailInput && formPasswordInput) {
                   formEmailInput.value = customerEmail;
                   formPasswordInput.value = accessToken;
+                  
+                  // Trigger input events to update any validators
+                  formEmailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                  formPasswordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                  
+                  debugLog('Set visible form values:', {
+                    email: formEmailInput.value,
+                    password: formPasswordInput.value ? '(set)' : '(not set)'
+                  });
                   
                   if (formReturnToInput) {
                     formReturnToInput.value = returnUrl;
@@ -379,33 +488,40 @@
                     setTimeout(() => {
                       const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
                       if (submitButton) {
+                        debugLog('Clicking submit button');
                         submitButton.click();
                       } else {
-                        loginForm.submit();
+                        debugLog('No submit button found, calling form.submit()');
+                        try {
+                          loginForm.submit();
+                          debugLog('Form submitted');
+                        } catch (e) {
+                          debugLog('Error submitting form:', e.message);
+                        }
                       }
                     }, 500);
                   }
                 } else {
-                  debugLog('Could not find email/password fields in the form');
+                  debugLog('ERROR: Could not find email/password fields in the form');
                   hideLoadingOverlay();
                   document.body.classList.remove('google-login-in-progress');
                 }
               } else {
-                debugLog('No login form found on the page');
+                debugLog('ERROR: No login form found on the page');
                 hideLoadingOverlay();
                 document.body.classList.remove('google-login-in-progress');
               }
             }
           }, 200);
         } else {
-          debugLog('Missing email or access token in verified data');
+          debugLog('ERROR: Missing email or access token in verified data');
           // If missing email or token, hide the overlay
           hideLoadingOverlay();
           // Remove the body class
           document.body.classList.remove('google-login-in-progress');
         }
       } else {
-        debugLog('Invalid verified data returned');
+        debugLog('ERROR: Invalid verified data returned', userData);
         hideLoadingOverlay();
       }
     }
@@ -432,6 +548,8 @@
         if (storedParams && storedParams.token) {
           debugLog('Found stored JWT token');
           verifyAndProcessJWT(storedParams.token);
+        } else {
+          debugLog('No token found in URL or storage');
         }
       }
     }
@@ -458,6 +576,17 @@
         
         // Redirect to Google auth
         window.location.href = redirectUrl;
+      }
+    });
+    
+    // Add keyboard shortcut to toggle debug panel
+    document.addEventListener('keydown', function(event) {
+      // Ctrl+Shift+D to toggle debug panel
+      if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+        const debugPanel = document.getElementById('google-login-debug-panel');
+        if (debugPanel) {
+          debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+        }
       }
     });
   });
