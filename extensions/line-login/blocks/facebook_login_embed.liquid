@@ -376,8 +376,25 @@
         }
       }
       
+      // Function to clean up URL fragments added by Facebook
+      function cleanupFacebookRedirectHash() {
+        // Remove the #_=_ fragment that Facebook adds to the URL
+        if (window.location.hash === '#_=_') {
+          // Clean the URL without reloading the page
+          if (history.replaceState) {
+            history.replaceState(null, document.title, window.location.pathname + window.location.search);
+          } else {
+            // For older browsers
+            window.location.hash = '';
+          }
+        }
+      }
+      
       // Main function to process Facebook login from JWT token
       function processFacebookLogin() {
+        // First clean up any Facebook hash fragments
+        cleanupFacebookRedirectHash();
+        
         const params = getUrlParams();
         
         // Check if we have a token in the URL that's specifically for Facebook
