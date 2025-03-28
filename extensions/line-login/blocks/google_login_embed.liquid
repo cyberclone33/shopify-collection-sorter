@@ -6,16 +6,6 @@
   <!-- Hidden container - no visible UI -->
   
   {% if request.path contains '/account/login' %}
-  <!-- Hidden form for Shopify login -->
-  <form id="google-shopify-auto-login" method="post" action="/account/login" style="display: none;">
-    <input type="email" name="customer[email]" id="google-auto-login-email">
-    <input type="password" name="customer[password]" id="google-auto-login-password">
-    <input type="hidden" name="form_type" value="customer_login">
-    <input type="hidden" name="utf8" value="✓">
-    <input type="hidden" name="return_to" id="google-auto-login-return-to" value="/account">
-    <input type="hidden" name="g-recaptcha-response" id="google-auto-login-recaptcha-response" value="">
-  </form>
-  
   <!-- Loading overlay for Google login -->
   <div id="google-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
     <div id="google-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
@@ -249,6 +239,34 @@
       }
     }
     
+    // Function to fix duplicate IDs on the page 
+    function fixDuplicateIds() {
+      try {
+        debugLog('Checking for duplicate IDs on the page');
+        
+        // Find all elements with common Shopify IDs that might be duplicated
+        const commonIds = ['customer-email', 'customer-password', 'customer_email', 'customer_password'];
+        
+        commonIds.forEach(id => {
+          const elements = document.querySelectorAll(`#${id}`);
+          
+          if (elements.length > 1) {
+            debugLog(`Found ${elements.length} elements with duplicate ID: ${id}`);
+            
+            // Fix all but the first element by adding a suffix
+            for (let i = 1; i < elements.length; i++) {
+              const element = elements[i];
+              const newId = `${id}-${i}`;
+              element.id = newId;
+              debugLog(`Fixed duplicate ID: changed ${id} to ${newId}`);
+            }
+          }
+        });
+      } catch (e) {
+        debugLog('Error fixing duplicate IDs:', e.message);
+      }
+    }
+    
     // Function to verify JWT token server-side and process login
     async function verifyAndProcessJWT(token) {
       try {
@@ -329,117 +347,82 @@
           });
           
           if (customerEmail && accessToken) {
-            // Wait a bit to make sure our autofill protection has been applied
+            // Wait a bit to make sure the page is fully loaded
             setTimeout(() => {
               try {
-                // Find all possible email and password fields on the page
-                const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
-                const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
-                
-                debugLog('Available login inputs:', {
-                  emailInputs: emailInputs.length,
-                  passwordInputs: passwordInputs.length
-                });
-                
-                // Try using direct form submission first (most reliable)
-                debugLog('Attempting direct form submission');
-                
                 // Find the standard customer login form
-                const standardForm = document.querySelector('form.customer_login') || 
-                                    document.querySelector('form#customer_login') || 
-                                    document.querySelector('form[action*="/account/login"]');
+                const loginForm = document.querySelector('form.customer_login') || 
+                                  document.querySelector('form#customer_login') || 
+                                  document.querySelector('form[action*="/account/login"]');
                 
-                if (standardForm) {
-                  debugLog('Found standard login form');
+                if (loginForm) {
+                  debugLog('Found Shopify login form');
                   
                   // Find email and password inputs within this form
-                  const formEmailInput = standardForm.querySelector('input[type="email"], input[name="customer[email]"]');
-                  const formPasswordInput = standardForm.querySelector('input[type="password"], input[name="customer[password]"]');
-                  const formReturnToInput = standardForm.querySelector('input[name="return_to"]');
+                  const emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
+                  const passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
+                  const returnToInput = loginForm.querySelector('input[name="return_to"]');
                   
-                  if (formEmailInput && formPasswordInput) {
-                    debugLog('Setting values on standard form');
-                    formEmailInput.value = customerEmail;
-                    formPasswordInput.value = accessToken;
+                  if (emailInput && passwordInput) {
+                    debugLog('Setting values on Shopify login form');
+                    
+                    // Set the values
+                    emailInput.value = customerEmail;
+                    passwordInput.value = accessToken;
                     
                     // Trigger input events to update any validators
                     try {
-                      formEmailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                      formPasswordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
                     } catch (e) {
                       debugLog('Error dispatching input events:', e.message);
                     }
                     
-                    if (formReturnToInput) {
-                      formReturnToInput.value = returnUrl;
+                    // Set return URL if field exists
+                    if (returnToInput) {
+                      returnToInput.value = returnUrl;
                     }
                     
-                    // Submit the form after a short delay
-                    setTimeout(() => {
-                      try {
-                        debugLog('Submitting standard form');
-                        standardForm.submit();
-                      } catch (e) {
-                        debugLog('Error submitting standard form:', e.message);
-                        fallbackToHiddenForm();
+                    // Check for CAPTCHA
+                    if (isCaptchaRequired()) {
+                      debugLog('CAPTCHA detected, cannot auto-submit');
+                      const captchaWarning = document.getElementById('google-captcha-warning');
+                      if (captchaWarning) {
+                        captchaWarning.style.display = 'block';
                       }
-                    }, 300);
-                  } else {
-                    debugLog('Could not find inputs in standard form, falling back');
-                    fallbackToHiddenForm();
-                  }
-                } else {
-                  debugLog('No standard form found, falling back');
-                  fallbackToHiddenForm();
-                }
-                
-                // Fallback to hidden form if standard form submission fails
-                function fallbackToHiddenForm() {
-                  debugLog('Using hidden form fallback');
-                  
-                  const hiddenForm = document.getElementById('google-shopify-auto-login');
-                  if (hiddenForm) {
-                    // Set the values on the hidden form
-                    const hiddenEmailInput = document.getElementById('google-auto-login-email');
-                    const hiddenPasswordInput = document.getElementById('google-auto-login-password');
-                    const hiddenReturnToInput = document.getElementById('google-auto-login-return-to');
-                    
-                    if (hiddenEmailInput && hiddenPasswordInput) {
-                      hiddenEmailInput.value = customerEmail;
-                      hiddenPasswordInput.value = accessToken;
-                      
-                      debugLog('Set hidden form values');
-                      
-                      if (hiddenReturnToInput) {
-                        hiddenReturnToInput.value = returnUrl;
-                      }
-                      
-                      // Submit the hidden form
+                    } else {
+                      // Submit the form after a short delay
                       setTimeout(() => {
                         try {
-                          debugLog('Submitting hidden form');
-                          hiddenForm.submit();
+                          debugLog('Submitting Shopify login form');
+                          
+                          // Try clicking the submit button first (most reliable)
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            debugLog('Clicking submit button');
+                            submitButton.click();
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            debugLog('No submit button found, calling form.submit()');
+                            loginForm.submit();
+                          }
                         } catch (e) {
-                          debugLog('Error submitting hidden form:', e.message);
-                          manualRedirect();
+                          debugLog('Error submitting form:', e.message);
+                          // If all else fails, just redirect to account
+                          window.location.href = '/account';
                         }
                       }, 300);
-                    } else {
-                      debugLog('Hidden form inputs not found, trying manual redirect');
-                      manualRedirect();
                     }
                   } else {
-                    debugLog('Hidden form not found, trying manual redirect');
-                    manualRedirect();
+                    debugLog('Could not find email/password fields in the form');
+                    hideLoadingOverlay();
+                    document.body.classList.remove('google-login-in-progress');
                   }
+                } else {
+                  debugLog('No login form found on the page');
+                  hideLoadingOverlay();
+                  document.body.classList.remove('google-login-in-progress');
                 }
-                
-                // Last resort: redirect the user to account page
-                function manualRedirect() {
-                  debugLog('All form methods failed, redirecting manually');
-                  window.location.href = '/account';
-                }
-                
               } catch (e) {
                 debugLog('Error during form processing:', e.message);
                 // If all else fails, just redirect to account
@@ -458,34 +441,6 @@
       } else {
         debugLog('ERROR: Invalid verified data returned', userData);
         hideLoadingOverlay();
-      }
-    }
-    
-    // Function to fix duplicate IDs on the page 
-    function fixDuplicateIds() {
-      try {
-        debugLog('Checking for duplicate IDs on the page');
-        
-        // Find all elements with common Shopify IDs that might be duplicated
-        const commonIds = ['customer-email', 'customer-password', 'customer_email', 'customer_password'];
-        
-        commonIds.forEach(id => {
-          const elements = document.querySelectorAll(`#${id}`);
-          
-          if (elements.length > 1) {
-            debugLog(`Found ${elements.length} elements with duplicate ID: ${id}`);
-            
-            // Fix all but the first element by adding a suffix
-            for (let i = 1; i < elements.length; i++) {
-              const element = elements[i];
-              const newId = `${id}-${i}`;
-              element.id = newId;
-              debugLog(`Fixed duplicate ID: changed ${id} to ${newId}`);
-            }
-          }
-        });
-      } catch (e) {
-        debugLog('Error fixing duplicate IDs:', e.message);
       }
     }
     
