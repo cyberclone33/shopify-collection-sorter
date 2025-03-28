@@ -8,7 +8,14 @@ import { verifyGoogleJWT } from "../utils/google-auth.server";
 export async function action({ request }: ActionFunctionArgs) {
   // Only accept POST requests
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, { status: 405 });
+    return json({ error: "Method not allowed" }, { 
+      status: 405,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
   }
 
   try {
@@ -17,7 +24,14 @@ export async function action({ request }: ActionFunctionArgs) {
     const { token } = requestData;
 
     if (!token) {
-      return json({ error: "Missing token" }, { status: 400 });
+      return json({ error: "Missing token" }, { 
+        status: 400,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
     }
 
     // Verify the JWT token
@@ -25,26 +39,51 @@ export async function action({ request }: ActionFunctionArgs) {
     
     // If token verification fails, return an error
     if (!decodedToken) {
-      return json({ error: "Invalid token" }, { status: 401 });
+      return json({ error: "Invalid token" }, { 
+        status: 401,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
     }
 
     // Return the verified user data
-    return json(decodedToken);
+    return json(decodedToken, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
   } catch (error) {
     console.error("Error verifying Google JWT:", error);
-    return json({ error: "Server error" }, { status: 500 });
+    return json({ error: "Server error" }, { 
+      status: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
   }
 }
 
 /**
  * Handle preflight OPTIONS requests for CORS
  */
-export async function loader() {
-  return new Response(null, {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    }
-  });
+export async function loader({ request }: ActionFunctionArgs) {
+  // Handle OPTIONS requests for CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
+  }
+
+  return json({ error: "Method not allowed" }, { status: 405 });
 }
