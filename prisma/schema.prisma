@@ -75,3 +75,19 @@ model GoogleUser {
 
   @@unique([shop, googleId], name: "shop_googleId")
 }
+
+model FacebookUser {
+  id              String   @id @default(cuid())
+  shop            String
+  facebookId      String   // Facebook user ID
+  facebookAccessToken String?
+  tokenExpiresAt  DateTime?
+  displayName     String?
+  pictureUrl      String?
+  email           String?
+  shopifyCustomerId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([shop, facebookId], name: "shop_facebookId")
+}

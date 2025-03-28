@@ -41,6 +41,23 @@
       "logging_in": "Logging in..."
     }
   },
+  "facebook_login": {
+    "button": {
+      "text": "Facebook Login",
+      "alt": "Login with Facebook",
+      "login": "Login with Facebook",
+      "link": "Link with Facebook"
+    },
+    "handler": {
+      "welcome": "Welcome, %{name}!",
+      "login_success": "Successfully logged in with Facebook",
+      "redirecting": "Redirecting to your account...",
+      "login_error": "Sorry, there was a problem logging in. Please try again or contact support.",
+      "message": "You've successfully authenticated with Facebook.",
+      "complete_login": "Complete Login",
+      "logging_in": "Logging in..."
+    }
+  },
   "customer": {
     "login": {
       "line_login_title": "LINE Login",

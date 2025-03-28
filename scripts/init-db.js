@@ -159,9 +159,37 @@ async function main() {
       console.log('DEBUG: This should be handled by Prisma migrations. Make sure to run "npx prisma migrate deploy" before starting the app.');
     }
     
+    // Check if the GoogleUser table exists
+    console.log('DEBUG: Checking if GoogleUser table exists...');
+    let googleUserTableExists = false;
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM GoogleUser LIMIT 1`;
+      googleUserTableExists = true;
+      console.log('DEBUG: GoogleUser table exists');
+    } catch (err) {
+      console.error('DEBUG: Error checking GoogleUser table:', err.message);
+      console.log('DEBUG: GoogleUser table does not exist or cannot be accessed');
+      console.log('DEBUG: This should be handled by Prisma migrations. Make sure to run "npx prisma migrate deploy" before starting the app.');
+    }
+    
+    // Check if the FacebookUser table exists
+    console.log('DEBUG: Checking if FacebookUser table exists...');
+    let facebookUserTableExists = false;
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM FacebookUser LIMIT 1`;
+      facebookUserTableExists = true;
+      console.log('DEBUG: FacebookUser table exists');
+    } catch (err) {
+      console.error('DEBUG: Error checking FacebookUser table:', err.message);
+      console.log('DEBUG: FacebookUser table does not exist or cannot be accessed');
+      console.log('DEBUG: This should be handled by Prisma migrations. Make sure to run "npx prisma migrate deploy" before starting the app.');
+    }
+    
     console.log('✅ Database initialization completed');
     console.log(`DEBUG: Session table exists: ${sessionTableExists}`);
     console.log(`DEBUG: LineUser table exists: ${lineUserTableExists}`);
+    console.log(`DEBUG: GoogleUser table exists: ${googleUserTableExists}`);
+    console.log(`DEBUG: FacebookUser table exists: ${facebookUserTableExists}`);
     
   } catch (error) {
     console.error('❌ Database initialization failed:', error);

@@ -1,0 +1,408 @@
+{% comment %}
+  Facebook Login App Embed Block - Processes Facebook login redirects and handles authentication
+{% endcomment %}
+
+<div id="facebook-login-embed" class="facebook-login-embed">
+  <!-- Hidden container - no visible UI -->
+  
+  {% if request.path contains '/account/login' %}
+  <!-- Loading overlay for Facebook login -->
+  <div id="facebook-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+    <div id="facebook-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
+      <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(24, 119, 242, 0.2); border-top-color: #1877F2; border-radius: 50%; animation: facebook-login-spin 1s linear infinite;"></div>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
+      <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Facebook...</p>
+      <p id="facebook-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold; background-color: #ffebee; padding: 10px; border-radius: 4px;">請完成驗證碼以繼續登入 / Please complete the CAPTCHA to continue</p>
+      <button id="facebook-login-close" onclick="document.getElementById('facebook-login-overlay').style.display='none'; document.body.classList.remove('facebook-login-in-progress');" style="display: none; margin-top: 1rem; padding: 8px 16px; background-color: #1877F2; color: white; border: none; border-radius: 4px; cursor: pointer;">關閉此視窗 / Close this overlay</button>
+    </div>
+  </div>
+  
+  <style>
+    @keyframes facebook-login-spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    #facebook-login-overlay.show {
+      display: flex !important;
+    }
+    
+    .facebook-login-message {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #1877F2;
+      border-radius: 5px;
+      background-color: #f0f6ff;
+      text-align: center;
+    }
+    
+    .facebook-login-error {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #ff4b4b;
+      border-radius: 5px;
+      background-color: #fff0f0;
+      text-align: center;
+      color: #d32f2f;
+    }
+    
+    /* Hide login form during redirect */
+    body.facebook-login-in-progress form.customer_login,
+    body.facebook-login-in-progress form#customer_login,
+    body.facebook-login-in-progress form[action*="/account/login"] {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      z-index: -1;
+    }
+    
+    /* Hide cursor in input fields during redirects */
+    body.facebook-login-in-progress input {
+      caret-color: transparent !important;
+    }
+  </style>
+  
+  <!-- Debug panel for development -->
+  <div id="facebook-login-debug-panel" style="display: none;">
+    <!-- Debug panel removed for production -->
+  </div>
+  
+  {% endif %}
+</div>
+
+<!-- Early initialization check - outside of conditional blocks to always execute -->
+<script>
+  // Create global config object for Facebook Login
+  window.facebookLoginConfig = window.facebookLoginConfig || {};
+  
+  // Debug mode - set to false for production
+  window.facebookLoginConfig.debug = false;
+  
+  // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
+  window.facebookLoginConfig.storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
+  
+  // Use shop domain from current URL
+  window.facebookLoginConfig.shopDomain = window.location.hostname;
+  
+  // URL for JWT verification API endpoint - Update to use the correct URL with CORS support
+  window.facebookLoginConfig.jwtVerifyUrl = 'https://shopify-collection-sorter.onrender.com/auth/facebook/verify';
+  
+  // Immediately executing function to avoid sandboxing issues
+  (function() {
+    // Store login parameters in sessionStorage to persist across page refreshes and tab switches
+    function storeLoginParams(params) {
+      if (params && Object.keys(params).length > 0) {
+        try {
+          sessionStorage.setItem('facebookLoginParams', JSON.stringify(params));
+        } catch (e) {
+        }
+      }
+    }
+    
+    // Retrieve login parameters from sessionStorage
+    function getStoredLoginParams() {
+      try {
+        const storedParams = sessionStorage.getItem('facebookLoginParams');
+        const params = storedParams ? JSON.parse(storedParams) : null;
+        return params;
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    // Clear stored login parameters
+    function clearStoredLoginParams() {
+      try {
+        sessionStorage.removeItem('facebookLoginParams');
+      } catch (e) {
+      }
+    }
+    
+    // Function to get URL parameters
+    function getUrlParams() {
+      const params = {};
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        for (const [key, value] of searchParams.entries()) {
+          params[key] = value;
+        }
+        
+        // Also check hash fragment
+        if (window.location.hash && window.location.hash.length > 1) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          for (const [key, value] of hashParams.entries()) {
+            params[key] = value;
+          }
+        }
+      } catch (e) {
+      }
+      
+      return params;
+    }
+
+    // Function to check if CAPTCHA is required on the page
+    function isCaptchaRequired() {
+      try {
+        const hasCaptcha = document.querySelector('.g-recaptcha') !== null || 
+              document.querySelector('[data-sitekey]') !== null ||
+              document.querySelector('[data-recaptcha-sitekey]') !== null;
+        return hasCaptcha;
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    // Function to show loading overlay
+    function showLoadingOverlay() {
+      try {
+        const overlay = document.getElementById('facebook-login-overlay');
+        if (overlay) {
+          overlay.style.display = 'flex';
+        } else {
+        }
+      } catch (e) {
+      }
+    }
+    
+    // Function to hide loading overlay
+    function hideLoadingOverlay() {
+      try {
+        const overlay = document.getElementById('facebook-login-overlay');
+        if (overlay) {
+          overlay.style.display = 'none';
+        } else {
+        }
+      } catch (e) {
+      }
+    }
+    
+    // Function to show CAPTCHA warning
+    function showCaptchaWarning() {
+      try {
+        const captchaWarning = document.getElementById('facebook-captcha-warning');
+        const closeButton = document.getElementById('facebook-login-close');
+        const spinner = document.querySelector('#facebook-login-message .spinner');
+        const messageBox = document.getElementById('facebook-login-message');
+        
+        if (captchaWarning) {
+          captchaWarning.style.display = 'block';
+        }
+        
+        if (closeButton) {
+          closeButton.style.display = 'inline-block';
+          // The onclick attribute is already set in the HTML
+        }
+        
+        if (spinner) {
+          spinner.style.display = 'none';
+        }
+        
+        // Make the overlay more transparent to allow seeing the CAPTCHA
+        const overlay = document.getElementById('facebook-login-overlay');
+        if (overlay) {
+          overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
+        }
+        
+        // Remove the body class to show the form
+        document.body.classList.remove('facebook-login-in-progress');
+      } catch (e) {
+      }
+    }
+    
+    // Function to verify JWT token with the server
+    async function verifyAndProcessJWT(token) {
+      try {
+        showLoadingOverlay();
+        
+        // Enhanced token validation
+        if (!token || typeof token !== 'string' || token.length < 10) {
+          console.error('Invalid token format');
+          hideLoadingOverlay();
+          return;
+        }
+        
+        // Verify token with server
+        const response = await fetch(window.facebookLoginConfig.jwtVerifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+        
+        if (!response.ok) {
+          console.error('Token verification failed:', response.status);
+          hideLoadingOverlay();
+          return;
+        }
+        
+        const userData = await response.json();
+        
+        // Process the verified user data
+        if (userData && userData.facebook_login === 'success') {
+          processFacebookLoginWithData(userData);
+        } else {
+          console.error('Invalid user data from token verification');
+          hideLoadingOverlay();
+        }
+      } catch (error) {
+        console.error('Error verifying token:', error);
+        hideLoadingOverlay();
+      }
+    }
+    
+    // Process Facebook login with verified user data
+    function processFacebookLoginWithData(userData) {
+      if (userData && userData.facebook_login === 'success') {
+        try {
+          // Add class to body to hide login forms
+          document.body.classList.add('facebook-login-in-progress');
+          
+          // Show loading overlay if not already showing
+          showLoadingOverlay();
+          
+          // Extract user data
+          const customerId = userData.customer_id;
+          const customerEmail = userData.customer_email;
+          const accessToken = userData.access_token;
+          const returnUrl = userData.return_url || '/account';
+          
+          if (customerEmail && accessToken) {
+            // Wait a bit to make sure the page is fully loaded
+            setTimeout(() => {
+              try {
+                // Find the standard customer login form
+                const loginForm = document.querySelector('form.customer_login') || 
+                                  document.querySelector('form#customer_login') || 
+                                  document.querySelector('form[action*="/account/login"]');
+                
+                if (loginForm) {
+                  // Find email and password inputs within this form
+                  let emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
+                  let passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
+                  const returnToInput = loginForm.querySelector('input[name="return_to"]');
+                  
+                  // If we found the inputs, fill them
+                  if (emailInput && passwordInput) {
+                    // Fill in the form
+                    emailInput.value = customerEmail;
+                    passwordInput.value = accessToken;
+                    
+                    // Set return URL if available
+                    if (returnToInput && returnUrl) {
+                      returnToInput.value = returnUrl;
+                    }
+                    
+                    // Check if CAPTCHA is required
+                    if (isCaptchaRequired()) {
+                      // Show CAPTCHA warning and make form visible
+                      showCaptchaWarning();
+                      
+                      // Still try to submit the form - it might work if CAPTCHA is optional
+                      try {
+                        const submitButton = loginForm.querySelector('button[type="submit"], input[type="submit"]');
+                        if (submitButton) {
+                          submitButton.click();
+                        }
+                      } catch (submitError) {
+                        // Silent error - user will need to complete CAPTCHA manually
+                      }
+                    } else {
+                      // No CAPTCHA, submit the form
+                      try {
+                        const submitButton = loginForm.querySelector('button[type="submit"], input[type="submit"]');
+                        if (submitButton) {
+                          submitButton.click();
+                        } else {
+                          // If no submit button found, try form.submit()
+                          loginForm.submit();
+                        }
+                        
+                        // Set a timeout to redirect if form submission doesn't work
+                        setTimeout(() => {
+                          window.location.href = returnUrl;
+                        }, 3000);
+                      } catch (submitError) {
+                        // If submission fails, redirect to account page
+                        window.location.href = returnUrl;
+                      }
+                    }
+                  } else {
+                    hideLoadingOverlay();
+                    document.body.classList.remove('facebook-login-in-progress');
+                  }
+                } else {
+                  hideLoadingOverlay();
+                  document.body.classList.remove('facebook-login-in-progress');
+                }
+              } catch (e) {
+                // If all else fails, just redirect to account
+                window.location.href = '/account';
+              }
+            }, 500);
+          } else {
+            hideLoadingOverlay();
+            document.body.classList.remove('facebook-login-in-progress');
+          }
+        } catch (e) {
+          hideLoadingOverlay();
+        }
+      } else {
+        hideLoadingOverlay();
+      }
+    }
+    
+    // Main function to process Facebook login from JWT token
+    function processFacebookLogin() {
+      const params = getUrlParams();
+      
+      // Check if we have a token in the URL
+      if (params.token) {
+        // Store token in case we need it later
+        storeLoginParams({ token: params.token });
+        
+        // Process the token
+        verifyAndProcessJWT(params.token);
+        
+        // Clean up URL to remove token
+        try {
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete('token');
+          window.history.replaceState({}, document.title, newUrl.toString());
+        } catch (e) {
+          // Silent error - URL cleanup is not critical
+        }
+      } else {
+        // Check if we have stored parameters from a previous attempt
+        const storedParams = getStoredLoginParams();
+        if (storedParams && storedParams.token) {
+          // Process stored token
+          verifyAndProcessJWT(storedParams.token);
+          
+          // Clear stored params after processing
+          clearStoredLoginParams();
+        }
+      }
+    }
+    
+    // Check if we're on the login page
+    if (window.location.pathname.includes('/account/login')) {
+      // Process Facebook login
+      processFacebookLogin();
+    }
+  })(); // End of immediately executing function
+</script>
+
+{% schema %}
+{
+  "name": "Facebook Login Processor",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "storefront_api_token",
+      "label": "Storefront API Token",
+      "info": "Optional: Enter your Storefront API token if not set in theme settings"
+    }
+  ]
+}
+{% endschema %}

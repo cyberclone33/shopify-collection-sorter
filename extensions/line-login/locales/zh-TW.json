@@ -41,6 +41,23 @@
       "logging_in": "登入中..."
     }
   },
+  "facebook_login": {
+    "button": {
+      "text": "Facebook 登入",
+      "alt": "使用 Facebook 登入",
+      "login": "用Facebook登入",
+      "link": "連結Facebook帳號"
+    },
+    "handler": {
+      "welcome": "歡迎, %{name}！",
+      "login_success": "已成功使用 Facebook 登入",
+      "redirecting": "正在重新導向到您的帳戶...",
+      "login_error": "抱歉，登入時發生問題。請重試或聯繫客服。",
+      "message": "您已成功透過Facebook驗證。",
+      "complete_login": "完成登入",
+      "logging_in": "登入中..."
+    }
+  },
   "customer": {
     "login": {
       "line_login_title": "LINE 登入",
