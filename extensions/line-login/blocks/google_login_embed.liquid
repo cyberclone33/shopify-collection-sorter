@@ -71,9 +71,19 @@
   {% endif %}
 </div>
 
+<!-- Early initialization check - outside of conditional blocks to always execute -->
+<script>
+  console.log('[Google Login] Script tag loaded - ' + new Date().toISOString());
+</script>
+
 <script>
   // Create global config object for Google Login
   window.googleLoginConfig = window.googleLoginConfig || {};
+  
+  // Early initialization check
+  console.log('[Google Login] Initial script execution - ' + new Date().toISOString());
+  console.log('[Google Login] Current URL: ' + window.location.href);
+  console.log('[Google Login] Path: ' + window.location.pathname);
   
   // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
   window.googleLoginConfig.storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
@@ -89,6 +99,9 @@
   
   // Immediately executing function to avoid sandboxing issues
   (function() {
+    // Log that IIFE is executing
+    console.log('[Google Login] IIFE executing - ' + new Date().toISOString());
+    
     // Store login parameters in sessionStorage to persist across page refreshes and tab switches
     function storeLoginParams(params) {
       if (params && Object.keys(params).length > 0) {
@@ -481,6 +494,7 @@
     if (document.readyState === 'loading') {
       debugLog('Document still loading, adding DOMContentLoaded listener');
       document.addEventListener('DOMContentLoaded', function() {
+        debugLog('DOMContentLoaded fired');
         fixDuplicateIds();
         processGoogleLogin();
       });
