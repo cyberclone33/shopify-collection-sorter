@@ -21,6 +21,10 @@ const LINE_AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
 const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const LINE_PROFILE_URL = "https://api.line.me/v2/profile";
 
+// JWT configuration
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-for-development-only";
+const JWT_EXPIRATION = "1h"; // 1 hour expiration
+
 // Interface for LINE user profile
 interface LineProfile {
   userId: string;
@@ -38,6 +42,17 @@ interface LineTokenResponse {
   scope: string;
   token_type: string;
   id_token?: string;
+}
+
+// Interface for LINE JWT payload
+export interface LineJwtPayload {
+  customer_id: string;
+  customer_email: string;
+  name: string;
+  access_token: string;
+  return_url?: string;
+  exp?: number;
+  iat?: number;
 }
 
 /**
@@ -235,4 +250,38 @@ export async function createOrLinkShopifyCustomer(
 
   // For now, we'll just return a placeholder
   return "shopify-customer-id";
+}
+
+/**
+ * Generate a JWT token for LINE login
+ */
+export function createLineJWT(
+  customerId: string,
+  customerEmail: string,
+  name: string,
+  accessToken: string,
+  returnUrl: string = "/account"
+): string {
+  const payload: LineJwtPayload = {
+    customer_id: customerId,
+    customer_email: customerEmail,
+    name,
+    access_token: accessToken,
+    return_url: returnUrl
+  };
+
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRATION });
+}
+
+/**
+ * Verify a LINE JWT token
+ */
+export function verifyLineJWT(token: string): LineJwtPayload {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as LineJwtPayload;
+    return decoded;
+  } catch (error) {
+    console.error("Error verifying LINE JWT:", error);
+    throw error;
+  }
 }

@@ -3,7 +3,8 @@ import {
   getLineAccessToken, 
   getLineProfile, 
   parseIdToken,
-  saveLineUser
+  saveLineUser,
+  createLineJWT
 } from "../utils/line-auth.server";
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
 import { PrismaClient } from "@prisma/client";
@@ -98,17 +99,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
             try {
               await setCustomerPassword(shop, customerId, password);
               
-              // Redirect to login page with all necessary parameters
-              const params = new URLSearchParams({
-                line_login: 'success',
-                customer_id: customerId,
-                name: encodeURIComponent(lineProfile.displayName),
-                customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-                access_token: password,
-                return_url: '/account'
-              });
+              // Create a JWT token with all necessary information
+              const email = idTokenData?.email || `line_${lineProfile.userId}@example.com`;
+              const jwt = createLineJWT(
+                customerId,
+                email,
+                lineProfile.displayName,
+                password,
+                '/account'
+              );
               
-              return redirect(`https://${shop}/account/login?${params.toString()}`);
+              // Redirect to login page with JWT token
+              return redirect(`https://${shop}/account/login?token=${jwt}`);
             } catch (passwordError) {
               console.error("Error setting customer password:", passwordError);
             }
@@ -124,17 +126,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     
     // Fallback: If we couldn't create/link a customer or don't have an access token,
-    // redirect to the login page with LINE user info
-    const params = new URLSearchParams({
-      line_login: 'success',
-      line_id: lineProfile.userId,
-      name: encodeURIComponent(lineProfile.displayName),
-      customer_email: idTokenData?.email || `line_${lineProfile.userId}@example.com`,
-      access_token: tokenData.access_token,
-      return_url: '/account'
-    });
+    // create a JWT token with LINE user info
+    const email = idTokenData?.email || `line_${lineProfile.userId}@example.com`;
+    const jwt = createLineJWT(
+      lineProfile.userId,
+      email,
+      lineProfile.displayName,
+      tokenData.access_token,
+      '/account'
+    );
     
-    return redirect(`https://${shop}/account/login?${params.toString()}`);
+    return redirect(`https://${shop}/account/login?token=${jwt}`);
     
   } catch (error) {
     console.error("Error processing LINE callback:", error);

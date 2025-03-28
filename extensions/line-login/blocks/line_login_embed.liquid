@@ -81,7 +81,42 @@
   // Debug mode
   window.lineLoginConfig.debug = false;
   
+  // URL for JWT verification API endpoint
+  window.lineLoginConfig.jwtVerifyUrl = 'https://shopify-collection-sorter.onrender.com/auth/line/verify';
+  
   document.addEventListener('DOMContentLoaded', function() {
+    // Function to store login parameters in session storage
+    function storeLoginParams(params) {
+      if (params && Object.keys(params).length > 0) {
+        try {
+          sessionStorage.setItem('lineLoginParams', JSON.stringify(params));
+        } catch (e) {
+          // Silent error
+        }
+      }
+    }
+    
+    // Function to get stored login parameters
+    function getStoredLoginParams() {
+      try {
+        const storedParams = sessionStorage.getItem('lineLoginParams');
+        const params = storedParams ? JSON.parse(storedParams) : null;
+        return params;
+      } catch (e) {
+        // Silent error
+        return null;
+      }
+    }
+    
+    // Function to clear stored login parameters
+    function clearStoredLoginParams() {
+      try {
+        sessionStorage.removeItem('lineLoginParams');
+      } catch (e) {
+        // Silent error
+      }
+    }
+    
     // Function to get URL parameters (consolidated from both files)
     function getUrlParams() {
       const params = {};
@@ -113,6 +148,7 @@
       const overlay = document.getElementById('line-login-overlay');
       if (overlay) {
         overlay.classList.add('show');
+        overlay.style.display = 'flex';
       }
     }
     
@@ -127,118 +163,309 @@
         }, 300);
       }
     }
-
-    // Process LINE login if parameters are present (consolidated function)
-    function processLineLogin() {
-      const params = getUrlParams();
-      let loginParams = params;
-      
-      // If no params in URL but we have stored params, use those (for tab switching recovery)
-      if (!params.line_login && !params.customer_email) {
-        const storedParams = getStoredLoginParams();
-        if (storedParams && storedParams.line_login === 'success') {
-          loginParams = storedParams;
-          debugLog('Using stored login parameters', loginParams);
+    
+    // Function to show CAPTCHA warning
+    function showCaptchaWarning() {
+      try {
+        // Hide loading overlay since user interaction is needed
+        const overlay = document.getElementById('line-login-overlay');
+        if (overlay) {
+          overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
         }
-      } else if (params.line_login === 'success') {
-        // Store the parameters for potential tab switching recovery
-        storeLoginParams(params);
-      }
-      
-      // Check if this is a LINE login redirect
-      if (loginParams.line_login === 'success') {
-        // Add class to body to hide login forms
-        document.body.classList.add('line-login-in-progress');
         
-        // Show loading overlay
+        // Keep the form visible but still try to submit
+        document.body.classList.remove('line-login-in-progress');
+        
+        // Add a helper message for the user
+        const loginForm = document.querySelector('form.customer_login') || 
+                         document.querySelector('form#customer_login') || 
+                         document.querySelector('form[action*="/account/login"]');
+        
+        if (loginForm) {
+          // Create a message to guide the user
+          const messageDiv = document.createElement('div');
+          messageDiv.className = 'line-login-message';
+          messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
+                                '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
+          messageDiv.style.color = '#06C755'; // LINE green color
+          
+          // Insert at the top of the form
+          loginForm.insertBefore(messageDiv, loginForm.firstChild);
+          
+          // Scroll to and highlight the CAPTCHA
+          const captchaElement = document.querySelector('.g-recaptcha') || 
+                                document.querySelector('[data-sitekey]') || 
+                                document.querySelector('[data-recaptcha-sitekey]');
+          
+          if (captchaElement) {
+            captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
+            captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
+          }
+        }
+      } catch (e) {
+        // Fallback: just hide the overlay completely if there's an error
+        hideLoadingOverlay();
+        document.body.classList.remove('line-login-in-progress');
+      }
+    }
+    
+    // Function to verify and process JWT token
+    async function verifyAndProcessJWT(token) {
+      try {
         showLoadingOverlay();
         
-        // Extract customer information
-        const customerId = loginParams.customer_id || loginParams.line_id || '';
-        const customerName = loginParams.name ? decodeURIComponent(loginParams.name) : '';
-        const customerEmail = loginParams.customer_email ? decodeURIComponent(loginParams.customer_email) : '';
-        const accessToken = loginParams.access_token || '';
-        const returnUrl = loginParams.return_url || '/account';
+        // Enhanced token validation
+        if (!token || typeof token !== 'string' || token.length < 10) {
+          throw new Error('Invalid token format');
+        }
         
-        // If we have email and access token, proceed with login
-        if (customerEmail && accessToken) {
-          // Find all possible email and password fields on the page
-          const emailInputs = document.querySelectorAll('input[type="email"], input[name="customer[email]"]');
-          const passwordInputs = document.querySelectorAll('input[type="password"], input[name="customer[password]"]');
-          
-          // Fill all email and password fields found
-          emailInputs.forEach(input => {
-            input.value = customerEmail;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+        try {
+          // Send token to backend for verification with detailed error handling
+          const response = await fetch(window.lineLoginConfig.jwtVerifyUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token })
           });
           
-          passwordInputs.forEach(input => {
-            input.value = accessToken;
-            // Trigger input events to ensure any validation or listeners are triggered
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          });
-          
-          // Check if CAPTCHA is present
-          if (isCaptchaRequired()) {
-            // Hide loading overlay since user interaction is needed
-            hideLoadingOverlay();
-            
-            // Add a helper message for the user
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              // Create a message to guide the user
-              const messageDiv = document.createElement('div');
-              messageDiv.className = 'line-login-message';
-              messageDiv.innerHTML = '<p style="font-weight: bold;">您已從 LINE 登入，請完成下方驗證碼以繼續。</p>' + 
-                                    '<p>You\'ve logged in with LINE. Please complete the CAPTCHA below to continue.</p>';
-              messageDiv.style.color = '#06C755'; // LINE green color
-              
-              // Insert at the top of the form
-              loginForm.insertBefore(messageDiv, loginForm.firstChild);
-              
-              // Scroll to and highlight the CAPTCHA
-              const captchaElement = document.querySelector('.g-recaptcha') || 
-                                    document.querySelector('[data-sitekey]') || 
-                                    document.querySelector('[data-recaptcha-sitekey]');
-              
-              if (captchaElement) {
-                captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                captchaElement.style.boxShadow = '0 0 10px 2px rgba(6, 199, 85, 0.7)';
-                captchaElement.style.transition = 'box-shadow 0.3s ease-in-out';
-              }
-            }
-          } else {
-            // If no CAPTCHA, try to auto-submit the form
-            const loginForm = document.querySelector('form.customer_login') || 
-                             document.querySelector('form#customer_login') || 
-                             document.querySelector('form[action*="/account/login"]');
-            
-            if (loginForm) {
-              const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
-              
-              // Add a slight delay before submitting to allow the form to update
-              setTimeout(() => {
-                if (submitButton) {
-                  submitButton.click();
-                } else {
-                  loginForm.submit();
-                }
-                // Keep overlay visible during submission
-              }, 500);
-            } else {
-              // If no form found, hide the overlay
-              hideLoadingOverlay();
-            }
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`JWT verification failed: ${response.statusText}. Details: ${errorText}`);
           }
-        } else {
-          // If missing email or token, hide the overlay
+          
+          // Get the verified data
+          const userData = await response.json();
+          
+          // Now process the login with verified data
+          processLineLoginWithData(userData);
+        } catch (fetchError) {
+          // Check if it's a CORS issue
+          if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
+            throw new Error('CORS error: The server is not accessible from this domain. Please check CORS configuration.');
+          } else {
+            throw fetchError;
+          }
+        }
+        
+      } catch (error) {
+        hideLoadingOverlay();
+        
+        // Add error message to the page
+        try {
+          const container = document.querySelector('.customer.login') || document.querySelector('.page-width');
+          if (container) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'line-login-error';
+            errorDiv.innerHTML = `<p>LINE Login Error: ${error.message}</p>`;
+            container.prepend(errorDiv);
+          }
+        } catch (e) {
+          // Silent error
+        }
+      }
+    }
+
+    // Process LINE login with verified data
+    function processLineLoginWithData(userData) {
+      if (userData && userData.line_login === 'success') {
+        try {
+          // Add class to body to hide login forms
+          document.body.classList.add('line-login-in-progress');
+          
+          // Show loading overlay if not already showing
+          showLoadingOverlay();
+          
+          // Extract customer information
+          const customerEmail = userData.customer_email;
+          const accessToken = userData.access_token;
+          const returnUrl = userData.return_url || '/account';
+          
+          if (customerEmail && accessToken) {
+            // Wait a bit to make sure the page is fully loaded
+            setTimeout(() => {
+              try {
+                // Find the standard customer login form
+                const loginForm = document.querySelector('form.customer_login') || 
+                                  document.querySelector('form#customer_login') || 
+                                  document.querySelector('form[action*="/account/login"]');
+                
+                if (loginForm) {
+                  // Find email and password inputs within this form
+                  let emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
+                  let passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
+                  const returnToInput = loginForm.querySelector('input[name="return_to"]');
+                  
+                  // Try alternative selectors if the standard ones don't work
+                  if (!emailInput) {
+                    emailInput = document.getElementById('customer-email') || 
+                                document.getElementById('customer_email');
+                  }
+                  
+                  if (!passwordInput) {
+                    passwordInput = document.getElementById('customer-password') || 
+                                   document.getElementById('customer_password');
+                  }
+                  
+                  if (emailInput && passwordInput) {
+                    // Set the values
+                    emailInput.value = customerEmail;
+                    passwordInput.value = accessToken;
+                    
+                    // Trigger input events to update any validators
+                    try {
+                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      
+                      // Also trigger change events
+                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    } catch (e) {
+                      // Silent error
+                    }
+                    
+                    // Set return URL if field exists
+                    if (returnToInput) {
+                      returnToInput.value = returnUrl;
+                    }
+                    
+                    // Always attempt to submit the form, even if CAPTCHA is detected
+                    const hasCaptcha = isCaptchaRequired();
+                    if (hasCaptcha) {
+                      // Make the overlay semi-transparent but keep it visible
+                      const overlay = document.getElementById('line-login-overlay');
+                      if (overlay) {
+                        overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                      }
+                      
+                      // Keep the form visible but still try to submit
+                      document.body.classList.remove('line-login-in-progress');
+                      
+                      // Try to submit the form
+                      setTimeout(() => {
+                        try {
+                          // Try clicking the submit button first
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            submitButton.click();
+                            
+                            // Check if form submission was successful after a short delay
+                            setTimeout(() => {
+                              // If we're still on the login page, show a message to complete CAPTCHA manually
+                              if (window.location.href.includes('/account/login')) {
+                                showCaptchaWarning();
+                              }
+                            }, 1000);
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            loginForm.submit();
+                          }
+                        } catch (e) {
+                          showCaptchaWarning();
+                        }
+                      }, 300);
+                    } else {
+                      // No CAPTCHA, proceed normally
+                      setTimeout(() => {
+                        try {
+                          // Try clicking the submit button first (most reliable)
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            submitButton.click();
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            loginForm.submit();
+                          }
+                        } catch (e) {
+                          // If all else fails, just redirect to account
+                          window.location.href = '/account';
+                        }
+                      }, 300);
+                    }
+                  } else {
+                    hideLoadingOverlay();
+                    document.body.classList.remove('line-login-in-progress');
+                  }
+                } else {
+                  hideLoadingOverlay();
+                  document.body.classList.remove('line-login-in-progress');
+                }
+              } catch (e) {
+                // If all else fails, just redirect to account
+                window.location.href = '/account';
+              }
+            }, 500);
+          } else {
+            hideLoadingOverlay();
+            document.body.classList.remove('line-login-in-progress');
+          }
+        } catch (e) {
           hideLoadingOverlay();
+        }
+      } else {
+        hideLoadingOverlay();
+      }
+    }
+    
+    // Main function to process LINE login from JWT token
+    function processLineLogin() {
+      const params = getUrlParams();
+      
+      // Check if we have a JWT token in the URL
+      if (params.token) {
+        storeLoginParams({ token: params.token });
+        
+        // Verify and process the JWT
+        verifyAndProcessJWT(params.token);
+        
+        // Remove token from URL for security
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('token');
+          window.history.replaceState({}, document.title, url.toString());
+        } catch (e) {
+          // Silent error
+        }
+      } 
+      // BACKWARD COMPATIBILITY: Check for old-style URL parameters
+      else if (params.line_login === 'success') {
+        // Extract customer information from URL parameters
+        const customerId = params.customer_id || params.line_id || '';
+        const customerName = params.name ? decodeURIComponent(params.name) : '';
+        const customerEmail = params.customer_email ? decodeURIComponent(params.customer_email) : '';
+        const accessToken = params.access_token || '';
+        const returnUrl = params.return_url || '/account';
+        
+        // Process with the old-style parameters
+        processLineLoginWithData({
+          line_login: 'success',
+          customer_id: customerId,
+          customer_email: customerEmail,
+          name: customerName,
+          access_token: accessToken,
+          return_url: returnUrl
+        });
+        
+        // Store parameters for potential tab switching recovery
+        storeLoginParams({
+          line_login: 'success',
+          customer_id: customerId,
+          customer_email: customerEmail,
+          name: customerName,
+          access_token: accessToken,
+          return_url: returnUrl
+        });
+      }
+      else {
+        // Check for stored token or parameters (in case of page refresh)
+        const storedParams = getStoredLoginParams();
+        if (storedParams && storedParams.token) {
+          verifyAndProcessJWT(storedParams.token);
+        } 
+        // BACKWARD COMPATIBILITY: Check for stored old-style parameters
+        else if (storedParams && storedParams.line_login === 'success') {
+          processLineLoginWithData(storedParams);
         }
       }
     }

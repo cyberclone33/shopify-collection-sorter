@@ -12,7 +12,8 @@
       <div class="spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(66, 133, 244, 0.2); border-top-color: #4285F4; border-radius: 50%; animation: google-login-spin 1s linear infinite;"></div>
       <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
       <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Google...</p>
-      <p id="google-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold;">請不要切換分頁，否則可能需要重新驗證 / Please don't switch tabs or you may need to re-verify</p>
+      <p id="google-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold; background-color: #ffebee; padding: 10px; border-radius: 4px;">請完成驗證碼以繼續登入 / Please complete the CAPTCHA to continue</p>
+      <button id="google-login-close" onclick="document.getElementById('google-login-overlay').style.display='none'; document.body.classList.remove('google-login-in-progress');" style="display: none; margin-top: 1rem; padding: 8px 16px; background-color: #4285F4; color: white; border: none; border-radius: 4px; cursor: pointer;">關閉此視窗 / Close this overlay</button>
     </div>
   </div>
   
@@ -61,29 +62,20 @@
   </style>
   
   <!-- Debug panel for development -->
-  <div id="google-login-debug-panel" style="position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #00ff00; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; max-width: 500px; max-height: 300px; overflow: auto; display: none;">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-      <strong>Google Login Debug</strong>
-      <button onclick="document.getElementById('google-login-debug-panel').style.display='none'" style="background: none; border: none; color: white; cursor: pointer;">×</button>
-    </div>
-    <div id="google-login-debug-content"></div>
+  <div id="google-login-debug-panel" style="display: none;">
+    <!-- Debug panel removed for production -->
   </div>
+  
   {% endif %}
 </div>
 
 <!-- Early initialization check - outside of conditional blocks to always execute -->
 <script>
-  console.log('[Google Login] Script tag loaded - ' + new Date().toISOString());
-</script>
-
-<script>
   // Create global config object for Google Login
   window.googleLoginConfig = window.googleLoginConfig || {};
   
-  // Early initialization check
-  console.log('[Google Login] Initial script execution - ' + new Date().toISOString());
-  console.log('[Google Login] Current URL: ' + window.location.href);
-  console.log('[Google Login] Path: ' + window.location.pathname);
+  // Debug mode - set to false for production
+  window.googleLoginConfig.debug = false;
   
   // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
   window.googleLoginConfig.storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
@@ -91,25 +83,17 @@
   // Use shop domain from current URL
   window.googleLoginConfig.shopDomain = window.location.hostname;
   
-  // Debug mode
-  window.googleLoginConfig.debug = true;
-  
-  // URL for JWT verification API endpoint - FIXED to use the correct Render app URL from logs
+  // URL for JWT verification API endpoint - Update to use the correct URL with CORS support
   window.googleLoginConfig.jwtVerifyUrl = 'https://shopify-collection-sorter.onrender.com/auth/google/verify';
   
   // Immediately executing function to avoid sandboxing issues
   (function() {
-    // Log that IIFE is executing
-    console.log('[Google Login] IIFE executing - ' + new Date().toISOString());
-    
     // Store login parameters in sessionStorage to persist across page refreshes and tab switches
     function storeLoginParams(params) {
       if (params && Object.keys(params).length > 0) {
         try {
           sessionStorage.setItem('googleLoginParams', JSON.stringify(params));
-          debugLog('Stored login params:', params);
         } catch (e) {
-          debugLog('Error storing params:', e.message);
         }
       }
     }
@@ -119,10 +103,8 @@
       try {
         const storedParams = sessionStorage.getItem('googleLoginParams');
         const params = storedParams ? JSON.parse(storedParams) : null;
-        debugLog('Retrieved stored params:', params);
         return params;
       } catch (e) {
-        debugLog('Error retrieving params:', e.message);
         return null;
       }
     }
@@ -131,9 +113,7 @@
     function clearStoredLoginParams() {
       try {
         sessionStorage.removeItem('googleLoginParams');
-        debugLog('Cleared stored login params');
       } catch (e) {
-        debugLog('Error clearing params:', e.message);
       }
     }
     
@@ -154,10 +134,8 @@
           }
         }
       } catch (e) {
-        debugLog('Error parsing URL params:', e.message);
       }
       
-      debugLog('URL parameters:', params);
       return params;
     }
 
@@ -167,10 +145,8 @@
         const hasCaptcha = document.querySelector('.g-recaptcha') !== null || 
               document.querySelector('[data-sitekey]') !== null ||
               document.querySelector('[data-recaptcha-sitekey]') !== null;
-        debugLog('CAPTCHA required:', hasCaptcha);
         return hasCaptcha;
       } catch (e) {
-        debugLog('Error checking for CAPTCHA:', e.message);
         return false;
       }
     }
@@ -181,12 +157,9 @@
         const overlay = document.getElementById('google-login-overlay');
         if (overlay) {
           overlay.style.display = 'flex';
-          debugLog('Showing loading overlay');
         } else {
-          debugLog('ERROR: Loading overlay element not found');
         }
       } catch (e) {
-        debugLog('Error showing overlay:', e.message);
       }
     }
     
@@ -196,67 +169,83 @@
         const overlay = document.getElementById('google-login-overlay');
         if (overlay) {
           overlay.style.display = 'none';
-          debugLog('Hiding loading overlay');
         } else {
-          debugLog('ERROR: Loading overlay element not found');
         }
       } catch (e) {
-        debugLog('Error hiding overlay:', e.message);
       }
     }
     
-    // Function to log debug messages
-    function debugLog(...args) {
-      if (window.googleLoginConfig.debug) {
-        console.log('[Google Login]', ...args);
+    // Function to show CAPTCHA warning
+    function showCaptchaWarning() {
+      try {
+        const captchaWarning = document.getElementById('google-captcha-warning');
+        const closeButton = document.getElementById('google-login-close');
+        const spinner = document.querySelector('#google-login-message .spinner');
+        const messageBox = document.getElementById('google-login-message');
         
-        try {
-          // Add to debug panel if it exists
-          const debugPanel = document.getElementById('google-login-debug-panel');
-          const debugContent = document.getElementById('google-login-debug-content');
-          
-          if (debugPanel && debugContent) {
-            debugPanel.style.display = 'block';
-            
-            // Format the debug message
-            const message = args.map(arg => {
-              if (typeof arg === 'object') {
-                try {
-                  return JSON.stringify(arg);
-                } catch (e) {
-                  return String(arg);
-                }
-              }
-              return String(arg);
-            }).join(' ');
-            
-            // Add timestamp
-            const timestamp = new Date().toISOString().split('T')[1].substring(0, 8);
-            const logEntry = document.createElement('div');
-            logEntry.innerHTML = `<span style="opacity: 0.6;">[${timestamp}]</span> ${message}`;
-            
-            // Add to panel
-            debugContent.appendChild(logEntry);
-            
-            // Auto-scroll to bottom
-            debugPanel.scrollTop = debugPanel.scrollHeight;
-            
-            // Limit entries
-            while (debugContent.children.length > 50) {
-              debugContent.removeChild(debugContent.firstChild);
-            }
-          }
-        } catch (e) {
-          console.error('[Google Login Debug Error]', e.message);
+        if (captchaWarning) {
+          captchaWarning.style.display = 'block';
         }
+        
+        if (closeButton) {
+          closeButton.style.display = 'inline-block';
+          // The onclick attribute is already set in the HTML
+        }
+        
+        if (spinner) {
+          spinner.style.display = 'none';
+        }
+        
+        // Make the overlay more transparent to allow seeing the CAPTCHA
+        const overlay = document.getElementById('google-login-overlay');
+        if (overlay) {
+          overlay.style.backgroundColor = 'rgba(0,0,0,0.2)';
+          
+          // Move the message box to the top to avoid covering the CAPTCHA
+          if (messageBox) {
+            messageBox.style.marginTop = '-200px';
+          }
+        }
+        
+        // Remove the class that hides the form to ensure CAPTCHA is visible
+        document.body.classList.remove('google-login-in-progress');
+        
+        // Ensure the login form is visible
+        const loginForm = document.querySelector('form.customer_login') || 
+                          document.querySelector('form#customer_login') || 
+                          document.querySelector('form[action*="/account/login"]');
+        if (loginForm) {
+          loginForm.style.opacity = '1';
+          loginForm.style.pointerEvents = 'auto';
+          loginForm.style.position = 'static';
+          loginForm.style.zIndex = 'auto';
+        }
+        
+        // Ensure the CAPTCHA is visible by scrolling to it if needed
+        const captcha = document.querySelector('.g-recaptcha') || 
+                       document.querySelector('[data-sitekey]') ||
+                       document.querySelector('[data-recaptcha-sitekey]');
+        if (captcha) {
+          setTimeout(() => {
+            captcha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
+        }
+        
+      } catch (e) {
+        // Fallback: just hide the overlay completely if there's an error
+        hideLoadingOverlay();
+        document.body.classList.remove('google-login-in-progress');
       }
+    }
+    
+    // Function to log debug messages - keep the function but make it empty
+    function debugLog(...args) {
+      // Debug logging disabled for production
     }
     
     // Function to fix duplicate IDs on the page 
     function fixDuplicateIds() {
       try {
-        debugLog('Checking for duplicate IDs on the page');
-        
         // Find all elements with common Shopify IDs that might be duplicated
         const commonIds = ['customer-email', 'customer-password', 'customer_email', 'customer_password'];
         
@@ -264,26 +253,21 @@
           const elements = document.querySelectorAll(`#${id}`);
           
           if (elements.length > 1) {
-            debugLog(`Found ${elements.length} elements with duplicate ID: ${id}`);
-            
             // Fix all but the first element by adding a suffix
             for (let i = 1; i < elements.length; i++) {
               const element = elements[i];
               const newId = `${id}-${i}`;
               element.id = newId;
-              debugLog(`Fixed duplicate ID: changed ${id} to ${newId}`);
             }
           }
         });
       } catch (e) {
-        debugLog('Error fixing duplicate IDs:', e.message);
       }
     }
     
     // Function to verify JWT token server-side and process login
     async function verifyAndProcessJWT(token) {
       try {
-        debugLog('Starting JWT verification process');
         showLoadingOverlay();
         
         // Enhanced token validation
@@ -291,34 +275,38 @@
           throw new Error('Invalid token format');
         }
         
-        debugLog('Token validation passed, sending to server:', token.substring(0, 15) + '...');
-        
-        // Send token to backend for verification
-        const response = await fetch(window.googleLoginConfig.jwtVerifyUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ token })
-        });
-        
-        debugLog('Server response status:', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`JWT verification failed: ${response.statusText}. Details: ${errorText}`);
+        try {
+          // Send token to backend for verification with detailed error handling
+          const response = await fetch(window.googleLoginConfig.jwtVerifyUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({ token })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`JWT verification failed: ${response.statusText}. Details: ${errorText}`);
+          }
+          
+          // Get the verified data
+          const userData = await response.json();
+          
+          // Now process the login with verified data
+          processGoogleLoginWithData(userData);
+        } catch (fetchError) {
+          // Specific handling for fetch errors
+          // Check if it's a CORS issue
+          if (fetchError.message.includes('CORS') || fetchError.message.includes('Failed to fetch')) {
+            throw new Error('CORS error: The server is not accessible from this domain. Please check CORS configuration.');
+          } else {
+            throw fetchError;
+          }
         }
         
-        // Get the verified data
-        const userData = await response.json();
-        debugLog('JWT verification successful', userData);
-        
-        // Now process the login with verified data
-        processGoogleLoginWithData(userData);
-        
       } catch (error) {
-        debugLog('Error verifying JWT:', error.message);
         hideLoadingOverlay();
         
         // Add error message to the page
@@ -327,11 +315,10 @@
           if (container) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'google-login-error';
-            errorDiv.innerHTML = 'Google login verification failed. Please try again or use your email and password.';
+            errorDiv.innerHTML = 'Google login verification failed: ' + error.message + '. Please try again or use your email and password.';
             container.prepend(errorDiv);
           }
         } catch (e) {
-          debugLog('Error showing error message:', e.message);
         }
       }
     }
@@ -339,8 +326,6 @@
     // Process the Google login with verified data
     function processGoogleLoginWithData(userData) {
       if (userData && userData.google_login === 'success') {
-        debugLog('Processing successful login data');
-        
         try {
           // Add class to body to hide login forms
           document.body.classList.add('google-login-in-progress');
@@ -353,12 +338,6 @@
           const accessToken = userData.access_token;
           const returnUrl = userData.return_url || '/account';
           
-          debugLog('Processing login with verified data', { 
-            email: customerEmail,
-            hasToken: !!accessToken,
-            returnUrl
-          });
-          
           if (customerEmail && accessToken) {
             // Wait a bit to make sure the page is fully loaded
             setTimeout(() => {
@@ -369,16 +348,23 @@
                                   document.querySelector('form[action*="/account/login"]');
                 
                 if (loginForm) {
-                  debugLog('Found Shopify login form');
-                  
                   // Find email and password inputs within this form
-                  const emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
-                  const passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
+                  let emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
+                  let passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
                   const returnToInput = loginForm.querySelector('input[name="return_to"]');
                   
+                  // Try alternative selectors if the standard ones don't work
+                  if (!emailInput) {
+                    emailInput = document.getElementById('customer-email') || 
+                                document.getElementById('customer_email');
+                  }
+                  
+                  if (!passwordInput) {
+                    passwordInput = document.getElementById('customer-password') || 
+                                   document.getElementById('customer_password');
+                  }
+                  
                   if (emailInput && passwordInput) {
-                    debugLog('Setting values on Shopify login form');
-                    
                     // Set the values
                     emailInput.value = customerEmail;
                     passwordInput.value = accessToken;
@@ -387,8 +373,11 @@
                     try {
                       emailInput.dispatchEvent(new Event('input', { bubbles: true }));
                       passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      
+                      // Also trigger change events
+                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
                     } catch (e) {
-                      debugLog('Error dispatching input events:', e.message);
                     }
                     
                     // Set return URL if field exists
@@ -396,75 +385,90 @@
                       returnToInput.value = returnUrl;
                     }
                     
-                    // Check for CAPTCHA
-                    if (isCaptchaRequired()) {
-                      debugLog('CAPTCHA detected, cannot auto-submit');
-                      const captchaWarning = document.getElementById('google-captcha-warning');
-                      if (captchaWarning) {
-                        captchaWarning.style.display = 'block';
+                    // Always attempt to submit the form, even if CAPTCHA is detected
+                    const hasCaptcha = isCaptchaRequired();
+                    if (hasCaptcha) {
+                      // Make the overlay semi-transparent but keep it visible
+                      const overlay = document.getElementById('google-login-overlay');
+                      if (overlay) {
+                        overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
                       }
-                    } else {
-                      // Submit the form after a short delay
+                      
+                      // Keep the form visible but still try to submit
+                      document.body.classList.remove('google-login-in-progress');
+                      
+                      // Try to submit the form
                       setTimeout(() => {
                         try {
-                          debugLog('Submitting Shopify login form');
-                          
-                          // Try clicking the submit button first (most reliable)
+                          // Try clicking the submit button first
                           const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
                           if (submitButton) {
-                            debugLog('Clicking submit button');
                             submitButton.click();
+                            
+                            // Check if form submission was successful after a short delay
+                            setTimeout(() => {
+                              // If we're still on the login page, show a message to complete CAPTCHA manually
+                              if (window.location.href.includes('/account/login')) {
+                                showCaptchaWarning();
+                              }
+                            }, 1000);
                           } else {
                             // Fall back to form.submit() if no button found
-                            debugLog('No submit button found, calling form.submit()');
                             loginForm.submit();
                           }
                         } catch (e) {
-                          debugLog('Error submitting form:', e.message);
+                          showCaptchaWarning();
+                        }
+                      }, 300);
+                    } else {
+                      // No CAPTCHA, proceed normally
+                      setTimeout(() => {
+                        try {
+                          // Try clicking the submit button first (most reliable)
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            submitButton.click();
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            loginForm.submit();
+                          }
+                        } catch (e) {
                           // If all else fails, just redirect to account
                           window.location.href = '/account';
                         }
                       }, 300);
                     }
                   } else {
-                    debugLog('Could not find email/password fields in the form');
                     hideLoadingOverlay();
                     document.body.classList.remove('google-login-in-progress');
                   }
                 } else {
-                  debugLog('No login form found on the page');
                   hideLoadingOverlay();
                   document.body.classList.remove('google-login-in-progress');
                 }
               } catch (e) {
-                debugLog('Error during form processing:', e.message);
                 // If all else fails, just redirect to account
                 window.location.href = '/account';
               }
             }, 500);
           } else {
-            debugLog('ERROR: Missing email or access token in verified data');
             hideLoadingOverlay();
             document.body.classList.remove('google-login-in-progress');
           }
         } catch (e) {
-          debugLog('Error in processGoogleLoginWithData:', e.message);
           hideLoadingOverlay();
         }
       } else {
-        debugLog('ERROR: Invalid verified data returned', userData);
         hideLoadingOverlay();
       }
     }
     
     // Main function to process Google login from JWT token
     function processGoogleLogin() {
-      debugLog('Checking for Google Login JWT token');
       const params = getUrlParams();
       
       // Check if we have a JWT token in the URL
       if (params.token) {
-        debugLog('Found JWT token in URL');
         storeLoginParams({ token: params.token });
         
         // Verify and process the JWT
@@ -476,30 +480,24 @@
           url.searchParams.delete('token');
           window.history.replaceState({}, document.title, url.toString());
         } catch (e) {
-          debugLog('Error clearing token from URL:', e.message);
         }
       } else {
         // Check for stored token (in case of page refresh)
         const storedParams = getStoredLoginParams();
         if (storedParams && storedParams.token) {
-          debugLog('Found stored JWT token');
           verifyAndProcessJWT(storedParams.token);
         } else {
-          debugLog('No token found in URL or storage');
         }
       }
     }
     
     // Run the main function once DOM is loaded
     if (document.readyState === 'loading') {
-      debugLog('Document still loading, adding DOMContentLoaded listener');
       document.addEventListener('DOMContentLoaded', function() {
-        debugLog('DOMContentLoaded fired');
         fixDuplicateIds();
         processGoogleLogin();
       });
     } else {
-      debugLog('Document already loaded, running immediately');
       fixDuplicateIds();
       processGoogleLogin();
     }
@@ -508,22 +506,9 @@
     try {
       const originalAddEventListener = window.addEventListener;
       window.addEventListener = function(type, listener, options) {
-        if (type === 'keydown' && !this._hasKeydownListener) {
-          this._hasKeydownListener = true;
-          originalAddEventListener.call(this, 'keydown', function(event) {
-            // Ctrl+Shift+D to toggle debug panel
-            if (event.ctrlKey && event.shiftKey && event.key === 'D') {
-              const debugPanel = document.getElementById('google-login-debug-panel');
-              if (debugPanel) {
-                debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
-              }
-            }
-          }, options);
-        }
         return originalAddEventListener.call(this, type, listener, options);
       };
     } catch (e) {
-      debugLog('Error overriding addEventListener:', e.message);
     }
     
   })(); // End of immediately executing function
