@@ -533,12 +533,19 @@
 {
   "name": "Google Login Processor",
   "target": "section",
+  "templates": ["customers/login", "customers/account", "customers/register"],
   "settings": [
     {
       "type": "text",
       "id": "storefront_api_token",
       "label": "Storefront API Token (Optional)",
       "info": "If provided, will be used for Storefront API operations instead of the default token"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Google Login Processor",
+      "category": "Customer"
     }
   ]
 }
