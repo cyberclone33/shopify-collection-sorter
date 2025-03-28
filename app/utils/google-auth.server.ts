@@ -21,6 +21,10 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_PROFILE_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
+// JWT Secret for secure token generation (use environment variable in production)
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_EXPIRY = '1h'; // Token expires in 1 hour
+
 // Interface for Google user profile
 interface GoogleProfile {
   sub: string;          // Google's user ID
@@ -40,6 +44,44 @@ interface GoogleTokenResponse {
   scope: string;
   token_type: string;
   id_token: string;
+}
+
+// Interface for JWT payload
+interface GoogleJwtPayload {
+  google_login: string;
+  customer_id?: string;
+  google_id?: string;
+  name: string;
+  customer_email: string;
+  access_token: string;
+  return_url: string;
+}
+
+/**
+ * Create a JWT for secure Google login data transfer
+ */
+export async function createGoogleJWT(payload: GoogleJwtPayload): Promise<string> {
+  try {
+    // Sign the payload with our secret key
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  } catch (error) {
+    console.error("Error creating Google JWT:", error);
+    throw error;
+  }
+}
+
+/**
+ * Verify and decode a Google login JWT
+ */
+export async function verifyGoogleJWT(token: string): Promise<GoogleJwtPayload | null> {
+  try {
+    // Verify the token with our secret key
+    const decoded = jwt.verify(token, JWT_SECRET) as GoogleJwtPayload;
+    return decoded;
+  } catch (error) {
+    console.error("Error verifying Google JWT:", error);
+    return null;
+  }
 }
 
 /**

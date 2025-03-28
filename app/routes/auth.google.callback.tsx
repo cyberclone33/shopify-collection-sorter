@@ -3,7 +3,8 @@ import {
   getGoogleAccessToken, 
   getGoogleProfile, 
   parseIdToken,
-  saveGoogleUser
+  saveGoogleUser,
+  createGoogleJWT
 } from "../utils/google-auth.server";
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
 import crypto from "crypto";
@@ -93,19 +94,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
           if (customerId) {
             console.log(`Successfully linked Google user to Shopify customer: ${customerId}`);
             
-            // Redirect to login page with all necessary parameters
-            // Use the same parameter structure as LINE login
-            const params = new URLSearchParams({
+            // Create JWT with login credentials instead of using URL parameters
+            const jwtPayload = {
               google_login: 'success',
               customer_id: customerId,
-              name: encodeURIComponent(googleProfile.name),
+              name: googleProfile.name,
               customer_email: googleProfile.email || `google_${googleProfile.sub}@example.com`,
-              access_token: password, // Use our generated password
+              access_token: password,
               return_url: '/account'
-            });
+            };
             
-            // Redirect to the Shopify store login page with the parameters
-            return redirect(`https://${shop}/account/login?${params.toString()}`);
+            // Generate JWT
+            const token = await createGoogleJWT(jwtPayload);
+            
+            // Redirect with only the JWT token in URL (much more secure)
+            return redirect(`https://${shop}/account/login?token=${encodeURIComponent(token)}`);
           }
         } catch (customerError) {
           console.error("Error linking customer:", customerError);
@@ -118,18 +121,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     
     // Fallback: If we couldn't create/link a customer or don't have an access token,
-    // redirect to the login page with Google user info and a simple password
-    const params = new URLSearchParams({
+    // still use JWT for security
+    const jwtPayload = {
       google_login: 'success',
       google_id: googleProfile.sub,
-      name: encodeURIComponent(googleProfile.name),
+      name: googleProfile.name,
       customer_email: googleProfile.email || `google_${googleProfile.sub}@example.com`,
-      access_token: password, // Use our generated password instead of the Google token
+      access_token: password,
       return_url: '/account'
-    });
+    };
     
-    // Redirect to the Shopify store login page with the parameters
-    return redirect(`https://${shop}/account/login?${params.toString()}`);
+    // Generate JWT
+    const token = await createGoogleJWT(jwtPayload);
+    
+    // Redirect with only the JWT token in URL
+    return redirect(`https://${shop}/account/login?token=${encodeURIComponent(token)}`);
     
   } catch (error) {
     console.error("Error processing Google callback:", error);
