@@ -1,0 +1,220 @@
+{% comment %}
+  This block adds configurable social login buttons to your theme
+  It can be added to the login page or account page
+  Supports LINE, Google, and Facebook login
+{% endcomment %}
+
+<div class="social-login-buttons-container" style="margin: 20px 0;">
+  <style>
+    .social-login-buttons-container {
+      display: flex;
+      flex-direction: column;
+      gap: {{ block.settings.button_spacing }}px;
+    }
+    
+    .social-login-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: {{ block.settings.button_border_radius }}px;
+      padding: {{ block.settings.button_padding }}px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      max-width: {{ block.settings.button_width }}px;
+      margin: 0 auto;
+      text-decoration: none;
+      transition: background-color 0.3s ease;
+      color: white;
+    }
+    
+    .social-login-icon {
+      margin-right: 10px;
+      width: 24px;
+      height: 24px;
+    }
+    
+    /* LINE specific styles */
+    .line-login-button {
+      background-color: {{ block.settings.line_button_color }};
+    }
+    
+    .line-login-button:hover {
+      background-color: #00b300;
+    }
+    
+    /* Google specific styles */
+    .google-login-button {
+      background-color: {{ block.settings.google_button_color }};
+    }
+    
+    .google-login-button:hover {
+      background-color: #3367d6;
+    }
+    
+    /* Facebook specific styles */
+    .facebook-login-button {
+      background-color: {{ block.settings.facebook_button_color }};
+    }
+    
+    .facebook-login-button:hover {
+      background-color: #0d6efd;
+    }
+  </style>
+
+  {% if block.settings.show_line_login %}
+    {% assign line_button_text = 'line_login.button.login' | t %}
+    {% if customer %}
+      {% assign line_button_text = 'line_login.button.link' | t %}
+    {% endif %}
+
+    <a href="{{ block.settings.app_url }}/auth/line?shop={{ shop.permanent_domain }}" class="social-login-button line-login-button" onclick="window.location.href=this.href; return false;">
+      <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
+        <path fill="#FFFFFF" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
+      </svg>
+      {{ line_button_text }}
+    </a>
+  {% endif %}
+
+  {% if block.settings.show_google_login %}
+    {% assign google_button_text = 'google_login.button.login' | t %}
+    {% if customer %}
+      {% assign google_button_text = 'google_login.button.link' | t %}
+    {% endif %}
+
+    <a href="{{ block.settings.app_url }}/auth/google?shop={{ shop.permanent_domain }}" class="social-login-button google-login-button" onclick="window.location.href=this.href; return false;">
+      <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+        <path fill="#FFFFFF" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#FFFFFF" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FFFFFF" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#FFFFFF" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      {{ google_button_text }}
+    </a>
+  {% endif %}
+
+  {% if block.settings.show_facebook_login %}
+    {% assign facebook_button_text = 'facebook_login.button.login' | t %}
+    {% if customer %}
+      {% assign facebook_button_text = 'facebook_login.button.link' | t %}
+    {% endif %}
+
+    <a href="{{ block.settings.app_url }}/auth/facebook?shop={{ shop.permanent_domain }}" class="social-login-button facebook-login-button" onclick="window.location.href=this.href; return false;">
+      <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+        <path fill="#FFFFFF" d="M44,24c0,11.045-8.955,20-20,20S4,35.045,4,24S12.955,4,24,4S44,12.955,44,24z"/>
+        <path fill="#1877F2" d="M24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20S35.045,4,24,4z"/>
+        <path fill="#FFFFFF" d="M27.75,35.5h-7.5V24h-3.5v-4.5h3.5v-3c0-4.95,2.05-7.5,7.75-7.5h4.5v4.5h-2.75c-2.05,0-2.25,0.75-2.25,2.25v3.75h5l-0.5,4.5h-4.5V35.5z"/>
+      </svg>
+      {{ facebook_button_text }}
+    </a>
+  {% endif %}
+</div>
+
+{% schema %}
+{
+  "name": "Social Login Buttons",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_url",
+      "label": "App URL",
+      "info": "The URL of your Shopify app (e.g., https://your-app-name.onrender.com)",
+      "default": "https://shopify-collection-sorter.onrender.com"
+    },
+    {
+      "type": "header",
+      "content": "Button General Settings"
+    },
+    {
+      "type": "range",
+      "id": "button_width",
+      "min": 150,
+      "max": 400,
+      "step": 10,
+      "unit": "px",
+      "label": "Button Width",
+      "default": 250
+    },
+    {
+      "type": "range",
+      "id": "button_padding",
+      "min": 5,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Button Padding",
+      "default": 12
+    },
+    {
+      "type": "range",
+      "id": "button_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Button Border Radius",
+      "default": 4
+    },
+    {
+      "type": "range",
+      "id": "button_spacing",
+      "min": 5,
+      "max": 30,
+      "step": 1,
+      "unit": "px",
+      "label": "Spacing Between Buttons",
+      "default": 10
+    },
+    {
+      "type": "header",
+      "content": "LINE Login Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_line_login",
+      "label": "Show LINE Login Button",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "line_button_color",
+      "label": "LINE Button Color",
+      "default": "#06C755"
+    },
+    {
+      "type": "header",
+      "content": "Google Login Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_google_login",
+      "label": "Show Google Login Button",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "google_button_color",
+      "label": "Google Button Color",
+      "default": "#4285F4"
+    },
+    {
+      "type": "header",
+      "content": "Facebook Login Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_facebook_login",
+      "label": "Show Facebook Login Button",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "facebook_button_color",
+      "label": "Facebook Button Color",
+      "default": "#1877F2"
+    }
+  ]
+}
+{% endschema %}

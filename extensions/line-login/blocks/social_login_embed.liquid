@@ -1,0 +1,720 @@
+{% comment %}
+  Social Login App Embed Block - Processes social login redirects and handles authentication
+  This file combines LINE, Google, and Facebook login functionality
+{% endcomment %}
+
+<div id="social-login-embed" class="social-login-embed">
+  <!-- Hidden container - no visible UI -->
+  
+  {% if request.path contains '/account/login' %}
+  <!-- Hidden form for Shopify login -->
+  <form id="shopify-auto-login" method="post" action="/account/login" style="display: none;">
+    <input type="email" name="customer[email]" id="customer-email">
+    <input type="password" name="customer[password]" id="customer-password">
+    <input type="hidden" name="form_type" value="customer_login">
+    <input type="hidden" name="utf8" value="✓">
+    <input type="hidden" name="return_to" id="return-to" value="/account">
+    <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response" value="">
+  </form>
+  
+  <!-- Loading overlays for different social logins -->
+  <div id="line-login-overlay" class="social-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+    <div id="line-login-message" class="social-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
+      <div class="spinner line-spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(6, 199, 85, 0.2); border-top-color: #06C755; border-radius: 50%; animation: social-login-spin 1s linear infinite;"></div>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 🐾</p>
+      <p style="font-size: 14px; color: #666; margin: 0;">Logging in with LINE...</p>
+      <p id="line-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold; background-color: #ffebee; padding: 10px; border-radius: 4px;">請完成驗證碼以繼續登入 / Please complete the CAPTCHA to continue</p>
+      <button id="line-login-close" onclick="document.getElementById('line-login-overlay').style.display='none'; document.body.classList.remove('line-login-in-progress');" style="display: none; margin-top: 1rem; padding: 8px 16px; background-color: #06C755; color: white; border: none; border-radius: 4px; cursor: pointer;">關閉此視窗 / Close this overlay</button>
+    </div>
+  </div>
+  
+  <div id="google-login-overlay" class="social-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+    <div id="google-login-message" class="social-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
+      <div class="spinner google-spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(66, 133, 244, 0.2); border-top-color: #4285F4; border-radius: 50%; animation: social-login-spin 1s linear infinite;"></div>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
+      <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Google...</p>
+      <p id="google-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold; background-color: #ffebee; padding: 10px; border-radius: 4px;">請完成驗證碼以繼續登入 / Please complete the CAPTCHA to continue</p>
+      <button id="google-login-close" onclick="document.getElementById('google-login-overlay').style.display='none'; document.body.classList.remove('google-login-in-progress');" style="display: none; margin-top: 1rem; padding: 8px 16px; background-color: #4285F4; color: white; border: none; border-radius: 4px; cursor: pointer;">關閉此視窗 / Close this overlay</button>
+    </div>
+  </div>
+  
+  <div id="facebook-login-overlay" class="social-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+    <div id="facebook-login-message" class="social-login-message" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; max-width: 90%; width: 400px;">
+      <div class="spinner facebook-spinner" style="margin: 0 auto 1rem; width: 40px; height: 40px; border: 4px solid rgba(24, 119, 242, 0.2); border-top-color: #1877F2; border-radius: 50%; animation: social-login-spin 1s linear infinite;"></div>
+      <p style="font-size: 18px; margin-bottom: 0.5rem; color: #333; font-weight: bold;">正在自動登入中⋯請稍候 </p>
+      <p style="font-size: 14px; color: #666; margin: 0;">Logging in with Facebook...</p>
+      <p id="facebook-captcha-warning" style="display: none; margin-top: 1rem; color: #d32f2f; font-weight: bold; background-color: #ffebee; padding: 10px; border-radius: 4px;">請完成驗證碼以繼續登入 / Please complete the CAPTCHA to continue</p>
+      <button id="facebook-login-close" onclick="document.getElementById('facebook-login-overlay').style.display='none'; document.body.classList.remove('facebook-login-in-progress');" style="display: none; margin-top: 1rem; padding: 8px 16px; background-color: #1877F2; color: white; border: none; border-radius: 4px; cursor: pointer;">關閉此視窗 / Close this overlay</button>
+    </div>
+  </div>
+  
+  <style>
+    @keyframes social-login-spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .social-login-overlay.show {
+      display: flex !important;
+    }
+    
+    .social-login-message {
+      margin-top: 1rem;
+      padding: 10px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    
+    .social-login-error {
+      margin-top: 1rem;
+      padding: 10px;
+      border: 1px solid #ff4b4b;
+      border-radius: 5px;
+      background-color: #fff0f0;
+      text-align: center;
+      color: #d32f2f;
+    }
+    
+    /* Hide login form during redirect */
+    body.line-login-in-progress form.customer_login,
+    body.line-login-in-progress form#customer_login,
+    body.line-login-in-progress form[action*="/account/login"],
+    body.google-login-in-progress form.customer_login,
+    body.google-login-in-progress form#customer_login,
+    body.google-login-in-progress form[action*="/account/login"],
+    body.facebook-login-in-progress form.customer_login,
+    body.facebook-login-in-progress form#customer_login,
+    body.facebook-login-in-progress form[action*="/account/login"] {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      z-index: -1;
+    }
+    
+    /* Hide cursor in input fields during redirects */
+    body.line-login-in-progress input,
+    body.google-login-in-progress input,
+    body.facebook-login-in-progress input {
+      caret-color: transparent !important;
+    }
+  </style>
+  {% endif %}
+</div>
+
+<script>
+  // Create global config objects for social logins
+  window.socialLoginConfig = window.socialLoginConfig || {};
+  window.lineLoginConfig = window.lineLoginConfig || {};
+  window.googleLoginConfig = window.googleLoginConfig || {};
+  window.facebookLoginConfig = window.facebookLoginConfig || {};
+  
+  // Get Storefront API token from theme settings or fallback to shop.storefront_access_token
+  const storefrontApiToken = {{ block.settings.storefront_api_token | json }} || {{ shop.storefront_access_token | json }} || '';
+  
+  // Common configuration
+  window.socialLoginConfig = {
+    debug: true,
+    storefrontApiToken: storefrontApiToken,
+    shopDomain: window.location.hostname,
+    baseUrl: '{{ block.settings.app_url }}'
+  };
+  
+  // LINE specific configuration
+  window.lineLoginConfig = {
+    ...window.socialLoginConfig,
+    jwtVerifyUrl: `${window.socialLoginConfig.baseUrl}/auth/line/verify`
+  };
+  
+  // Google specific configuration
+  window.googleLoginConfig = {
+    ...window.socialLoginConfig,
+    jwtVerifyUrl: `${window.socialLoginConfig.baseUrl}/auth/google/verify`
+  };
+  
+  // Facebook specific configuration
+  window.facebookLoginConfig = {
+    ...window.socialLoginConfig,
+    jwtVerifyUrl: `${window.socialLoginConfig.baseUrl}/auth/facebook/verify`
+  };
+
+  // Shared utility functions and login processing
+  (function() {
+    // --- Common Utility Functions ---
+    
+    // Function to store login parameters in session storage
+    function storeLoginParams(provider, params) {
+      if (params && Object.keys(params).length > 0) {
+        try {
+          sessionStorage.setItem(`${provider}LoginParams`, JSON.stringify(params));
+        } catch (e) {
+          // Silent error
+        }
+      }
+    }
+    
+    // Function to get stored login parameters
+    function getStoredLoginParams(provider) {
+      try {
+        const storedParams = sessionStorage.getItem(`${provider}LoginParams`);
+        const params = storedParams ? JSON.parse(storedParams) : null;
+        return params;
+      } catch (e) {
+        // Silent error
+        return null;
+      }
+    }
+    
+    // Function to clear stored login parameters
+    function clearStoredLoginParams(provider) {
+      try {
+        sessionStorage.removeItem(`${provider}LoginParams`);
+      } catch (e) {
+        // Silent error
+      }
+    }
+    
+    // Function to get URL parameters (consolidated from both files)
+    function getUrlParams() {
+      const params = {};
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        for (const [key, value] of searchParams.entries()) {
+          params[key] = value;
+        }
+        
+        // Also check hash fragment (from processor file)
+        if (window.location.hash && window.location.hash.length > 1) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          for (const [key, value] of hashParams.entries()) {
+            params[key] = value;
+          }
+        }
+        
+        if (window.socialLoginConfig.debug) {
+          console.log('URL Parameters:', params);
+        }
+      } catch (e) {
+        console.error('Error parsing URL parameters:', e);
+      }
+      
+      return params;
+    }
+
+    // Function to check if CAPTCHA is required on the page
+    function isCaptchaRequired() {
+      return document.querySelector('.g-recaptcha') !== null || 
+             document.querySelector('[data-sitekey]') !== null ||
+             document.querySelector('[data-recaptcha-sitekey]') !== null;
+    }
+    
+    // Function to show loading overlay for specific provider
+    function showLoadingOverlay(provider) {
+      const overlay = document.getElementById(`${provider}-login-overlay`);
+      if (overlay) {
+        overlay.classList.add('show');
+        overlay.style.display = 'flex';
+      }
+    }
+    
+    // Function to hide loading overlay for specific provider
+    function hideLoadingOverlay(provider) {
+      const overlay = document.getElementById(`${provider}-login-overlay`);
+      if (overlay) {
+        overlay.classList.remove('show');
+        // Add a slight delay before removing from DOM to allow for transition
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 300);
+      }
+    }
+    
+    // Function to show CAPTCHA warning for specific provider
+    function showCaptchaWarning(provider) {
+      try {
+        // Get message box and other elements
+        const captchaWarning = document.getElementById(`${provider}-captcha-warning`);
+        const closeButton = document.getElementById(`${provider}-login-close`);
+        const spinner = document.querySelector(`#${provider}-login-message .spinner`);
+        const messageBox = document.getElementById(`${provider}-login-message`);
+        
+        if (captchaWarning) {
+          captchaWarning.style.display = 'block';
+        }
+        
+        if (closeButton) {
+          closeButton.style.display = 'inline-block';
+        }
+        
+        if (spinner) {
+          spinner.style.display = 'none';
+        }
+        
+        // Hide loading overlay since user interaction is needed
+        const overlay = document.getElementById(`${provider}-login-overlay`);
+        if (overlay) {
+          overlay.style.backgroundColor = 'rgba(0,0,0,0.2)';
+          
+          // Move the message box to the top to avoid covering the CAPTCHA
+          if (messageBox) {
+            messageBox.style.marginTop = '-200px';
+          }
+        }
+        
+        // Remove the class that hides the form to ensure CAPTCHA is visible
+        document.body.classList.remove(`${provider}-login-in-progress`);
+        
+        // Ensure the login form is visible
+        const loginForm = document.querySelector('form.customer_login') || 
+                          document.querySelector('form#customer_login') || 
+                          document.querySelector('form[action*="/account/login"]');
+        if (loginForm) {
+          loginForm.style.opacity = '1';
+          loginForm.style.pointerEvents = 'auto';
+          loginForm.style.position = 'static';
+          loginForm.style.zIndex = 'auto';
+          
+          // Fix any duplicate IDs that might be present
+          fixDuplicateIds();
+          
+          // Ensure the CAPTCHA is visible by scrolling to it if needed
+          const captcha = document.querySelector('.g-recaptcha') || 
+                        document.querySelector('[data-sitekey]') ||
+                        document.querySelector('[data-recaptcha-sitekey]');
+          if (captcha) {
+            setTimeout(() => {
+              captcha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 500);
+          }
+        }
+      } catch (e) {
+        console.error(`Error showing CAPTCHA warning for ${provider}:`, e);
+        // Fallback: just hide the overlay completely if there's an error
+        hideLoadingOverlay(provider);
+        document.body.classList.remove(`${provider}-login-in-progress`);
+      }
+    }
+    
+    // Function to fix duplicate IDs on the page - important for CAPTCHA and form processing
+    function fixDuplicateIds() {
+      try {
+        // Find all elements with common Shopify IDs that might be duplicated
+        const commonIds = ['customer-email', 'customer-password', 'customer_email', 'customer_password', 'g-recaptcha-response'];
+        
+        commonIds.forEach(id => {
+          const elements = document.querySelectorAll(`#${id}`);
+          
+          if (elements.length > 1) {
+            // Fix all but the first element by adding a suffix
+            for (let i = 1; i < elements.length; i++) {
+              const element = elements[i];
+              const newId = `${id}-${i}`;
+              element.id = newId;
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Error fixing duplicate IDs:', e);
+      }
+    }
+    
+    // --- Provider-specific JWT verification ---
+    
+    // Verify JWT token for LINE login
+    async function verifyLineJWT(token) {
+      try {
+        showLoadingOverlay('line');
+        const response = await fetch(window.lineLoginConfig.jwtVerifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          processLoginWithData('line', data);
+        } else {
+          hideLoadingOverlay('line');
+        }
+      } catch (e) {
+        hideLoadingOverlay('line');
+      }
+    }
+    
+    // Verify JWT token for Google login
+    async function verifyGoogleJWT(token) {
+      try {
+        showLoadingOverlay('google');
+        
+        if (window.socialLoginConfig.debug) {
+          console.log('Verifying Google JWT token:', token);
+        }
+        
+        // For Google login, we can also directly decode the JWT to get user data
+        // This provides a fallback if the API call fails
+        try {
+          const tokenParts = token.split('.');
+          if (tokenParts.length === 3) {
+            const payload = JSON.parse(atob(tokenParts[1]));
+            if (window.socialLoginConfig.debug) {
+              console.log('Decoded Google JWT payload:', payload);
+            }
+            
+            // Check if the token has the required data
+            if (payload && payload.google_login === 'success' && payload.customer_email && payload.access_token) {
+              // Process with decoded data directly
+              const directData = {
+                google_login: 'success',
+                email: payload.customer_email,
+                access_token: payload.access_token,
+                return_to: payload.return_url || '/account'
+              };
+              
+              if (window.socialLoginConfig.debug) {
+                console.log('Processing Google login with direct JWT data:', directData);
+              }
+              
+              processLoginWithData('google', directData);
+              return; // Skip API verification if we can decode directly
+            }
+          }
+        } catch (decodeError) {
+          console.error('Error decoding Google JWT:', decodeError);
+          // Continue with API verification as fallback
+        }
+        
+        // API verification as fallback
+        const response = await fetch(window.googleLoginConfig.jwtVerifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (window.socialLoginConfig.debug) {
+            console.log('Google JWT verification API response:', data);
+          }
+          processLoginWithData('google', data);
+        } else {
+          console.error('Google JWT verification failed:', response.status);
+          hideLoadingOverlay('google');
+        }
+      } catch (e) {
+        console.error('Error in verifyGoogleJWT:', e);
+        hideLoadingOverlay('google');
+      }
+    }
+    
+    // Verify JWT token for Facebook login
+    async function verifyFacebookJWT(token) {
+      try {
+        showLoadingOverlay('facebook');
+        const response = await fetch(window.facebookLoginConfig.jwtVerifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          processLoginWithData('facebook', data);
+        } else {
+          hideLoadingOverlay('facebook');
+        }
+      } catch (e) {
+        hideLoadingOverlay('facebook');
+      }
+    }
+    
+    // --- Common login processing function ---
+    
+    // Modified JWT processing function to handle email field variations
+    function processLoginWithData(provider, userData) {
+      const successKey = `${provider}_login`;
+      if (userData && userData[successKey] === 'success') {
+        try {
+          // Add class to body to hide login forms
+          document.body.classList.add(`${provider}-login-in-progress`);
+          
+          // Show loading overlay if not already showing
+          showLoadingOverlay(provider);
+          
+          // Extract customer email using either field name (customer_email from JWT or email from older format)
+          const customerEmail = userData.customer_email || userData.email;
+          const accessToken = userData.access_token;
+          const returnUrl = userData.return_url || userData.return_to || '/account';
+          
+          if (window.socialLoginConfig.debug) {
+            console.log(`${provider} login data:`, { customerEmail, accessToken: accessToken ? 'PRESENT' : 'MISSING' });
+          }
+          
+          if (customerEmail && accessToken) {
+            // Wait a bit to make sure the page is fully loaded
+            setTimeout(() => {
+              try {
+                // Find the standard customer login form
+                const loginForm = document.querySelector('form.customer_login') || 
+                                  document.querySelector('form#customer_login') || 
+                                  document.querySelector('form[action*="/account/login"]');
+                
+                if (loginForm) {
+                  // Find email and password inputs within this form
+                  let emailInput = loginForm.querySelector('input[type="email"], input[name="customer[email]"]');
+                  let passwordInput = loginForm.querySelector('input[type="password"], input[name="customer[password]"]');
+                  const returnToInput = loginForm.querySelector('input[name="return_to"]');
+                  
+                  // Try alternative selectors if the standard ones don't work
+                  if (!emailInput) {
+                    emailInput = document.getElementById('customer-email') || 
+                                document.getElementById('customer_email');
+                  }
+                  
+                  if (!passwordInput) {
+                    passwordInput = document.getElementById('customer-password') || 
+                                   document.getElementById('customer_password');
+                  }
+                  
+                  if (emailInput && passwordInput) {
+                    // Set the values
+                    emailInput.value = customerEmail;
+                    passwordInput.value = accessToken;
+                    
+                    // Trigger input events to update any validators
+                    try {
+                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      
+                      // Also trigger change events
+                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    } catch (e) {
+                      if (window.socialLoginConfig.debug) {
+                        console.error(`Error dispatching events:`, e);
+                      }
+                    }
+                    
+                    // Set return URL if field exists
+                    if (returnToInput && userData.return_to) {
+                      returnToInput.value = userData.return_to;
+                    }
+                    
+                    // Always attempt to submit the form, even if CAPTCHA is detected
+                    const hasCaptcha = isCaptchaRequired();
+                    if (hasCaptcha) {
+                      if (window.socialLoginConfig.debug) {
+                        console.log(`${provider} login detected CAPTCHA, making overlay transparent and trying submission anyway`);
+                      }
+                      
+                      // Make the overlay semi-transparent but keep it visible
+                      const overlay = document.getElementById(`${provider}-login-overlay`);
+                      if (overlay) {
+                        overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                      }
+                      
+                      // Keep the form visible but still try to submit
+                      document.body.classList.remove(`${provider}-login-in-progress`);
+                      
+                      // Try to submit the form
+                      setTimeout(() => {
+                        try {
+                          // Try clicking the submit button first (most reliable)
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            submitButton.click();
+                            
+                            // Check if form submission was successful after a short delay
+                            setTimeout(() => {
+                              // If we're still on the login page, show a message to complete CAPTCHA manually
+                              if (window.location.href.includes('/account/login')) {
+                                showCaptchaWarning(provider);
+                              }
+                            }, 1000);
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            loginForm.submit();
+                          }
+                        } catch (e) {
+                          if (window.socialLoginConfig.debug) {
+                            console.error(`Error submitting form with CAPTCHA:`, e);
+                          }
+                          showCaptchaWarning(provider);
+                        }
+                      }, 300);
+                    } else {
+                      // No CAPTCHA, proceed normally
+                      setTimeout(() => {
+                        try {
+                          // Try clicking the submit button first (most reliable)
+                          const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
+                          if (submitButton) {
+                            submitButton.click();
+                          } else {
+                            // Fall back to form.submit() if no button found
+                            loginForm.submit();
+                          }
+                        } catch (e) {
+                          if (window.socialLoginConfig.debug) {
+                            console.error(`Error submitting form:`, e);
+                          }
+                          // If all else fails, just redirect to account
+                          window.location.href = '/account';
+                        }
+                      }, 300);
+                    }
+                  } else {
+                    if (window.socialLoginConfig.debug) {
+                      console.error(`${provider} login could not find email or password inputs`);
+                    }
+                    hideLoadingOverlay(provider);
+                    document.body.classList.remove(`${provider}-login-in-progress`);
+                  }
+                } else {
+                  if (window.socialLoginConfig.debug) {
+                    console.error(`${provider} login could not find login form`);
+                  }
+                  hideLoadingOverlay(provider);
+                  document.body.classList.remove(`${provider}-login-in-progress`);
+                }
+              } catch (e) {
+                if (window.socialLoginConfig.debug) {
+                  console.error(`${provider} login error:`, e);
+                }
+                // If all else fails, just redirect to account
+                window.location.href = '/account';
+              }
+            }, 500);
+          } else {
+            if (window.socialLoginConfig.debug) {
+              console.error(`${provider} login missing email or access token`);
+            }
+            hideLoadingOverlay(provider);
+            document.body.classList.remove(`${provider}-login-in-progress`);
+          }
+        } catch (e) {
+          if (window.socialLoginConfig.debug) {
+            console.error(`${provider} login error:`, e);
+          }
+          hideLoadingOverlay(provider);
+        }
+      } else {
+        if (window.socialLoginConfig.debug) {
+          console.error(`${provider} login failed: data missing or invalid`);
+        }
+        hideLoadingOverlay(provider);
+      }
+    }
+    
+    // --- Main initialization functions ---
+    
+    // Function to initialize LINE login
+    function initLineLogin() {
+      const params = getUrlParams();
+      
+      // Check if we have a token in the URL or sessionStorage
+      if (params.line_token) {
+        if (window.socialLoginConfig.debug) {
+          console.log('Found LINE token in URL parameters');
+        }
+        verifyLineJWT(params.line_token);
+      } else {
+        const storedParams = getStoredLoginParams('line');
+        if (storedParams && storedParams.line_token) {
+          if (window.socialLoginConfig.debug) {
+            console.log('Found LINE token in session storage');
+          }
+          verifyLineJWT(storedParams.line_token);
+          clearStoredLoginParams('line');
+        }
+      }
+    }
+    
+    // Function to initialize Google login
+    function initGoogleLogin() {
+      const params = getUrlParams();
+      
+      // Check if we have a token in the URL or sessionStorage
+      if (params.google_token) {
+        if (window.socialLoginConfig.debug) {
+          console.log('Found Google token in URL parameters:', params.google_token.substring(0, 20) + '...');
+        }
+        verifyGoogleJWT(params.google_token);
+      } else {
+        const storedParams = getStoredLoginParams('google');
+        if (storedParams && storedParams.google_token) {
+          if (window.socialLoginConfig.debug) {
+            console.log('Found Google token in session storage');
+          }
+          verifyGoogleJWT(storedParams.google_token);
+          clearStoredLoginParams('google');
+        }
+      }
+    }
+    
+    // Function to initialize Facebook login
+    function initFacebookLogin() {
+      const params = getUrlParams();
+      
+      // Check if we have a token in the URL or sessionStorage
+      if (params.facebook_token) {
+        verifyFacebookJWT(params.facebook_token);
+      } else {
+        const storedParams = getStoredLoginParams('facebook');
+        if (storedParams && storedParams.facebook_token) {
+          verifyFacebookJWT(storedParams.facebook_token);
+          clearStoredLoginParams('facebook');
+        }
+      }
+      
+      // Clean up Facebook hash if present
+      if (window.location.hash === '#_=_') {
+        if (history.replaceState) {
+          history.replaceState(null, null, window.location.pathname + window.location.search);
+        } else {
+          window.location.hash = '';
+        }
+      }
+    }
+    
+    // Only run on login page
+    if (window.location.pathname.includes('/account/login')) {
+      if (window.socialLoginConfig.debug) {
+        console.log('Social login embed initialized on login page');
+      }
+      
+      // Fix any duplicate IDs that might be present to ensure proper form processing
+      fixDuplicateIds();
+      
+      // Initialize login for all providers
+      initLineLogin();
+      initGoogleLogin();
+      initFacebookLogin();
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Social Login Embed",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_url",
+      "label": "App URL",
+      "info": "The URL of your Shopify app (e.g., https://your-app-name.onrender.com)",
+      "default": "https://shopify-collection-sorter.onrender.com"
+    },
+    {
+      "type": "text",
+      "id": "storefront_api_token",
+      "label": "Storefront API Token",
+      "info": "Your Shopify Storefront API token for customer authentication"
+    }
+  ]
+}
+{% endschema %}
