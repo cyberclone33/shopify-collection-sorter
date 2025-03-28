@@ -206,6 +206,51 @@
              document.querySelector('[data-recaptcha-sitekey]') !== null;
     }
     
+    // Function to wait for CAPTCHA to be fully loaded and ready
+    function waitForCaptchaReady() {
+      return new Promise((resolve) => {
+        if (typeof window.grecaptcha !== 'undefined' && window.grecaptcha.ready) {
+          // reCAPTCHA API is loaded and ready
+          window.grecaptcha.ready(resolve);
+        } else {
+          // Set up a listener for when reCAPTCHA loads
+          window.onRecaptchaLoaded = resolve;
+          
+          // Check periodically in case the callback isn't triggered
+          const checkInterval = setInterval(() => {
+            if (typeof window.grecaptcha !== 'undefined' && window.grecaptcha.ready) {
+              clearInterval(checkInterval);
+              window.grecaptcha.ready(resolve);
+            }
+          }, 100);
+          
+          // Set a timeout to prevent infinite waiting
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            resolve(); // Resolve anyway after timeout
+          }, 5000);
+        }
+      });
+    }
+    
+    // Function to verify CAPTCHA is present and properly rendered
+    function isCaptchaProperlyRendered() {
+      const captchaContainer = document.querySelector('.g-recaptcha');
+      if (!captchaContainer) {
+        // No visible CAPTCHA found, check for invisible CAPTCHA
+        const invisibleCaptcha = document.querySelector('[data-sitekey]') || 
+                                document.querySelector('[data-recaptcha-sitekey]');
+        return !!invisibleCaptcha;
+      }
+      
+      // Check if iframe is loaded inside the container
+      const iframe = captchaContainer.querySelector('iframe');
+      if (!iframe) return false;
+      
+      // Check if iframe has loaded content
+      return iframe.complete && iframe.contentDocument !== null;
+    }
+    
     // Function to show loading overlay for specific provider
     function showLoadingOverlay(provider) {
       const overlay = document.getElementById(`${provider}-login-overlay`);
@@ -438,11 +483,33 @@
       const successKey = `${provider}_login`;
       if (userData && userData[successKey] === 'success') {
         try {
-          // Add class to body to hide login forms
-          document.body.classList.add(`${provider}-login-in-progress`);
-          
           // Show loading overlay if not already showing
           showLoadingOverlay(provider);
+          
+          // Match LINE login behavior exactly for all providers
+          // We'll only add a small semi-transparent overlay but keep the form fully visible
+          const overlay = document.getElementById(`${provider}-login-overlay`);
+          if (overlay) {
+            overlay.style.backgroundColor = 'rgba(0,0,0,0.2)';
+            
+            // Keep the message centered in the middle of the screen like LINE login
+            const messageBox = document.getElementById(`${provider}-login-message`);
+            if (messageBox) {
+              // Reset any previously set positioning
+              messageBox.style.position = '';
+              messageBox.style.top = '';
+              messageBox.style.left = '';
+              messageBox.style.transform = '';
+              
+              // Make sure the overlay is using flexbox centering like LINE
+              overlay.style.display = 'flex';
+              overlay.style.justifyContent = 'center';
+              overlay.style.alignItems = 'center';
+            }
+          }
+          
+          // Make sure the form stays visible for all providers
+          document.body.classList.remove(`${provider}-login-in-progress`);
           
           // Extract customer email using either field name (customer_email from JWT or email from older format)
           const customerEmail = userData.customer_email || userData.email;
@@ -484,6 +551,10 @@
                     emailInput.value = customerEmail;
                     passwordInput.value = accessToken;
                     
+                    // Make sure form fields are visible for all providers
+                    emailInput.style.opacity = '1';
+                    passwordInput.style.opacity = '1';
+                    
                     // Trigger input events to update any validators
                     try {
                       emailInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -510,18 +581,65 @@
                         console.log(`${provider} login detected CAPTCHA, making overlay transparent and trying submission anyway`);
                       }
                       
-                      // Make the overlay semi-transparent but keep it visible
+                      // Style the overlay exactly like LINE login
                       const overlay = document.getElementById(`${provider}-login-overlay`);
                       if (overlay) {
-                        overlay.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                        overlay.style.backgroundColor = 'rgba(0,0,0,0.2)';
+                        
+                        // Keep overlay centered like LINE login for CAPTCHA too
+                        const messageBox = document.getElementById(`${provider}-login-message`);
+                        if (messageBox) {
+                          // Reset any previously set positioning
+                          messageBox.style.position = '';
+                          messageBox.style.top = '';
+                          messageBox.style.left = '';
+                          messageBox.style.transform = '';
+                          
+                          // Make sure the overlay is using flexbox centering like LINE
+                          overlay.style.display = 'flex';
+                          overlay.style.justifyContent = 'center';
+                          overlay.style.alignItems = 'center';
+                        }
                       }
                       
-                      // Keep the form visible but still try to submit
+                      // Keep form visible - exact same behavior as LINE login
                       document.body.classList.remove(`${provider}-login-in-progress`);
                       
-                      // Try to submit the form
-                      setTimeout(() => {
+                      // Wait for CAPTCHA to be ready before attempting submission
+                      waitForCaptchaReady().then(() => {
+                        // Verify CAPTCHA is properly rendered
+                        const isRendered = isCaptchaProperlyRendered();
+                        
+                        if (!isRendered) {
+                          if (window.socialLoginConfig.debug) {
+                            console.log(`${provider} login CAPTCHA not properly rendered, waiting longer...`);
+                          }
+                          
+                          // Wait a bit longer for CAPTCHA to render
+                          setTimeout(() => attemptCaptchaSubmission(), 1000);
+                        } else {
+                          // CAPTCHA is ready, attempt submission
+                          attemptCaptchaSubmission();
+                        }
+                      });
+                      
+                      function attemptCaptchaSubmission() {
                         try {
+                          // Find and scroll to the CAPTCHA element
+                          const captchaElement = document.querySelector('.g-recaptcha') || 
+                                              document.querySelector('[data-sitekey]') ||
+                                              document.querySelector('[data-recaptcha-sitekey]');
+                          
+                          if (captchaElement) {
+                            // Scroll CAPTCHA into view
+                            captchaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            
+                            // Add a highlight effect
+                            captchaElement.style.boxShadow = '0 0 10px 5px rgba(255, 193, 7, 0.5)';
+                            captchaElement.style.border = '2px solid #ffc107';
+                            captchaElement.style.borderRadius = '4px';
+                          }
+                          
                           // Try clicking the submit button first (most reliable)
                           const submitButton = loginForm.querySelector('input[type="submit"], button[type="submit"]');
                           if (submitButton) {
@@ -544,7 +662,7 @@
                           }
                           showCaptchaWarning(provider);
                         }
-                      }, 300);
+                      }
                     } else {
                       // No CAPTCHA, proceed normally
                       setTimeout(() => {
