@@ -320,9 +320,12 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Origin': window.location.origin
           },
-          body: JSON.stringify({ token })
+          body: JSON.stringify({ token }),
+          credentials: 'omit',
+          mode: 'cors'
         });
         
         debugLog('Server response status:', response.status);
@@ -528,15 +531,33 @@
     
     // Function to process Google login from JWT token
     function processGoogleLogin() {
-      const params = getUrlParams();
+      // Check if we have a JWT token in the URL - also check in the path to support different URL formats
+      const currentUrl = window.location.href;
+      const urlParams = getUrlParams();
+      let token = urlParams.token || null;
+
+      debugLog('Checking for token in URL:', window.location.href);
       
-      // Check if we have a JWT token in the URL
-      if (params.token) {
+      // If no token in standard params, try to extract it from the URL
+      if (!token && currentUrl.includes('token=')) {
+        try {
+          debugLog('Extracting token from URL string');
+          const tokenPart = currentUrl.split('token=')[1];
+          if (tokenPart) {
+            token = tokenPart.split('&')[0]; // Extract token until next parameter or end of string
+            debugLog('Extracted token from URL');
+          }
+        } catch (e) {
+          debugLog('Error extracting token from URL:', e.message);
+        }
+      }
+      
+      if (token) {
         debugLog('Found JWT token in URL');
-        storeLoginParams({ token: params.token });
+        storeLoginParams({ token });
         
         // Verify and process the JWT
-        verifyAndProcessJWT(params.token);
+        verifyAndProcessJWT(token);
         
         // Remove token from URL to prevent leakage in browser history
         const url = new URL(window.location.href);
@@ -554,7 +575,7 @@
       }
     }
     
-    // Call the function to process Google login
+    // Call the function to process Google login right away
     processGoogleLogin();
     
     // Set up event listeners for manual login buttons
