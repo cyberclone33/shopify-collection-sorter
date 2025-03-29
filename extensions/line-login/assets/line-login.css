@@ -27,3 +27,25 @@
 #line-manual-login .button {
   margin-top: 10px;
 }
+
+/* Marketing consent checkbox styling */
+.marketing-consent {
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: flex-start;
+}
+
+.checkbox {
+  margin-right: 10px;
+  margin-top: 2px;
+}
+
+.checkbox-label {
+  font-size: 0.9em;
+  line-height: 1.4;
+  color: #333;
+}

@@ -65,18 +65,27 @@
     /* Marketing consent styles */
     .marketing-consent-container {
       margin-top: 15px;
-      font-size: 14px;
+      padding: {{ block.settings.consent_padding }}px;
+      border: {{ block.settings.consent_border_width }}px solid {{ block.settings.consent_border_color }};
+      border-radius: {{ block.settings.consent_border_radius }}px;
+      background-color: {{ block.settings.consent_background_color }};
+      text-align: center;
+      width: 100%;
+      max-width: {{ block.settings.button_width }}px;
+      margin-left: auto;
+      margin-right: auto;
     }
     
     .marketing-consent-container label {
-      display: flex;
-      align-items: flex-start;
+      display: inline-flex;
+      align-items: center;
       cursor: pointer;
+      color: {{ block.settings.consent_text_color }};
+      font-size: {{ block.settings.consent_font_size }}px;
     }
     
     .marketing-consent-container input {
       margin-right: 8px;
-      margin-top: 3px;
     }
   </style>
 
@@ -292,6 +301,64 @@
       "id": "marketing_consent_text",
       "label": "Consent Text",
       "default": "Yes, I would like to receive marketing emails with promotions, news, and updates."
+    },
+    {
+      "type": "range",
+      "id": "consent_padding",
+      "min": 5,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Consent Padding",
+      "default": 10
+    },
+    {
+      "type": "range",
+      "id": "consent_border_width",
+      "min": 0,
+      "max": 5,
+      "step": 1,
+      "unit": "px",
+      "label": "Consent Border Width",
+      "default": 1
+    },
+    {
+      "type": "color",
+      "id": "consent_border_color",
+      "label": "Consent Border Color",
+      "default": "#ccc"
+    },
+    {
+      "type": "range",
+      "id": "consent_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Consent Border Radius",
+      "default": 4
+    },
+    {
+      "type": "color",
+      "id": "consent_background_color",
+      "label": "Consent Background Color",
+      "default": "#f9f9f9"
+    },
+    {
+      "type": "color",
+      "id": "consent_text_color",
+      "label": "Consent Text Color",
+      "default": "#333"
+    },
+    {
+      "type": "range",
+      "id": "consent_font_size",
+      "min": 10,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "label": "Consent Font Size",
+      "default": 14
     }
   ]
 }
