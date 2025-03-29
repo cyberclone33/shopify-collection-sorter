@@ -51,11 +51,13 @@ export async function createShopifyCustomer(
   acceptsMarketing: boolean = true
 ): Promise<string | null> {
   try {
+    console.log(`Creating customer with acceptsMarketing: ${acceptsMarketing} (${typeof acceptsMarketing})`);
+    
     const customerData: any = {
       customer: {
         first_name: firstName,
         email: email,
-        accepts_marketing: acceptsMarketing
+        accepts_marketing: acceptsMarketing === true
       }
     };
     
@@ -65,6 +67,8 @@ export async function createShopifyCustomer(
       customerData.customer.password_confirmation = password;
       customerData.customer.send_email_welcome = false;
     }
+    
+    console.log('Shopify API request data:', JSON.stringify(customerData, null, 2));
     
     const response = await fetch(
       `https://${shop}/admin/api/2024-01/customers.json`,
@@ -79,10 +83,12 @@ export async function createShopifyCustomer(
     );
     
     if (!response.ok) {
-      throw new Error(`Shopify API error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Shopify API error: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();
+    console.log('Shopify API response:', JSON.stringify(data, null, 2));
     
     if (data.customer && data.customer.id) {
       return data.customer.id.toString();

@@ -130,7 +130,7 @@
   {% if block.settings.show_marketing_consent %}
     <div class="marketing-consent-container">
       <label for="marketing-consent-checkbox">
-        <input type="checkbox" id="marketing-consent-checkbox" checked="{{ block.settings.marketing_consent_default }}">
+        <input type="checkbox" id="marketing-consent-checkbox" {% if block.settings.marketing_consent_default %}checked{% endif %}>
         <span>{{ block.settings.marketing_consent_text }}</span>
       </label>
       <script>
@@ -139,16 +139,24 @@
           const socialButtons = document.querySelectorAll('.social-login-button');
           
           if (checkbox && socialButtons.length > 0) {
+            // Set initial state on page load
+            const isChecked = checkbox.checked;
+            socialButtons.forEach(button => {
+              let currentHref = button.getAttribute('href');
+              // Ensure marketing_consent parameter is set based on current checkbox state
+              if (currentHref) {
+                currentHref = currentHref.replace(/(&|&amp;)marketing_consent=[01]/, '');
+                button.setAttribute('href', `${currentHref}&marketing_consent=${isChecked ? '1' : '0'}`);
+              }
+            });
+            
+            // Update when checkbox state changes
             checkbox.addEventListener('change', function() {
               socialButtons.forEach(button => {
-                const currentHref = button.getAttribute('href');
-                // Update the marketing_consent parameter in all button URLs
+                let currentHref = button.getAttribute('href');
                 if (currentHref) {
-                  const updatedHref = currentHref.replace(
-                    /marketing_consent=[01]/,
-                    `marketing_consent=${checkbox.checked ? '1' : '0'}`
-                  );
-                  button.setAttribute('href', updatedHref);
+                  currentHref = currentHref.replace(/(&|&amp;)marketing_consent=[01]/, '');
+                  button.setAttribute('href', `${currentHref}&marketing_consent=${checkbox.checked ? '1' : '0'}`);
                 }
               });
             });

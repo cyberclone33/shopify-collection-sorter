@@ -45,7 +45,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
   const errorDescription = url.searchParams.get("error_description");
-  const marketingConsent = url.searchParams.get("marketing_consent") === "1";
+  // Extract marketing consent parameter from URL, properly converting to boolean
+  // Use strict comparison to ensure "1" is true, anything else is false
+  const marketingConsentParam = url.searchParams.get("marketing_consent");
+  const marketingConsent = marketingConsentParam === "1";
+  
+  console.log(`LINE callback - Marketing consent parameter: ${marketingConsentParam}, converted to: ${marketingConsent}`);
 
   // Handle errors from LINE
   if (error) {
