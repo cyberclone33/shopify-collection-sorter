@@ -42,6 +42,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
+  const marketingConsent = url.searchParams.get("marketing_consent") === "1";
 
   // Handle errors from Facebook
   if (error) {
@@ -84,7 +85,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
             facebookProfile.id,
             facebookProfile.name,
             facebookProfile.email,
-            password // Pass the password to be set during customer creation
+            password,
+            marketingConsent
           );
           
           if (customerId) {

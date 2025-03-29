@@ -47,14 +47,15 @@ export async function createShopifyCustomer(
   accessToken: string, 
   firstName: string, 
   email?: string,
-  password?: string
+  password?: string,
+  acceptsMarketing: boolean = true
 ): Promise<string | null> {
   try {
     const customerData: any = {
       customer: {
         first_name: firstName,
         email: email,
-        accepts_marketing: true
+        accepts_marketing: acceptsMarketing
       }
     };
     
@@ -142,7 +143,8 @@ export async function createOrLinkShopifyCustomer(
   socialUserId: string,
   displayName: string,
   email?: string,
-  password?: string
+  password?: string,
+  acceptsMarketing: boolean = true
 ): Promise<string | null> {
   try {
     let customerId = null;
@@ -154,7 +156,7 @@ export async function createOrLinkShopifyCustomer(
     
     // If no customer found, create a new one
     if (!customerId) {
-      customerId = await createShopifyCustomer(shop, accessToken, displayName, email, password);
+      customerId = await createShopifyCustomer(shop, accessToken, displayName, email, password, acceptsMarketing);
     } else if (password) {
       // If customer exists and password provided, update the password
       await setCustomerPassword(shop, accessToken, customerId, password);

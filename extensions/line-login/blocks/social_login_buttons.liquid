@@ -61,6 +61,23 @@
     .facebook-login-button:hover {
       background-color: #0d6efd;
     }
+    
+    /* Marketing consent styles */
+    .marketing-consent-container {
+      margin-top: 15px;
+      font-size: 14px;
+    }
+    
+    .marketing-consent-container label {
+      display: flex;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+    
+    .marketing-consent-container input {
+      margin-right: 8px;
+      margin-top: 3px;
+    }
   </style>
 
   {% if block.settings.show_line_login %}
@@ -69,7 +86,7 @@
       {% assign line_button_text = 'line_login.button.link' | t %}
     {% endif %}
 
-    <a href="{{ block.settings.app_url }}/auth/line?shop={{ shop.permanent_domain }}" class="social-login-button line-login-button" onclick="window.location.href=this.href; return false;">
+    <a href="{{ block.settings.app_url }}/auth/line?shop={{ shop.permanent_domain }}&marketing_consent={% if block.settings.marketing_consent_default %}1{% else %}0{% endif %}" class="social-login-button line-login-button" onclick="window.location.href=this.href; return false;">
       <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
         <path fill="#FFFFFF" d="M36 17.478C36 8.072 27.936 0 18 0S0 8.072 0 17.478c0 8.306 7.378 15.29 17.355 16.617.67.144 1.582.445 1.814.997.21.502.14 1.3.07 1.802 0 0-.234 1.393-.285 1.693-.88.502-.4 1.96 1.71 1.07s11.376-6.704 15.518-11.48c2.86-3.15 4.818-6.3 4.818-10.67z"/>
       </svg>
@@ -83,7 +100,7 @@
       {% assign google_button_text = 'google_login.button.link' | t %}
     {% endif %}
 
-    <a href="{{ block.settings.app_url }}/auth/google?shop={{ shop.permanent_domain }}" class="social-login-button google-login-button" onclick="window.location.href=this.href; return false;">
+    <a href="{{ block.settings.app_url }}/auth/google?shop={{ shop.permanent_domain }}&marketing_consent={% if block.settings.marketing_consent_default %}1{% else %}0{% endif %}" class="social-login-button google-login-button" onclick="window.location.href=this.href; return false;">
       <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
         <path fill="#FFFFFF" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
         <path fill="#FFFFFF" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -100,7 +117,7 @@
       {% assign facebook_button_text = 'facebook_login.button.link' | t %}
     {% endif %}
 
-    <a href="{{ block.settings.app_url }}/auth/facebook?shop={{ shop.permanent_domain }}" class="social-login-button facebook-login-button" onclick="window.location.href=this.href; return false;">
+    <a href="{{ block.settings.app_url }}/auth/facebook?shop={{ shop.permanent_domain }}&marketing_consent={% if block.settings.marketing_consent_default %}1{% else %}0{% endif %}" class="social-login-button facebook-login-button" onclick="window.location.href=this.href; return false;">
       <svg class="social-login-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
         <path fill="#FFFFFF" d="M44,24c0,11.045-8.955,20-20,20S4,35.045,4,24S12.955,4,24,4S44,12.955,44,24z"/>
         <path fill="#1877F2" d="M24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20S35.045,4,24,4z"/>
@@ -108,6 +125,37 @@
       </svg>
       {{ facebook_button_text }}
     </a>
+  {% endif %}
+  
+  {% if block.settings.show_marketing_consent %}
+    <div class="marketing-consent-container">
+      <label for="marketing-consent-checkbox">
+        <input type="checkbox" id="marketing-consent-checkbox" checked="{{ block.settings.marketing_consent_default }}">
+        <span>{{ block.settings.marketing_consent_text }}</span>
+      </label>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          const checkbox = document.getElementById('marketing-consent-checkbox');
+          const socialButtons = document.querySelectorAll('.social-login-button');
+          
+          if (checkbox && socialButtons.length > 0) {
+            checkbox.addEventListener('change', function() {
+              socialButtons.forEach(button => {
+                const currentHref = button.getAttribute('href');
+                // Update the marketing_consent parameter in all button URLs
+                if (currentHref) {
+                  const updatedHref = currentHref.replace(
+                    /marketing_consent=[01]/,
+                    `marketing_consent=${checkbox.checked ? '1' : '0'}`
+                  );
+                  button.setAttribute('href', updatedHref);
+                }
+              });
+            });
+          }
+        });
+      </script>
+    </div>
   {% endif %}
 </div>
 
@@ -214,6 +262,28 @@
       "id": "facebook_button_color",
       "label": "Facebook Button Color",
       "default": "#1877F2"
+    },
+    {
+      "type": "header",
+      "content": "Marketing Consent Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_marketing_consent",
+      "label": "Show Marketing Consent Checkbox",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "marketing_consent_default",
+      "label": "Pre-checked by Default",
+      "default": true
+    },
+    {
+      "type": "textarea",
+      "id": "marketing_consent_text",
+      "label": "Consent Text",
+      "default": "Yes, I would like to receive marketing emails with promotions, news, and updates."
     }
   ]
 }

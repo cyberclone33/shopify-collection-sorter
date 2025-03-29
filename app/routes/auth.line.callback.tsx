@@ -45,6 +45,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
   const errorDescription = url.searchParams.get("error_description");
+  const marketingConsent = url.searchParams.get("marketing_consent") === "1";
 
   // Handle errors from LINE
   if (error) {
@@ -86,7 +87,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
             SHOPIFY_ACCESS_TOKEN,
             lineProfile.userId,
             lineProfile.displayName,
-            idTokenData?.email
+            idTokenData?.email,
+            undefined, // password will be set later
+            marketingConsent
           );
           
           if (customerId) {
