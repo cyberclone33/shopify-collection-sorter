@@ -361,12 +361,92 @@
       }
     }
     
+    // Function to unlock readonly fields if social login fails
+    function unlockReadonlyFields() {
+      try {
+        // Find all forms that might have been set to readonly
+        const forms = document.querySelectorAll('form.customer_login, form#customer_login, form[action*="/account/login"]');
+        
+        forms.forEach(form => {
+          const emailInput = form.querySelector('input[type="email"], input[name="customer[email]"]');
+          const passwordInput = form.querySelector('input[type="password"], input[name="customer[password]"]');
+          
+          // Remove readonly attribute if present
+          if (emailInput && emailInput.hasAttribute('readonly')) {
+            emailInput.removeAttribute('readonly');
+          }
+          
+          if (passwordInput && passwordInput.hasAttribute('readonly')) {
+            passwordInput.removeAttribute('readonly');
+          }
+        });
+        
+        // Also check for inputs by ID
+        const emailInputs = [
+          document.getElementById('customer-email'),
+          document.getElementById('customer_email')
+        ];
+        
+        const passwordInputs = [
+          document.getElementById('customer-password'),
+          document.getElementById('customer_password')
+        ];
+        
+        // Remove readonly from any found inputs
+        emailInputs.forEach(input => {
+          if (input && input.hasAttribute('readonly')) {
+            input.removeAttribute('readonly');
+          }
+        });
+        
+        passwordInputs.forEach(input => {
+          if (input && input.hasAttribute('readonly')) {
+            input.removeAttribute('readonly');
+          }
+        });
+        
+        if (window.socialLoginConfig.debug) {
+          console.log('Removed readonly attributes from login fields');
+        }
+      } catch (e) {
+        if (window.socialLoginConfig.debug) {
+          console.error('Error unlocking readonly fields:', e);
+        }
+      }
+    }
+    
+    // Function to show loading overlay for specific provider
+    function showLoadingOverlay(provider) {
+      const overlay = document.getElementById(`${provider}-login-overlay`);
+      if (overlay) {
+        overlay.classList.add('show');
+        overlay.style.display = 'flex';
+      }
+    }
+    
+    // Function to hide loading overlay for specific provider
+    function hideLoadingOverlay(provider) {
+      const overlay = document.getElementById(`${provider}-login-overlay`);
+      if (overlay) {
+        overlay.classList.remove('show');
+        // Add a slight delay before removing from DOM to allow for transition
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 300);
+      }
+    }
+    
     // --- Provider-specific JWT verification ---
     
     // Verify JWT token for LINE login
     async function verifyLineJWT(token) {
       try {
         showLoadingOverlay('line');
+        
+        if (window.socialLoginConfig.debug) {
+          console.log('Verifying LINE JWT token...');
+        }
+        
         const response = await fetch(window.lineLoginConfig.jwtVerifyUrl, {
           method: 'POST',
           headers: {
@@ -380,9 +460,12 @@
           processLoginWithData('line', data);
         } else {
           hideLoadingOverlay('line');
+          unlockReadonlyFields(); // Unlock fields if verification fails
         }
       } catch (e) {
+        console.error('Error in verifyLineJWT:', e);
         hideLoadingOverlay('line');
+        unlockReadonlyFields(); // Unlock fields if verification throws an error
       }
     }
     
@@ -392,43 +475,9 @@
         showLoadingOverlay('google');
         
         if (window.socialLoginConfig.debug) {
-          console.log('Verifying Google JWT token:', token);
+          console.log('Verifying Google JWT token...');
         }
         
-        // For Google login, we can also directly decode the JWT to get user data
-        // This provides a fallback if the API call fails
-        try {
-          const tokenParts = token.split('.');
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(atob(tokenParts[1]));
-            if (window.socialLoginConfig.debug) {
-              console.log('Decoded Google JWT payload:', payload);
-            }
-            
-            // Check if the token has the required data
-            if (payload && payload.google_login === 'success' && payload.customer_email && payload.access_token) {
-              // Process with decoded data directly
-              const directData = {
-                google_login: 'success',
-                email: payload.customer_email,
-                access_token: payload.access_token,
-                return_to: payload.return_url || '/account'
-              };
-              
-              if (window.socialLoginConfig.debug) {
-                console.log('Processing Google login with direct JWT data:', directData);
-              }
-              
-              processLoginWithData('google', directData);
-              return; // Skip API verification if we can decode directly
-            }
-          }
-        } catch (decodeError) {
-          console.error('Error decoding Google JWT:', decodeError);
-          // Continue with API verification as fallback
-        }
-        
-        // API verification as fallback
         const response = await fetch(window.googleLoginConfig.jwtVerifyUrl, {
           method: 'POST',
           headers: {
@@ -439,17 +488,15 @@
         
         if (response.ok) {
           const data = await response.json();
-          if (window.socialLoginConfig.debug) {
-            console.log('Google JWT verification API response:', data);
-          }
           processLoginWithData('google', data);
         } else {
-          console.error('Google JWT verification failed:', response.status);
           hideLoadingOverlay('google');
+          unlockReadonlyFields(); // Unlock fields if verification fails
         }
       } catch (e) {
         console.error('Error in verifyGoogleJWT:', e);
         hideLoadingOverlay('google');
+        unlockReadonlyFields(); // Unlock fields if verification throws an error
       }
     }
     
@@ -457,6 +504,7 @@
     async function verifyFacebookJWT(token) {
       try {
         showLoadingOverlay('facebook');
+        
         const response = await fetch(window.facebookLoginConfig.jwtVerifyUrl, {
           method: 'POST',
           headers: {
@@ -470,9 +518,11 @@
           processLoginWithData('facebook', data);
         } else {
           hideLoadingOverlay('facebook');
+          unlockReadonlyFields(); // Unlock fields if verification fails
         }
       } catch (e) {
         hideLoadingOverlay('facebook');
+        unlockReadonlyFields(); // Unlock fields if verification throws an error
       }
     }
     
@@ -550,6 +600,10 @@
                     // Set the values
                     emailInput.value = customerEmail;
                     passwordInput.value = accessToken;
+                    
+                    // Set fields to read-only to prevent autofill popup on iOS devices
+                    emailInput.setAttribute('readonly', 'readonly');
+                    passwordInput.setAttribute('readonly', 'readonly');
                     
                     // Make sure form fields are visible for all providers
                     emailInput.style.opacity = '1';
@@ -703,7 +757,8 @@
                   console.error(`${provider} login error:`, e);
                 }
                 // If all else fails, just redirect to account
-                window.location.href = '/account';
+                window.location.href = returnUrl;
+                unlockReadonlyFields(); // Unlock fields if there's an error in the login process
               }
             }, 500);
           } else {
@@ -711,19 +766,21 @@
               console.error(`${provider} login missing email or access token`);
             }
             hideLoadingOverlay(provider);
-            document.body.classList.remove(`${provider}-login-in-progress`);
+            unlockReadonlyFields(); // Unlock fields if email or access token is missing
           }
         } catch (e) {
           if (window.socialLoginConfig.debug) {
             console.error(`${provider} login error:`, e);
           }
           hideLoadingOverlay(provider);
+          unlockReadonlyFields(); // Unlock fields if there's an error in the overall process
         }
       } else {
         if (window.socialLoginConfig.debug) {
           console.error(`${provider} login failed: data missing or invalid`);
         }
         hideLoadingOverlay(provider);
+        unlockReadonlyFields(); // Unlock fields if login data is invalid
       }
     }
     
