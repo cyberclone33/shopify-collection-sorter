@@ -41,15 +41,12 @@ function generateSecurePassword(length = 12): string {
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
+  const encodedState = url.searchParams.get("state");
   const error = url.searchParams.get("error");
-  // Extract marketing consent parameter from URL, properly converting to boolean
-  // Use strict comparison to ensure "1" is true, anything else is false
-  const marketingConsentParam = url.searchParams.get("marketing_consent");
-  const marketingConsent = marketingConsentParam === "1";
   
-  console.log(`Google callback - Marketing consent parameter: ${marketingConsentParam}, converted to: ${marketingConsent}`);
-
+  let marketingConsent = false;
+  let shop = SHOPIFY_STORE_DOMAIN;
+  
   // Handle errors from Google
   if (error) {
     console.error(`Google OAuth error: ${error}`);
@@ -57,14 +54,32 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   // Validate required parameters
-  if (!code || !state) {
+  if (!code || !encodedState) {
     console.error("Missing required parameters from Google callback");
     return redirect("/?error=invalid_request");
   }
-
-  // Extract shop from state parameter (we should encode this in the state)
-  // For now, use a default shop
-  const shop = SHOPIFY_STORE_DOMAIN;
+  
+  // Try to decode the state parameter
+  try {
+    // Decode the base64 state
+    const decodedState = Buffer.from(encodedState, 'base64').toString();
+    const stateObj = JSON.parse(decodedState);
+    
+    // Extract marketing consent from state
+    marketingConsent = stateObj.marketingConsent === true;
+    
+    // Extract shop from state if available
+    if (stateObj.shop) {
+      shop = stateObj.shop;
+    }
+    
+    console.log(`Google callback - Decoded state:`, stateObj);
+    console.log(`Google callback - Marketing consent from state: ${marketingConsent} (${typeof marketingConsent})`);
+  } catch (stateError) {
+    console.error("Error parsing state parameter:", stateError);
+    // Fall back to defaults if there's an error
+    marketingConsent = false;
+  }
   
   try {
     // Exchange code for access token

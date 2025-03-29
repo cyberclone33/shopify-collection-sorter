@@ -1,6 +1,5 @@
 import { LoaderFunctionArgs, redirect, json } from "@remix-run/node";
 import { getLineAuthUrl } from "../utils/line-auth.server";
-import { authenticate } from "../shopify.server";
 
 /**
  * This route initiates the LINE OAuth flow
@@ -10,34 +9,30 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Get the shop from the query parameter
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
+  const marketingConsent = url.searchParams.get("marketing_consent") || "0";
   
   if (!shop) {
     console.error("No shop parameter provided");
     return json({ error: "No shop parameter provided" }, { status: 400 });
   }
 
-  // For debugging - check if environment variables are set
-  const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID || "";
-  const LINE_REDIRECT_URI = process.env.LINE_REDIRECT_URI || "";
+  // Generate a state parameter that includes a random string for CSRF protection
+  // and the marketing consent value
+  const randomState = Math.random().toString(36).substring(2, 15);
+  const state = JSON.stringify({
+    random: randomState,
+    marketingConsent: marketingConsent === "1",
+    shop
+  });
   
-  if (!LINE_CLIENT_ID || !LINE_REDIRECT_URI) {
-    console.error("Missing LINE OAuth configuration:", {
-      clientIdSet: !!LINE_CLIENT_ID,
-      redirectUriSet: !!LINE_REDIRECT_URI
-    });
-    return json({ error: "Missing LINE OAuth configuration" }, { status: 500 });
-  }
-
-  // Generate a state parameter to prevent CSRF attacks
-  const state = Math.random().toString(36).substring(2, 15);
-  
-  // Store state in session or cookie for verification when the user returns
-  // This is a simplified example - in production you should use a more secure method
+  // Base64 encode the state to ensure it's URL-safe
+  const encodedState = Buffer.from(state).toString('base64');
   
   // Generate the LINE authorization URL
-  const lineAuthUrl = getLineAuthUrl(shop, state);
+  const lineAuthUrl = getLineAuthUrl(shop, encodedState);
   
-  // For debugging - log the generated URL
+  // For debugging - log the generated URL and state
+  console.log("LINE auth state:", state);
   console.log("Generated LINE auth URL:", lineAuthUrl);
   
   // Redirect to LINE login

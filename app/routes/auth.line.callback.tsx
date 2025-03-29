@@ -42,15 +42,37 @@ function generateSecurePassword(length = 32): string {
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
+  const encodedState = url.searchParams.get("state");
   const error = url.searchParams.get("error");
   const errorDescription = url.searchParams.get("error_description");
-  // Extract marketing consent parameter from URL, properly converting to boolean
-  // Use strict comparison to ensure "1" is true, anything else is false
-  const marketingConsentParam = url.searchParams.get("marketing_consent");
-  const marketingConsent = marketingConsentParam === "1";
   
-  console.log(`LINE callback - Marketing consent parameter: ${marketingConsentParam}, converted to: ${marketingConsent}`);
+  let marketingConsent = false;
+  let shop = SHOPIFY_STORE_DOMAIN;
+  
+  // Try to decode the state parameter
+  try {
+    // Decode the base64 state
+    const decodedState = Buffer.from(encodedState || '', 'base64').toString();
+    const stateObj = JSON.parse(decodedState);
+    
+    // Extract marketing consent from state
+    marketingConsent = stateObj.marketingConsent === true;
+    
+    // Extract shop from state if available
+    if (stateObj.shop) {
+      shop = stateObj.shop;
+    }
+    
+    console.log(`LINE callback - Decoded state:`, stateObj);
+    console.log(`LINE callback - Marketing consent from state: ${marketingConsent} (${typeof marketingConsent})`);
+  } catch (stateError) {
+    console.error("Error parsing state parameter:", stateError);
+    // If state cannot be parsed, check for the legacy parameter in the URL
+    const legacyConsent = url.searchParams.get("marketing_consent");
+    if (legacyConsent === "1") {
+      marketingConsent = true;
+    }
+  }
 
   // Handle errors from LINE
   if (error) {
@@ -59,15 +81,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   // Validate required parameters
-  if (!code || !state) {
+  if (!code || !encodedState) {
     console.error("Missing required parameters from LINE callback");
     return redirect("/?error=invalid_request");
   }
 
-  // Extract shop from state parameter (we should encode this in the state)
-  // For now, use a default shop
-  const shop = SHOPIFY_STORE_DOMAIN;
-  
   try {
     // Exchange code for access token
     const tokenData = await getLineAccessToken(code);
