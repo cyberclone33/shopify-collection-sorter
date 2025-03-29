@@ -57,7 +57,12 @@ export async function createShopifyCustomer(
       customer: {
         first_name: firstName,
         email: email,
-        accepts_marketing: acceptsMarketing === true
+        accepts_marketing: acceptsMarketing === true,
+        email_marketing_consent: {
+          state: acceptsMarketing === true ? "subscribed" : "not_subscribed",
+          opt_in_level: "single_opt_in",
+          consent_updated_at: new Date().toISOString()
+        }
       }
     };
     
