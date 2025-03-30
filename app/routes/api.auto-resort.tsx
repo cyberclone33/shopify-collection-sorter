@@ -1,9 +1,11 @@
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs, redirect } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { sortCollection } from "../utils/collection-sorter";
 import fs from 'fs';
 import path from 'path';
+import { RestClient } from "@shopify/shopify-api/rest";
+import { GraphqlClient } from "@shopify/shopify-api/lib/clients/graphql";
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -203,11 +205,16 @@ export async function action({ request }: ActionFunctionArgs) {
     console.log('Creating admin API client with session data');
     
     try {
-      // Use the Shopify admin API directly with the session token
-      // This bypasses the need to use authenticate.admin with a request object
-      const admin = await authenticate.createAdminApiClient({
-        session: dbSession
+      // Create a fake request with the shop in headers to authenticate with
+      const mockRequest = new Request(`https://${collectionShop}/admin`, {
+        headers: {
+          'content-type': 'application/json',
+          'Authorization': `Bearer ${dbSession.accessToken}`
+        }
       });
+      
+      // Get an admin API client using the session
+      const { admin } = await authenticate.admin(mockRequest);
       
       // Re-sort the collection using the admin client and session
       const sortResult = await sortCollection(admin, dbSession, collectionId, 250);
