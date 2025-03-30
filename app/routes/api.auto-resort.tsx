@@ -1,11 +1,9 @@
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs, redirect } from "@remix-run/node";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { sortCollection } from "../utils/collection-sorter";
 import fs from 'fs';
 import path from 'path';
-import { RestClient } from "@shopify/shopify-api/rest";
-import { GraphqlClient } from "@shopify/shopify-api/lib/clients/graphql";
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -41,6 +39,7 @@ interface SortResult {
 export async function action({ request }: ActionFunctionArgs) {
   let isAuthenticated = false;
   let authenticatedShop = '';
+  let adminForCurrentUser = null;
   
   // Add debug info about the environment
   console.log('DEBUG: Current directory:', process.cwd());
@@ -88,6 +87,7 @@ export async function action({ request }: ActionFunctionArgs) {
       if (admin && session) {
         isAuthenticated = true;
         authenticatedShop = session.shop;
+        adminForCurrentUser = admin;
         console.log(`[${new Date().toISOString()}] Starting automatic collection re-sort via admin user for shop: ${authenticatedShop}`);
       }
     } catch (authError) {
@@ -186,6 +186,49 @@ export async function action({ request }: ActionFunctionArgs) {
   for (const collection of collectionsToProcess) {
     const { shop: collectionShop, collectionId, collectionTitle } = collection;
     
+    // If this is the authenticated shop, use the admin client we already have
+    if (adminForCurrentUser && collectionShop === authenticatedShop) {
+      try {
+        // Get the session for this shop
+        const dbSession = await prisma.session.findFirst({
+          where: { shop: collectionShop }
+        });
+        
+        if (!dbSession) {
+          console.log(`No session found for shop ${collectionShop}, skipping collection`);
+          results.failed++;
+          results.details.push({
+            collection: collectionTitle,
+            success: false,
+            error: "No session found for shop"
+          });
+          continue;
+        }
+        
+        // Re-sort the collection using the admin client and session
+        const sortResult = await sortCollection(adminForCurrentUser, dbSession, collectionId, 250);
+        
+        console.log(`Successfully re-sorted collection ${collectionTitle}`);
+        results.successful++;
+        results.details.push({
+          collection: collectionTitle,
+          success: true,
+          inStockCount: sortResult.inStockCount,
+          outOfStockCount: sortResult.outOfStockCount
+        });
+      } catch (error) {
+        console.error(`Error re-sorting collection ${collectionId} for shop ${collectionShop}:`, error);
+        results.failed++;
+        results.details.push({
+          collection: collectionTitle || collectionId,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+      continue;
+    }
+    
+    // For other shops (or token-based auth), create a new request for each shop
     // Get session for this shop
     const dbSession = await prisma.session.findFirst({
       where: { shop: collectionShop }
@@ -205,16 +248,10 @@ export async function action({ request }: ActionFunctionArgs) {
     console.log('Creating admin API client with session data');
     
     try {
-      // Create a fake request with the shop in headers to authenticate with
-      const mockRequest = new Request(`https://${collectionShop}/admin`, {
-        headers: {
-          'content-type': 'application/json',
-          'Authorization': `Bearer ${dbSession.accessToken}`
-        }
-      });
-      
-      // Get an admin API client using the session
-      const { admin } = await authenticate.admin(mockRequest);
+      // Create a new request for this shop and get an admin client for it
+      const shopRequest = new Request(`https://${process.env.SHOPIFY_APP_URL}/api/auth?shop=${collectionShop}`);
+      // Add the session to the request
+      const { admin } = await authenticate.admin(shopRequest, { session: dbSession });
       
       // Re-sort the collection using the admin client and session
       const sortResult = await sortCollection(admin, dbSession, collectionId, 250);
