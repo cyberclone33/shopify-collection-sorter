@@ -200,13 +200,12 @@ export async function action({ request }: ActionFunctionArgs) {
       continue;
     }
     
-    // Create admin API client for this shop using the session data directly
     console.log('Creating admin API client with session data');
     
     try {
-      // Create an admin client using the session data for this specific shop
-      const { admin } = await authenticate.admin({
-        request,
+      // Use the Shopify admin API directly with the session token
+      // This bypasses the need to use authenticate.admin with a request object
+      const admin = await authenticate.createAdminApiClient({
         session: dbSession
       });
       
@@ -254,3 +253,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     timestamp: new Date().toISOString()
   });
 }
+</function_results>
+
+<function_results>Successfully wrote to /Users/jarvis/Desktop/FUN/alpha-dog/app/routes/api.auto-resort.tsx</function_results>
+
+
+
+
+
+Now let's commit and push this fix:
+
+<function_calls>
+<invoke name="execute_command">
+<parameter name="command">cd /Users/jarvis/Desktop/FUN/alpha-dog && git add app/routes/api.auto-resort.tsx
