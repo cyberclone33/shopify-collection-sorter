@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/node";
+import { LoaderFunctionArgs, redirect, json } from "@remix-run/node";
 import { 
   getLineAccessToken, 
   getLineProfile, 
@@ -9,6 +9,7 @@ import {
 import { createOrLinkShopifyCustomer } from "../utils/shopify-customer.server";
 import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
+import { checkRateLimit } from "../utils/rate-limiter.server";
 
 // Constants for Shopify store domain and API tokens
 const SHOPIFY_STORE_DOMAIN = "alphapetstw.myshopify.com";
@@ -40,6 +41,30 @@ function generateSecurePassword(length = 32): string {
  * fetches the user's profile, and creates/updates the user in our database
  */
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Get client IP for rate limiting
+  const ip = request.headers.get("x-forwarded-for") || 
+             request.headers.get("x-real-ip") ||
+             "unknown";
+  
+  // Check rate limit (5 auth callback attempts per minute - more restrictive for callbacks)
+  const rateLimitResult = checkRateLimit(ip, 5, 60000);
+  
+  if (rateLimitResult.isRateLimited) {
+    console.warn(`Rate limit exceeded for callback IP: ${ip}`);
+    return json(
+      { error: "Too many requests, please try again later" },
+      { 
+        status: 429,
+        headers: {
+          "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
+          "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+          "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+          "X-RateLimit-Reset": Math.ceil(rateLimitResult.resetAt / 1000).toString()
+        }
+      }
+    );
+  }
+
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const encodedState = url.searchParams.get("state");

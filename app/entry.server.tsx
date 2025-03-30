@@ -7,6 +7,7 @@ import {
 } from "@remix-run/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { getSecurityHeaders } from "./utils/security-headers.server";
 
 export const streamTimeout = 5000;
 
@@ -16,7 +17,14 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
+  // Add Shopify-specific headers
   addDocumentResponseHeaders(request, responseHeaders);
+  
+  // Add security headers
+  const securityHeaders = getSecurityHeaders();
+  for (const [key, value] of Object.entries(securityHeaders)) {
+    responseHeaders.set(key, value);
+  }
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? '')
     ? "onAllReady"

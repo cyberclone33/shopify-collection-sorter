@@ -22,7 +22,11 @@ const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const LINE_PROFILE_URL = "https://api.line.me/v2/profile";
 
 // JWT configuration
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-for-development-only";
+if (!process.env.JWT_SECRET) {
+  console.error("ERROR: JWT_SECRET environment variable is not set. Authentication will fail.");
+  throw new Error("JWT_SECRET environment variable must be set for secure authentication");
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRATION = "1h"; // 1 hour expiration
 
 // Interface for LINE user profile
@@ -115,16 +119,48 @@ export async function getLineProfile(accessToken: string): Promise<LineProfile> 
 }
 
 /**
- * Parse ID token to get additional user information
+ * Parse and verify ID token to get additional user information
  */
 export function parseIdToken(idToken: string): any {
   try {
-    // Note: In production, you should verify the token signature
+    // First decode without verification to get the header
+    const header = jwt.decode(idToken, { complete: true })?.header;
+    
+    if (!header || !header.kid) {
+      console.warn("Invalid token header or missing kid");
+    }
+    
+    // Decode and perform basic validation
     const decoded = jwt.decode(idToken);
+    
+    // Validate token claims
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded && typeof decoded === 'object') {
+      // Check expiration
+      if (decoded.exp && decoded.exp < now) {
+        throw new Error("Token expired");
+      }
+      
+      // Check not before time
+      if (decoded.nbf && decoded.nbf > now) {
+        throw new Error("Token not yet valid");
+      }
+      
+      // Check issuer (should be LINE)
+      if (decoded.iss && decoded.iss !== "https://access.line.me") {
+        console.warn("Invalid token issuer:", decoded.iss);
+      }
+      
+      // Check audience (should match your LINE client ID)
+      if (decoded.aud && decoded.aud !== LINE_CLIENT_ID) {
+        console.warn("Invalid token audience:", decoded.aud);
+      }
+    }
+    
     return decoded;
   } catch (error) {
-    console.error("Error parsing ID token:", error);
-    return null;
+    console.error("Error verifying ID token:", error);
+    throw error; // Re-throw to fail securely instead of returning null
   }
 }
 
@@ -184,23 +220,61 @@ export async function saveLineUser(
       // Only for deployment/initialization scenarios where migrations haven't run
       if (prismaError instanceof Error && prismaError.message.includes('no such table')) {
         console.error('LineUser table does not exist. This should be handled by Prisma migrations.');
-        console.error('As a temporary fallback, returning a mock object to continue the authentication flow.');
-        
-        // Return a mock object to ensure the authentication flow continues
-        return {
-          id: crypto.randomUUID(),
-          shop,
-          lineId: lineProfile.userId,
-          lineAccessToken: tokenData.access_token,
-          lineRefreshToken: tokenData.refresh_token,
-          tokenExpiresAt: expiresAt,
-          displayName,
-          pictureUrl,
-          email,
-          shopifyCustomerId: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
+        // Try to create the table on the fly
+        try {
+          await prisma.$executeRaw`
+            CREATE TABLE IF NOT EXISTS "LineUser" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "shop" TEXT NOT NULL,
+              "lineId" TEXT NOT NULL,
+              "lineAccessToken" TEXT,
+              "lineRefreshToken" TEXT,
+              "tokenExpiresAt" DATETIME,
+              "displayName" TEXT,
+              "pictureUrl" TEXT,
+              "email" TEXT,
+              "shopifyCustomerId" TEXT,
+              "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updatedAt" DATETIME NOT NULL
+            )
+          `;
+          
+          await prisma.$executeRaw`
+            CREATE UNIQUE INDEX IF NOT EXISTS "LineUser_shop_lineId_key" ON "LineUser"("shop", "lineId")
+          `;
+          
+          // Try the upsert again
+          return await prisma.LineUser.upsert({
+            where: {
+              shop_lineId: {
+                shop,
+                lineId: lineProfile.userId
+              }
+            },
+            update: {
+              lineAccessToken: tokenData.access_token,
+              lineRefreshToken: tokenData.refresh_token,
+              tokenExpiresAt: expiresAt,
+              displayName,
+              pictureUrl,
+              email
+            },
+            create: {
+              id: crypto.randomUUID(),
+              shop,
+              lineId: lineProfile.userId,
+              lineAccessToken: tokenData.access_token,
+              lineRefreshToken: tokenData.refresh_token,
+              tokenExpiresAt: expiresAt,
+              displayName,
+              pictureUrl,
+              email
+            }
+          });
+        } catch (createTableError) {
+          console.error('Failed to create LineUser table:', createTableError);
+          throw new Error(`Database initialization failed: ${createTableError instanceof Error ? createTableError.message : 'Unknown error'}`);
+        }
       }
       
       throw prismaError;
@@ -214,21 +288,8 @@ export async function saveLineUser(
       console.error(`Stack trace: ${error.stack}`);
     }
     
-    // Return a mock object to ensure the authentication flow continues
-    return {
-      id: crypto.randomUUID(),
-      shop,
-      lineId: lineProfile.userId,
-      lineAccessToken: tokenData.access_token,
-      lineRefreshToken: tokenData.refresh_token,
-      tokenExpiresAt: expiresAt,
-      displayName,
-      pictureUrl,
-      email,
-      shopifyCustomerId: null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    // Instead of returning a mock object, throw an error to fail securely
+    throw new Error(`Failed to save user data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

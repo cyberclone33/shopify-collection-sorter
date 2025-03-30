@@ -1,11 +1,36 @@
 import { LoaderFunctionArgs, redirect, json } from "@remix-run/node";
 import { getLineAuthUrl } from "../utils/line-auth.server";
+import { checkRateLimit } from "../utils/rate-limiter.server";
 
 /**
  * This route initiates the LINE OAuth flow
  * It generates a state parameter for security and redirects to LINE's authorization page
  */
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Get client IP for rate limiting
+  const ip = request.headers.get("x-forwarded-for") || 
+             request.headers.get("x-real-ip") ||
+             "unknown";
+  
+  // Check rate limit (10 auth attempts per minute)
+  const rateLimitResult = checkRateLimit(ip, 10, 60000);
+  
+  if (rateLimitResult.isRateLimited) {
+    console.warn(`Rate limit exceeded for IP: ${ip}`);
+    return json(
+      { error: "Too many requests, please try again later" },
+      { 
+        status: 429,
+        headers: {
+          "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
+          "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+          "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+          "X-RateLimit-Reset": Math.ceil(rateLimitResult.resetAt / 1000).toString()
+        }
+      }
+    );
+  }
+  
   // Get the shop from the query parameter
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");

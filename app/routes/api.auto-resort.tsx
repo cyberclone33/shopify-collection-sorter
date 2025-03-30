@@ -9,7 +9,11 @@ import path from 'path';
 const prisma = new PrismaClient();
 
 // This secure token should be set as an environment variable
-const AUTO_RESORT_SECRET = process.env.AUTO_RESORT_SECRET || "1adeb562b9fcb7ae80555aa49de318be";
+if (!process.env.AUTO_RESORT_SECRET) {
+  console.error("ERROR: AUTO_RESORT_SECRET environment variable is not set. Auto-resort API will be unavailable.");
+  throw new Error("AUTO_RESORT_SECRET environment variable must be set for secure API access");
+}
+const AUTO_RESORT_SECRET = process.env.AUTO_RESORT_SECRET;
 
 interface SortedCollection {
   id: string;
