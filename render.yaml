@@ -5,7 +5,17 @@ services:
     plan: free
     buildCommand: npm ci && npx prisma generate && npm run build
     startCommand: npm run start
-    healthCheckPath: /
+    healthCheckPath: /debug/health
+    headers:
+      - path: /*
+        name: Access-Control-Allow-Origin
+        value: "https://admin.shopify.com"
+      - path: /*
+        name: Access-Control-Allow-Methods
+        value: "GET, POST, OPTIONS, DELETE, PUT"
+      - path: /*
+        name: Access-Control-Allow-Headers
+        value: "Content-Type, Authorization, X-Requested-With"
     disk:
       name: prisma-data
       mountPath: /opt/render/project/src/prisma
