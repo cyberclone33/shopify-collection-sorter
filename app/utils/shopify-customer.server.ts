@@ -73,8 +73,12 @@ export async function createShopifyCustomer(
       customerData.customer.send_email_welcome = false;
     }
     
+>>>>>>> parent of e1f3da3 (fix: Improve Shopify customer creation with better error handling and marketing preferences update)
+=======
     console.log('Shopify API request data:', JSON.stringify(customerData, null, 2));
     
+=======
+>>>>>>> parent of e1f3da3 (fix: Improve Shopify customer creation with better error handling and marketing preferences update)
     const response = await fetch(
       `https://${shop}/admin/api/2024-01/customers.json`,
       {
@@ -88,12 +92,24 @@ export async function createShopifyCustomer(
     );
     
     if (!response.ok) {
+      throw new Error(`Shopify API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+>>>>>>> parent of e1f3da3 (fix: Improve Shopify customer creation with better error handling and marketing preferences update)
+=======
       const errorText = await response.text();
       throw new Error(`Shopify API error: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();
     console.log('Shopify API response:', JSON.stringify(data, null, 2));
+=======
+      throw new Error(`Shopify API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+>>>>>>> parent of e1f3da3 (fix: Improve Shopify customer creation with better error handling and marketing preferences update)
     
     if (data.customer && data.customer.id) {
       return data.customer.id.toString();

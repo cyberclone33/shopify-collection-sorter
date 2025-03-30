@@ -204,8 +204,11 @@ export async function action({ request }: ActionFunctionArgs) {
     console.log('Creating admin API client with session data');
     
     try {
-      // Get the authenticated admin client
-      const { admin } = await authenticate.admin(request);
+      // Create an admin client using the session data for this specific shop
+      const { admin } = await authenticate.admin({
+        request,
+        session: dbSession
+      });
       
       // Re-sort the collection using the admin client and session
       const sortResult = await sortCollection(admin, dbSession, collectionId, 250);
