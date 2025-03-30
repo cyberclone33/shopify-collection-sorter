@@ -27,13 +27,19 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
-  // Add Shopify-specific headers
-  addDocumentResponseHeaders(request, responseHeaders);
-  
-  // Add security headers
+  // First add security headers
   const securityHeaders = getSecurityHeaders();
   for (const [key, value] of Object.entries(securityHeaders)) {
     responseHeaders.set(key, value);
+  }
+  
+  // Then add Shopify-specific headers AFTER (they should override our security headers if needed)
+  addDocumentResponseHeaders(request, responseHeaders);
+  
+  // Special handling for embedded app requests - remove X-Frame-Options if present
+  const url = new URL(request.url);
+  if (url.searchParams.get('embedded') === '1') {
+    responseHeaders.delete('X-Frame-Options');
   }
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? '')
