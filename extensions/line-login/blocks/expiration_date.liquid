@@ -37,10 +37,9 @@
 
 {% assign current_variant = product.selected_or_first_available_variant %}
 {% assign batch_data_string = current_variant.metafields.alpha_dog.expiration_data %}
+{% assign batch_data = batch_data_string | json %}
 
-{% if batch_data_string != blank %}
-  {% assign batch_data = batch_data_string | json_parse %}
-  
+{% if batch_data != blank %}
   <div id="batch-info-block" class="batch-info-block">
     <h3>Batch Information</h3>
     <div class="batch-info-details">
