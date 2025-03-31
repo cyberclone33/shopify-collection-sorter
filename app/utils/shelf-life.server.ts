@@ -16,7 +16,8 @@ interface ShelfLifeData {
  * Clean product ID by removing leading equals sign
  */
 function cleanProductId(productId: string): string {
-  if (productId && productId.startsWith('=')) {
+  if (!productId) return "";
+  if (productId.startsWith('=')) {
     return productId.substring(1);
   }
   return productId;
@@ -27,6 +28,9 @@ function cleanProductId(productId: string): string {
  */
 export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
   try {
+    // Log the first 200 characters of the CSV to help with debugging
+    console.log("CSV content preview:", csvContent.substring(0, 200));
+    
     // Handle Big5 encoding by using a more relaxed parsing approach
     const records = parse(csvContent, {
       columns: true,
@@ -36,18 +40,224 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       relax_column_count: true, // Allow varying column counts
       encoding: 'utf8', // We'll handle encoding conversion separately if needed
     });
-
-    return records.map((record: any) => {
-      // Get product ID from various possible column names and clean it
-      const rawProductId = record.productId || record.product_id || record.sku || "";
+    
+    // Log the first record to help with debugging
+    if (records.length > 0) {
+      console.log("First record keys:", Object.keys(records[0]));
+      console.log("First record values:", Object.values(records[0]));
+    }
+    
+    // Try to identify the product ID column
+    const possibleProductIdColumns = [
+      'productId', 'product_id', 'sku', 'SKU', 'Product ID', 'ProductID', 
+      'product id', 'product', 'Product', 'ID', 'id', 'Item', 'item',
+      '商品ID', '商品編號', '產品編號', '產品ID', '商品代碼', '貨號'
+    ];
+    
+    // Try to identify the batch ID column
+    const possibleBatchIdColumns = [
+      'batchId', 'batch_id', 'batch', 'Batch ID', 'BatchID', 'batch id',
+      'Batch', 'lot', 'Lot', 'LotID', 'Lot ID', 'lot id',
+      '批次', '批號', '批次編號', '批次ID'
+    ];
+    
+    // Try to identify the expiration date column
+    const possibleExpirationDateColumns = [
+      'expirationDate', 'expiration_date', 'date', 'Date', 'Expiration', 
+      'expiration', 'Expiry', 'expiry', 'Exp Date', 'exp date',
+      '到期日', '有效期', '效期', '保存期限', '有效日期'
+    ];
+    
+    // Try to identify the quantity column
+    const possibleQuantityColumns = [
+      'quantity', 'Quantity', 'qty', 'Qty', 'QTY', 'Amount', 'amount',
+      '數量', '庫存', '庫存數量', '數目'
+    ];
+    
+    // Try to identify the location column
+    const possibleLocationColumns = [
+      'location', 'Location', 'loc', 'Loc', 'warehouse', 'Warehouse',
+      '位置', '倉庫', '儲位', '庫位'
+    ];
+    
+    // Find the actual column names in the CSV
+    let productIdColumn = '';
+    let batchIdColumn = '';
+    let expirationDateColumn = '';
+    let quantityColumn = '';
+    let locationColumn = '';
+    
+    if (records.length > 0) {
+      const firstRecord = records[0];
+      const csvColumns = Object.keys(firstRecord);
+      
+      // Find product ID column
+      productIdColumn = csvColumns.find(col => 
+        possibleProductIdColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
+      // Find batch ID column
+      batchIdColumn = csvColumns.find(col => 
+        possibleBatchIdColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
+      // Find expiration date column
+      expirationDateColumn = csvColumns.find(col => 
+        possibleExpirationDateColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
+      // Find quantity column
+      quantityColumn = csvColumns.find(col => 
+        possibleQuantityColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
+      // Find location column
+      locationColumn = csvColumns.find(col => 
+        possibleLocationColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
+      console.log("Identified columns:", {
+        productIdColumn,
+        batchIdColumn,
+        expirationDateColumn,
+        quantityColumn,
+        locationColumn
+      });
+    }
+    
+    return records.map((record: any, index: number) => {
+      // Get product ID from identified column or try various fallbacks
+      let rawProductId = '';
+      if (productIdColumn && record[productIdColumn]) {
+        rawProductId = record[productIdColumn];
+      } else {
+        // Try all possible product ID columns
+        for (const col of possibleProductIdColumns) {
+          if (record[col]) {
+            rawProductId = record[col];
+            break;
+          }
+        }
+        
+        // If still no product ID, try to use any column that might contain it
+        if (!rawProductId) {
+          for (const key of Object.keys(record)) {
+            const value = record[key];
+            if (typeof value === 'string' && 
+                (value.includes('SKU') || value.includes('sku') || 
+                 value.includes('product') || value.includes('Product'))) {
+              rawProductId = value;
+              break;
+            }
+          }
+        }
+      }
+      
       const productId = cleanProductId(rawProductId);
+      
+      // Get batch ID from identified column or try various fallbacks
+      let batchId = '';
+      if (batchIdColumn && record[batchIdColumn]) {
+        batchId = record[batchIdColumn];
+      } else {
+        // If no batch ID found, generate one based on row index
+        batchId = `batch-${index + 1}`;
+      }
+      
+      // Get expiration date
+      let expirationDateStr = '';
+      if (expirationDateColumn && record[expirationDateColumn]) {
+        expirationDateStr = record[expirationDateColumn];
+      } else {
+        // Try all possible expiration date columns
+        for (const col of possibleExpirationDateColumns) {
+          if (record[col]) {
+            expirationDateStr = record[col];
+            break;
+          }
+        }
+      }
+      
+      // Parse the expiration date
+      let expirationDate = new Date();
+      try {
+        if (expirationDateStr) {
+          expirationDate = new Date(expirationDateStr);
+        } else {
+          // Default to 30 days from now if no date found
+          expirationDate = new Date();
+          expirationDate.setDate(expirationDate.getDate() + 30);
+        }
+      } catch (e) {
+        console.error(`Error parsing date '${expirationDateStr}' for row ${index + 1}:`, e);
+      }
+      
+      // Get quantity
+      let quantityStr = '';
+      if (quantityColumn && record[quantityColumn]) {
+        quantityStr = record[quantityColumn];
+      } else {
+        // Try all possible quantity columns
+        for (const col of possibleQuantityColumns) {
+          if (record[col]) {
+            quantityStr = record[col];
+            break;
+          }
+        }
+      }
+      
+      // Parse the quantity
+      let quantity = 0;
+      try {
+        quantity = parseInt(quantityStr, 10) || 0;
+      } catch (e) {
+        console.error(`Error parsing quantity '${quantityStr}' for row ${index + 1}:`, e);
+      }
+      
+      // Get location
+      let location = 'default';
+      if (locationColumn && record[locationColumn]) {
+        location = record[locationColumn];
+      } else {
+        // Try all possible location columns
+        for (const col of possibleLocationColumns) {
+          if (record[col]) {
+            location = record[col];
+            break;
+          }
+        }
+      }
+      
+      // Log the row data for debugging
+      if (index < 5 || !productId) {
+        console.log(`Row ${index + 1} data:`, { 
+          rawProductId, 
+          productId, 
+          batchId, 
+          expirationDateStr, 
+          expirationDate, 
+          quantityStr, 
+          quantity, 
+          location 
+        });
+      }
       
       return {
         productId,
-        batchId: record.batchId || record.batch_id || "",
-        expirationDate: new Date(record.expirationDate || record.expiration_date || record.date),
-        quantity: parseInt(record.quantity, 10) || 0,
-        location: record.location || "default",
+        batchId,
+        expirationDate,
+        quantity,
+        location,
       };
     });
   } catch (error) {
@@ -146,25 +356,35 @@ export async function processCSVFile(fileContent: string): Promise<{ savedCount:
     const errors: string[] = [];
     
     // Validate data
-    const validData = parsedData.filter(item => {
+    const validData = parsedData.filter((item, index) => {
       if (!item.productId) {
-        errors.push(`Missing product ID for batch ${item.batchId}`);
+        const errorMsg = `Missing product ID for batch ${item.batchId} at row ${index + 1}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
         return false;
       }
       if (!item.batchId) {
-        errors.push(`Missing batch ID for product ${item.productId}`);
+        const errorMsg = `Missing batch ID for product ${item.productId} at row ${index + 1}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
         return false;
       }
       if (isNaN(item.expirationDate.getTime())) {
-        errors.push(`Invalid expiration date for product ${item.productId}, batch ${item.batchId}`);
+        const errorMsg = `Invalid expiration date for product ${item.productId}, batch ${item.batchId} at row ${index + 1}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
         return false;
       }
       if (item.quantity < 0) {
-        errors.push(`Invalid quantity for product ${item.productId}, batch ${item.batchId}`);
+        const errorMsg = `Invalid quantity for product ${item.productId}, batch ${item.batchId} at row ${index + 1}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
         return false;
       }
       return true;
     });
+    
+    console.log(`Parsed ${parsedData.length} items, ${validData.length} valid items`);
     
     // Save valid data
     const savedCount = await saveShelfLifeData(validData);
