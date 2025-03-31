@@ -1,17 +1,17 @@
 {% comment %}
-  Expiration Date Block
-  Shows expiration date information for products when available from metafields
+  Batch Information Block
+  Shows batch information for products when available from metafields
 {% endcomment %}
 
 {% schema %}
 {
-  "name": "Expiration Date",
+  "name": "Batch Information",
   "target": "section",
   "templates": ["product"],
   "settings": [
     {
       "type": "header",
-      "content": "Expiration Date Display"
+      "content": "Batch Information Display"
     },
     {
       "type": "checkbox",
@@ -30,93 +30,30 @@
       "id": "show_location",
       "label": "Show Location",
       "default": true
-    },
-    {
-      "type": "select",
-      "id": "warning_days",
-      "label": "Warning threshold (days)",
-      "options": [
-        {
-          "value": "7",
-          "label": "7 days"
-        },
-        {
-          "value": "14",
-          "label": "14 days"
-        },
-        {
-          "value": "30",
-          "label": "30 days"
-        },
-        {
-          "value": "60",
-          "label": "60 days"
-        },
-        {
-          "value": "90",
-          "label": "90 days"
-        }
-      ],
-      "default": "30"
-    },
-    {
-      "type": "color",
-      "id": "warning_color",
-      "label": "Warning color",
-      "default": "#e05d00"
-    },
-    {
-      "type": "color",
-      "id": "danger_color",
-      "label": "Expired color",
-      "default": "#d82c0d"
     }
   ]
 }
 {% endschema %}
 
 {% assign current_variant = product.selected_or_first_available_variant %}
-{% assign expiration_data = current_variant.metafields.alpha_dog.expiration_data %}
+{% assign batch_data = current_variant.metafields.alpha_dog.expiration_data %}
 
-{% if expiration_data %}
-<div id="expiration-date-block" class="expiration-date-block">
-  <h3>Expiration Information</h3>
-  <div class="expiration-date-details">
-    {% assign expiration_items = expiration_data | json %}
-    {% for item in expiration_items %}
-      <div class="expiration-date-batch">
+{% if batch_data %}
+<div id="batch-info-block" class="batch-info-block">
+  <h3>Batch Information</h3>
+  <div class="batch-info-details">
+    {% for item in batch_data %}
+      <div class="batch-info-item">
         {% if section.settings.show_batch_id %}
-          <div><span class="expiration-date-label">Batch ID:</span> {{ item.batchId }}</div>
+          <div><span class="batch-info-label">Batch ID:</span> {{ item.batchId }}</div>
         {% endif %}
-        
-        {% assign expiration_date = item.expirationDate | date: '%s' | times: 1 %}
-        {% assign today_date = 'now' | date: '%s' | times: 1 %}
-        {% assign days_until_expiration = expiration_date | minus: today_date | divided_by: 86400 %}
-        {% assign warning_days = section.settings.warning_days | default: 30 | times: 1 %}
-        
-        {% if days_until_expiration <= 0 %}
-          {% assign expiration_class = 'expiration-date-danger' %}
-          {% assign expiration_message = ' (Expired)' %}
-        {% elsif days_until_expiration <= warning_days %}
-          {% assign expiration_class = 'expiration-date-warning' %}
-          {% assign expiration_message = ' (Expires in ' | append: days_until_expiration | append: ' days)' %}
-        {% else %}
-          {% assign expiration_class = '' %}
-          {% assign expiration_message = '' %}
-        {% endif %}
-        
-        <div class="{{ expiration_class }}">
-          <span class="expiration-date-label">Expires on:</span> 
-          {{ item.expirationDate | date: '%B %d, %Y' }}
-          {{ expiration_message }}
-        </div>
         
         {% if section.settings.show_quantity %}
-          <div><span class="expiration-date-label">Quantity:</span> {{ item.quantity }}</div>
+          <div><span class="batch-info-label">Quantity:</span> {{ item.quantity }}</div>
         {% endif %}
         
         {% if section.settings.show_location and item.location != blank and item.location != empty %}
-          <div><span class="expiration-date-label">Location:</span> {{ item.location }}</div>
+          <div><span class="batch-info-label">Location:</span> {{ item.location }}</div>
         {% endif %}
       </div>
     {% endfor %}
@@ -124,7 +61,7 @@
 </div>
 
 <style>
-  .expiration-date-block {
+  .batch-info-block {
     margin: 20px 0;
     padding: 15px;
     border: 1px solid #e8e8e8;
@@ -132,41 +69,33 @@
     background-color: #f9f9f9;
   }
   
-  .expiration-date-block h3 {
+  .batch-info-block h3 {
     margin-top: 0;
     margin-bottom: 10px;
     font-size: 16px;
     font-weight: 600;
   }
   
-  .expiration-date-details {
+  .batch-info-details {
     font-size: 14px;
   }
   
-  .expiration-date-batch {
+  .batch-info-item {
     margin-bottom: 10px;
     padding-bottom: 10px;
     border-bottom: 1px solid #e8e8e8;
   }
   
-  .expiration-date-batch:last-child {
+  .batch-info-item:last-child {
     border-bottom: none;
     margin-bottom: 0;
     padding-bottom: 0;
   }
   
-  .expiration-date-label {
+  .batch-info-label {
     font-weight: 500;
     display: inline-block;
     min-width: 120px;
-  }
-  
-  .expiration-date-warning {
-    color: {{ section.settings.warning_color | default: '#e05d00' }};
-  }
-  
-  .expiration-date-danger {
-    color: {{ section.settings.danger_color | default: '#d82c0d' }};
   }
 </style>
 {% endif %}

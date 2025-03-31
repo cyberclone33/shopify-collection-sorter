@@ -645,7 +645,6 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         // Add this batch to the variant's expiration data
         variantExpirationMap.get(variantDetails.variantId).push({
           batchId: item.batchId,
-          expirationDate: item.expirationDate.toISOString(),
           quantity: item.quantity,
           location: item.location || ""
         });
@@ -684,9 +683,6 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
           new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime()
         );
         
-        // Convert expiration data to JSON string
-        const metafieldValue = JSON.stringify(expirationData);
-        
         // Update the variant's metafield with expiration data using metafieldsSet mutation
         const response = await admin.graphql(`
           mutation {
@@ -696,7 +692,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
                 namespace: "alpha_dog",
                 key: "expiration_data",
                 type: "json",
-                value: ${JSON.stringify(metafieldValue)}
+                value: ${JSON.stringify(expirationData)}
               }
             ]) {
               metafields {
