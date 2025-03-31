@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { useActionData, useSubmit } from "@remix-run/react";
+import { useActionData, useSubmit, useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -13,16 +13,40 @@ import {
   Button,
   PageActions,
   InlineStack,
-  Box
+  Box,
+  DataTable,
+  EmptyState,
+  Spinner,
+  Tabs
 } from "@shopify/polaris";
 import { NoteIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
-import { processCSVFile } from "../utils/shelf-life.server";
+import { processCSVFile, getAllShelfLifeItems } from "../utils/shelf-life.server";
 import iconv from "iconv-lite";
 
+// Define the ShelfLifeItem interface
+interface ShelfLifeItem {
+  id: string;
+  shop: string;
+  productId: string;
+  batchId: string;
+  expirationDate: string;
+  quantity: number;
+  location: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-  return null;
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
+  
+  // Fetch all shelf life items
+  const shelfLifeItems: ShelfLifeItem[] = await getAllShelfLifeItems(shop);
+  
+  return json({
+    shelfLifeItems
+  });
 };
 
 interface ActionData {
@@ -93,7 +117,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function ShelfLifeManagement() {
   const [file, setFile] = useState<File | null>(null);
   const [rejectedFiles, setRejectedFiles] = useState<File[]>([]);
+  const [selectedTab, setSelectedTab] = useState(0);
   const actionData = useActionData<ActionData>();
+  const { shelfLifeItems } = useLoaderData<typeof loader>();
   const submit = useSubmit();
 
   const handleDropZoneDrop = useCallback(
@@ -182,14 +208,44 @@ export default function ShelfLifeManagement() {
     </Banner>
   );
 
+  // Format date for display
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleString();
+  };
+
+  // Prepare data for the DataTable
+  const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
+    item.id,
+    item.productId,
+    item.batchId,
+    formatDate(item.expirationDate),
+    item.quantity.toString(),
+    item.location || "N/A",
+    formatDate(item.createdAt),
+    formatDate(item.updatedAt)
+  ]);
+
+  const tabs = [
+    {
+      id: 'upload',
+      content: 'Upload CSV',
+      panelID: 'upload-panel',
+    },
+    {
+      id: 'view',
+      content: 'View Inventory',
+      panelID: 'view-panel',
+    },
+  ];
+
   return (
     <Page
       title="Shelf Life Management"
-      primaryAction={{
+      primaryAction={selectedTab === 0 ? {
         content: "Upload CSV",
         onAction: handleSubmit,
         disabled: !file,
-      }}
+      } : undefined}
     >
       <BlockStack gap="500">
         {successMessage}
@@ -197,65 +253,99 @@ export default function ShelfLifeManagement() {
         {errorUploadMessage}
         {errorMessage}
         
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">Upload Shelf Life Data</Text>
-                <Text as="p">
-                  Upload a CSV file containing product shelf life information. The file should include columns for product ID, batch ID, expiration date, and quantity.
-                </Text>
-                <DropZone
-                  accept="text/csv"
-                  type="file"
-                  onDrop={handleDropZoneDrop}
-                  allowMultiple={false}
-                >
-                  {uploadedFile}
-                  {fileUpload}
-                </DropZone>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Files must be in CSV format. Big5 encoding is supported. Product IDs starting with "=" will have the "=" removed.
-                </Text>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-          
-          <Layout.Section variant="oneThird">
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h2" variant="headingMd">Shelf Life Management Help</Text>
-                <Text as="h3" variant="headingSm">
-                  About this feature
-                </Text>
-                <Text as="p">
-                  The Shelf Life Management feature allows you to track inventory by expiration date. Upload your CSV data daily to keep inventory information up to date.
-                </Text>
-                <Text as="h3" variant="headingSm">
-                  CSV Format
-                </Text>
-                <Text as="p">
-                  Your CSV file should include the following columns:
-                </Text>
-                <ul>
-                  <li>Product ID (SKU or ERP ID) - Leading "=" will be removed</li>
-                  <li>Batch ID</li>
-                  <li>Expiration Date (YYYY-MM-DD)</li>
-                  <li>Quantity</li>
-                  <li>Location (optional)</li>
-                </ul>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-        
-        <PageActions
-          primaryAction={{
-            content: "Upload CSV",
-            onAction: handleSubmit,
-            disabled: !file,
-          }}
+        <Tabs
+          tabs={tabs}
+          selected={selectedTab}
+          onSelect={(index) => setSelectedTab(index)}
         />
+        
+        {selectedTab === 0 ? (
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="500">
+                  <Text as="h2" variant="headingMd">Upload shelf life data</Text>
+                  <Text as="p">
+                    Upload a CSV file containing product shelf life information. The file should include columns for product ID, batch ID, expiration date, and quantity.
+                  </Text>
+                  <DropZone
+                    accept="text/csv"
+                    type="file"
+                    onDrop={handleDropZoneDrop}
+                    allowMultiple={false}
+                  >
+                    {uploadedFile}
+                    {fileUpload}
+                  </DropZone>
+                  <Box paddingBlockStart="200">
+                    <Text as="h3" variant="headingMd">Notes:</Text>
+                    <ul>
+                      <li>
+                        <Text as="p">
+                          The CSV file should contain columns for product ID (SKU), batch ID, expiration date, and quantity.
+                        </Text>
+                      </li>
+                      <li>
+                        <Text as="p">
+                          Leading equals signs (=) in product IDs will be automatically removed.
+                        </Text>
+                      </li>
+                      <li>
+                        <Text as="p">
+                          The file can be encoded in Big5 (Traditional Chinese) or UTF-8.
+                        </Text>
+                      </li>
+                    </ul>
+                  </Box>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        ) : (
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="500">
+                  <Text as="h2" variant="headingMd">Shelf Life Inventory</Text>
+                  {shelfLifeItems.length === 0 ? (
+                    <EmptyState
+                      heading="No shelf life data found"
+                      image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                    >
+                      <p>Upload a CSV file to add shelf life data.</p>
+                    </EmptyState>
+                  ) : (
+                    <DataTable
+                      columnContentTypes={[
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'numeric',
+                        'text',
+                        'text',
+                        'text'
+                      ]}
+                      headings={[
+                        'ID',
+                        'Product ID',
+                        'Batch ID',
+                        'Expiration Date',
+                        'Quantity',
+                        'Location',
+                        'Created At',
+                        'Updated At'
+                      ]}
+                      rows={rows}
+                      hoverable
+                      verticalAlign="top"
+                    />
+                  )}
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        )}
       </BlockStack>
     </Page>
   );
