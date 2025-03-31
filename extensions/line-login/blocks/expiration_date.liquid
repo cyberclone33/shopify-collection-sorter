@@ -1,0 +1,173 @@
+{% comment %}
+  Expiration Date Block
+  Shows expiration date information for products when available
+{% endcomment %}
+
+{% assign current_variant_id = product.selected_or_first_available_variant.id %}
+{% assign gid_variant = "gid://shopify/ProductVariant/" | append: current_variant_id %}
+
+<div id="expiration-date-block" class="expiration-date-block" data-variant-id="{{ gid_variant }}" data-shop="{{ shop.permanent_domain }}">
+  <div class="expiration-date-loading">
+    <div class="loading-spinner"></div>
+    <p>Loading expiration information...</p>
+  </div>
+  <div class="expiration-date-content" style="display: none;">
+    <h3>Expiration Information</h3>
+    <div class="expiration-date-details"></div>
+  </div>
+  <div class="expiration-date-error" style="display: none;">
+    <!-- Error message will be displayed here if needed -->
+  </div>
+</div>
+
+<style>
+  .expiration-date-block {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #e8e8e8;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+  }
+  
+  .expiration-date-block h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  
+  .expiration-date-details {
+    font-size: 14px;
+  }
+  
+  .expiration-date-batch {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  
+  .expiration-date-batch:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  
+  .expiration-date-label {
+    font-weight: 500;
+    display: inline-block;
+    min-width: 120px;
+  }
+  
+  .expiration-date-warning {
+    color: #e05d00;
+  }
+  
+  .expiration-date-danger {
+    color: #d82c0d;
+  }
+  
+  .loading-spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top: 3px solid #3498db;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 10px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const expirationBlock = document.getElementById('expiration-date-block');
+    if (!expirationBlock) return;
+    
+    const variantId = expirationBlock.getAttribute('data-variant-id');
+    const shop = expirationBlock.getAttribute('data-shop');
+    
+    if (!variantId || !shop) {
+      hideExpirationBlock();
+      return;
+    }
+    
+    fetchExpirationData(shop, variantId);
+  });
+  
+  function fetchExpirationData(shop, variantId) {
+    const apiUrl = `https://${shop}/apps/alpha-dog/api/expiration-date?shop=${shop}&variantId=${encodeURIComponent(variantId)}`;
+    
+    fetch(apiUrl)
+      .then(response => response.json())
+      .then(data => {
+        const loadingElement = document.querySelector('.expiration-date-loading');
+        const contentElement = document.querySelector('.expiration-date-content');
+        const errorElement = document.querySelector('.expiration-date-error');
+        const detailsElement = document.querySelector('.expiration-date-details');
+        
+        if (loadingElement) loadingElement.style.display = 'none';
+        
+        if (!data.success || !data.expirationData || data.expirationData.length === 0) {
+          hideExpirationBlock();
+          return;
+        }
+        
+        // Display expiration data
+        if (contentElement) contentElement.style.display = 'block';
+        
+        if (detailsElement) {
+          let html = '';
+          const today = new Date();
+          
+          data.expirationData.forEach(item => {
+            const expirationDate = new Date(item.expirationDate);
+            const daysUntilExpiration = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
+            
+            let expirationClass = '';
+            if (daysUntilExpiration <= 0) {
+              expirationClass = 'expiration-date-danger';
+            } else if (daysUntilExpiration <= 30) {
+              expirationClass = 'expiration-date-warning';
+            }
+            
+            const formattedDate = expirationDate.toLocaleDateString();
+            
+            html += `
+              <div class="expiration-date-batch">
+                <div><span class="expiration-date-label">Batch ID:</span> ${item.batchId}</div>
+                <div class="${expirationClass}">
+                  <span class="expiration-date-label">Expires on:</span> ${formattedDate}
+                  ${daysUntilExpiration <= 0 
+                    ? ' (Expired)' 
+                    : daysUntilExpiration <= 30 
+                      ? ` (Expires in ${daysUntilExpiration} days)` 
+                      : ''}
+                </div>
+                <div><span class="expiration-date-label">Quantity:</span> ${item.quantity}</div>
+                ${item.location ? `<div><span class="expiration-date-label">Location:</span> ${item.location}</div>` : ''}
+              </div>
+            `;
+          });
+          
+          detailsElement.innerHTML = html;
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching expiration data:', error);
+        hideExpirationBlock();
+      });
+  }
+  
+  function hideExpirationBlock() {
+    const expirationBlock = document.getElementById('expiration-date-block');
+    if (expirationBlock) {
+      expirationBlock.style.display = 'none';
+    }
+  }
+</script>

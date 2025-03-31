@@ -1,6 +1,6 @@
 name = "line-login"
 type = "theme"
-extension_points = ["app_embed"]
+extension_points = ["app_embed", "product"]
 
 [[metafields]]
 namespace = "line-login"
