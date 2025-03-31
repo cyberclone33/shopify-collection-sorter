@@ -119,13 +119,23 @@ async function main() {
     } catch (migrationErr) {
       console.error('DEBUG: Error running Prisma migrations:', migrationErr);
       
-      // Try direct database push as a fallback
-      console.log('DEBUG: Attempting direct database push as fallback...');
+      // Try direct database push as a fallback with --accept-data-loss flag
+      console.log('DEBUG: Attempting direct database push as fallback with --accept-data-loss flag...');
       try {
-        execSync('npx prisma db push', { stdio: 'inherit' });
-        console.log('DEBUG: Prisma db push completed successfully');
+        execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+        console.log('DEBUG: Prisma db push with --accept-data-loss completed successfully');
       } catch (dbPushErr) {
-        console.error('DEBUG: Error running Prisma db push:', dbPushErr);
+        console.error('DEBUG: Error running Prisma db push with --accept-data-loss:', dbPushErr);
+        
+        // Try one more time with force flag as a last resort
+        console.log('DEBUG: Attempting one final database push with force reset...');
+        try {
+          execSync('npx prisma db push --force-reset', { stdio: 'inherit' });
+          console.log('DEBUG: Prisma db push with --force-reset completed successfully');
+          console.log('WARNING: Database was completely reset. All data has been lost.');
+        } catch (forcePushErr) {
+          console.error('DEBUG: Error running Prisma db push with --force-reset:', forcePushErr);
+        }
       }
     }
     
