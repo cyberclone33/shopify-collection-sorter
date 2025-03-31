@@ -188,6 +188,9 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         batchId = `batch-${index + 1}`;
       }
       
+      // Clean the batch ID as well to remove equals signs and quotes
+      batchId = cleanProductId(batchId);
+      
       // Get expiration date
       let expirationDateStr = '';
       if (expirationDateColumn && record[expirationDateColumn]) {
@@ -333,7 +336,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
 /**
  * Save shelf life data to the database
  */
-export async function saveShelfLifeData(data: ShelfLifeData[]): Promise<number> {
+export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Promise<number> {
   try {
     let savedCount = 0;
     
@@ -346,11 +349,13 @@ export async function saveShelfLifeData(data: ShelfLifeData[]): Promise<number> 
           },
         },
         update: {
+          shop,
           expirationDate: item.expirationDate,
           quantity: item.quantity,
           location: item.location,
         },
         create: {
+          shop,
           productId: item.productId,
           batchId: item.batchId,
           expirationDate: item.expirationDate,
@@ -371,9 +376,12 @@ export async function saveShelfLifeData(data: ShelfLifeData[]): Promise<number> 
 /**
  * Get all shelf life items
  */
-export async function getAllShelfLifeItems() {
+export async function getAllShelfLifeItems(shop: string) {
   try {
     return await prisma.shelfLifeItem.findMany({
+      where: {
+        shop,
+      },
       orderBy: {
         expirationDate: 'asc',
       },
@@ -387,13 +395,14 @@ export async function getAllShelfLifeItems() {
 /**
  * Get expiring shelf life items
  */
-export async function getExpiringItems(daysThreshold: number = 30) {
+export async function getExpiringItems(shop: string, daysThreshold: number = 30) {
   try {
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
     
     return await prisma.shelfLifeItem.findMany({
       where: {
+        shop,
         expirationDate: {
           lte: thresholdDate,
         },
@@ -414,7 +423,7 @@ export async function getExpiringItems(daysThreshold: number = 30) {
 /**
  * Process CSV file content
  */
-export async function processCSVFile(fileContent: string): Promise<{ savedCount: number; errors: string[] }> {
+export async function processCSVFile(fileContent: string, shop: string): Promise<{ savedCount: number; errors: string[] }> {
   try {
     const parsedData = await parseCSV(fileContent);
     const errors: string[] = [];
@@ -451,7 +460,7 @@ export async function processCSVFile(fileContent: string): Promise<{ savedCount:
     console.log(`Parsed ${parsedData.length} items, ${validData.length} valid items`);
     
     // Save valid data
-    const savedCount = await saveShelfLifeData(validData);
+    const savedCount = await saveShelfLifeData(validData, shop);
     
     return {
       savedCount,

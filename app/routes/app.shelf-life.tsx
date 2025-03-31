@@ -35,7 +35,8 @@ interface ActionData {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
   
   const formData = await request.formData();
   const file = formData.get("file");
@@ -60,7 +61,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     
     // Process the CSV file
-    const result = await processCSVFile(fileContent);
+    const result = await processCSVFile(fileContent, shop);
     
     if (result.errors.length > 0) {
       return json<ActionData>({
