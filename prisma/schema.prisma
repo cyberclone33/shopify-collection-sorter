@@ -98,7 +98,8 @@ model ShelfLifeItem {
   productId          String   // Product ID (SKU or ERP ID)
   batchId            String   // Batch identifier
   expirationDate     DateTime // When this batch expires
-  quantity           Int      // Quantity in this batch
+  totalQuantity      Int      // Total quantity across all locations
+  batchQuantity      Int      // Quantity in this specific batch
   location           String?  // Optional storage location
   shopifyProductId   String?  // Shopify Product ID (GraphQL ID)
   shopifyVariantId   String?  // Shopify Variant ID (GraphQL ID)

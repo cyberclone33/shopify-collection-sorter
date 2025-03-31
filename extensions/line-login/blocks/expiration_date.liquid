@@ -1,6 +1,6 @@
 {% comment %}
   Batch Information Block
-  Shows batch information for products when available from metafields
+  Shows batch information for all product variants when available from metafields
 {% endcomment %}
 
 {% schema %}
@@ -8,93 +8,47 @@
   "name": "Batch Information",
   "target": "section",
   "templates": ["product"],
-  "settings": [
-    {
-      "type": "header",
-      "content": "Batch Information Display"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_batch_id",
-      "label": "Show Batch ID",
-      "default": true
-    },
-    {
-      "type": "checkbox",
-      "id": "show_quantity",
-      "label": "Show Quantity",
-      "default": true
-    },
-    {
-      "type": "checkbox",
-      "id": "show_location",
-      "label": "Show Location",
-      "default": true
-    }
-  ]
+  "settings": []
 }
 {% endschema %}
 
-{% assign current_variant = product.selected_or_first_available_variant %}
-{% assign batch_data_string = current_variant.metafields.alpha_dog.expiration_data %}
-{% assign batch_data = batch_data_string | json %}
-
-{% if batch_data != blank %}
-  <div id="batch-info-block" class="batch-info-block">
-    <h3>Batch Information</h3>
-    <div class="batch-info-details">
-      {% for item in batch_data %}
-        <div class="batch-info-item">
-          {% if section.settings.show_batch_id %}
-            <div><span class="batch-info-label">Batch ID:</span> {{ item.batchId }}</div>
-          {% endif %}
-          
-          {% if section.settings.show_quantity %}
-            <div><span class="batch-info-label">Quantity:</span> {{ item.quantity }}</div>
-          {% endif %}
-          
-          {% if section.settings.show_location and item.location != blank %}
-            <div><span class="batch-info-label">Location:</span> {{ item.location }}</div>
-          {% endif %}
+<div style="margin: 10px 0; padding: 8px; border: 1px solid #e8e8e8; border-radius: 4px; background-color: #f9f9f9; font-size: 12px;">
+  <h3 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600;">批次資訊</h3>
+  
+  {% assign has_batch_info = false %}
+  
+  {% for variant in product.variants %}
+    {% if variant.metafields.alpha_dog.expiration_data %}
+      {% assign has_batch_info = true %}
+      {% assign raw_data = variant.metafields.alpha_dog.expiration_data %}
+      
+      {% comment %}
+        Extract the values from the raw JSON string using string manipulation
+        since Liquid has limited JSON parsing capabilities
+      {% endcomment %}
+      {% assign batch_id_start = raw_data | split: '"batchId":"' | last %}
+      {% assign batch_id = batch_id_start | split: '"' | first %}
+      
+      {% assign quantity_start = raw_data | split: '"quantity":' | last %}
+      {% assign quantity = quantity_start | split: ',' | first %}
+      
+      {% assign location_start = raw_data | split: '"location":"' | last %}
+      {% assign location = location_start | split: '"' | first %}
+      
+      <div style="margin-bottom: 6px; padding-bottom: 6px; {% unless forloop.last %}border-bottom: 1px solid #eee;{% endunless %}">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; font-size: 12px;">
+          <div style="font-weight: 600; margin-right: 8px; color: #333;">{{ variant.title }}:</div>
+          <div style="color: #555; display: flex; flex-wrap: wrap;">
+            <div style="margin-right: 8px;"><span style="color: #666;">保存期限:</span> {{ batch_id }}</div>
+            <div style="margin-right: 8px;"><span style="color: #666;">庫存:</span> {{ quantity }}</div>
+            <div><span style="color: #666;">倉庫:</span> {{ location }}</div>
+          </div>
         </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <style>
-    .batch-info-block {
-      margin: 20px 0;
-      padding: 15px;
-      border: 1px solid #e8e8e8;
-      border-radius: 5px;
-      background-color: #f9f9f9;
-    }
-    
-    .batch-info-block h3 {
-      margin-top: 0;
-      margin-bottom: 10px;
-      font-size: 16px;
-      font-weight: 600;
-    }
-    
-    .batch-info-details {
-      font-size: 14px;
-    }
-    
-    .batch-info-item {
-      margin-bottom: 10px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e8e8e8;
-    }
-    
-    .batch-info-item:last-child {
-      border-bottom: none;
-      margin-bottom: 0;
-      padding-bottom: 0;
-    }
-    
-    .batch-info-label {
-      font-weight: 600;
-    }
-  </style>
-{% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+  
+  {% if has_batch_info == false %}
+    <p style="margin: 0; color: #777; font-style: italic; font-size: 12px;">此產品暫無批次資訊</p>
+  {% endif %}
+</div>
