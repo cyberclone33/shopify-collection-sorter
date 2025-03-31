@@ -3,6 +3,83 @@
   Shows expiration date information for products when available from metafields
 {% endcomment %}
 
+{% schema %}
+{
+  "name": "Expiration Date",
+  "target": "section",
+  "templates": ["product"],
+  "settings": [
+    {
+      "type": "header",
+      "content": "Expiration Date Display"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_batch_id",
+      "label": "Show Batch ID",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_quantity",
+      "label": "Show Quantity",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_location",
+      "label": "Show Location",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "warning_days",
+      "label": "Warning threshold (days)",
+      "options": [
+        {
+          "value": "7",
+          "label": "7 days"
+        },
+        {
+          "value": "14",
+          "label": "14 days"
+        },
+        {
+          "value": "30",
+          "label": "30 days"
+        },
+        {
+          "value": "60",
+          "label": "60 days"
+        },
+        {
+          "value": "90",
+          "label": "90 days"
+        }
+      ],
+      "default": "30"
+    },
+    {
+      "type": "color",
+      "id": "warning_color",
+      "label": "Warning color",
+      "default": "#e05d00"
+    },
+    {
+      "type": "color",
+      "id": "danger_color",
+      "label": "Expired color",
+      "default": "#d82c0d"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Expiration Date"
+    }
+  ]
+}
+{% endschema %}
+
 {% assign current_variant = product.selected_or_first_available_variant %}
 {% assign expiration_data = current_variant.metafields.alpha_dog.expiration_data %}
 
@@ -10,7 +87,7 @@
 <div id="expiration-date-block" class="expiration-date-block">
   <h3>Expiration Information</h3>
   <div class="expiration-date-details">
-    {% assign expiration_items = expiration_data | json_parse %}
+    {% assign expiration_items = expiration_data | json %}
     {% for item in expiration_items %}
       <div class="expiration-date-batch">
         {% if section.settings.show_batch_id %}
