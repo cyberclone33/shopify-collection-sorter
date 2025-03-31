@@ -18,9 +18,9 @@ interface ShelfLifeData {
 function cleanProductId(productId: string): string {
   if (!productId) return "";
   if (productId.startsWith('=')) {
-    return productId.substring(1);
+    return productId.substring(1).replace(/"/g, '');
   }
-  return productId;
+  return productId.replace(/"/g, '');
 }
 
 /**
@@ -47,35 +47,40 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       console.log("First record values:", Object.values(records[0]));
     }
     
-    // Try to identify the product ID column
+    // Try to identify the product ID column - specifically look for '產品代號' first
     const possibleProductIdColumns = [
+      '產品代號', // This is the primary column name in the user's CSV
       'productId', 'product_id', 'sku', 'SKU', 'Product ID', 'ProductID', 
       'product id', 'product', 'Product', 'ID', 'id', 'Item', 'item',
       '商品ID', '商品編號', '產品編號', '產品ID', '商品代碼', '貨號'
     ];
     
-    // Try to identify the batch ID column
+    // Try to identify the batch ID column - look for '保存批號' first
     const possibleBatchIdColumns = [
+      '保存批號', // This is the primary column name in the user's CSV
       'batchId', 'batch_id', 'batch', 'Batch ID', 'BatchID', 'batch id',
       'Batch', 'lot', 'Lot', 'LotID', 'Lot ID', 'lot id',
       '批次', '批號', '批次編號', '批次ID'
     ];
     
-    // Try to identify the expiration date column
+    // Try to identify the expiration date column - look for '有效期限' or '保存期限' first
     const possibleExpirationDateColumns = [
+      '有效期限', '保存期限', // These are the primary column names in the user's CSV
       'expirationDate', 'expiration_date', 'date', 'Date', 'Expiration', 
       'expiration', 'Expiry', 'expiry', 'Exp Date', 'exp date',
-      '到期日', '有效期', '效期', '保存期限', '有效日期'
+      '到期日', '效期'
     ];
     
-    // Try to identify the quantity column
+    // Try to identify the quantity column - look for '批號存量' or '分倉存量' first
     const possibleQuantityColumns = [
+      '批號存量', '分倉存量', // These are the primary column names in the user's CSV
       'quantity', 'Quantity', 'qty', 'Qty', 'QTY', 'Amount', 'amount',
       '數量', '庫存', '庫存數量', '數目'
     ];
     
-    // Try to identify the location column
+    // Try to identify the location column - look for '倉庫名稱' or '倉庫代號' first
     const possibleLocationColumns = [
+      '倉庫名稱', '倉庫代號', // These are the primary column names in the user's CSV
       'location', 'Location', 'loc', 'Loc', 'warehouse', 'Warehouse',
       '位置', '倉庫', '儲位', '庫位'
     ];
@@ -163,12 +168,21 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         }
       }
       
+      // Special case: If we still don't have a product ID but we have a record with a '產品代號' field
+      // This is specifically for the user's CSV format
+      if (!rawProductId && record['產品代號']) {
+        rawProductId = record['產品代號'];
+      }
+      
       const productId = cleanProductId(rawProductId);
       
       // Get batch ID from identified column or try various fallbacks
       let batchId = '';
       if (batchIdColumn && record[batchIdColumn]) {
         batchId = record[batchIdColumn];
+      } else if (record['保存批號']) {
+        // Special case for the user's CSV format
+        batchId = record['保存批號'];
       } else {
         // If no batch ID found, generate one based on row index
         batchId = `batch-${index + 1}`;
@@ -178,6 +192,12 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       let expirationDateStr = '';
       if (expirationDateColumn && record[expirationDateColumn]) {
         expirationDateStr = record[expirationDateColumn];
+      } else if (record['有效期限']) {
+        // Special case for the user's CSV format
+        expirationDateStr = record['有效期限'];
+      } else if (record['保存期限']) {
+        // Alternative field in the user's CSV
+        expirationDateStr = record['保存期限'];
       } else {
         // Try all possible expiration date columns
         for (const col of possibleExpirationDateColumns) {
@@ -188,11 +208,39 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         }
       }
       
-      // Parse the expiration date
+      // Parse the expiration date - handle various formats
       let expirationDate = new Date();
       try {
         if (expirationDateStr) {
-          expirationDate = new Date(expirationDateStr);
+          // Try to handle various date formats
+          if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(expirationDateStr)) {
+            // Format: YYYY/MM/DD
+            expirationDate = new Date(expirationDateStr);
+          } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(expirationDateStr)) {
+            // Format: MM/DD/YYYY
+            const parts = expirationDateStr.split('/');
+            expirationDate = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+          } else if (/^\d{4}$/.test(expirationDateStr)) {
+            // Format: YYYY - assume January 1st
+            expirationDate = new Date(`${expirationDateStr}-01-01`);
+          } else if (/^\d{3}$/.test(expirationDateStr)) {
+            // Format: YYY - assume it's 2YYY and January 1st
+            expirationDate = new Date(`2${expirationDateStr}-01-01`);
+          } else {
+            // Try standard date parsing
+            expirationDate = new Date(expirationDateStr);
+          }
+          
+          // If the date is invalid, try alternative parsing
+          if (isNaN(expirationDate.getTime())) {
+            // Check if it's a format like "20270924" (YYYYMMDD)
+            if (/^\d{8}$/.test(expirationDateStr)) {
+              const year = expirationDateStr.substring(0, 4);
+              const month = expirationDateStr.substring(4, 6);
+              const day = expirationDateStr.substring(6, 8);
+              expirationDate = new Date(`${year}-${month}-${day}`);
+            }
+          }
         } else {
           // Default to 30 days from now if no date found
           expirationDate = new Date();
@@ -200,12 +248,21 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         }
       } catch (e) {
         console.error(`Error parsing date '${expirationDateStr}' for row ${index + 1}:`, e);
+        // Default to 30 days from now on error
+        expirationDate = new Date();
+        expirationDate.setDate(expirationDate.getDate() + 30);
       }
       
       // Get quantity
       let quantityStr = '';
       if (quantityColumn && record[quantityColumn]) {
         quantityStr = record[quantityColumn];
+      } else if (record['批號存量']) {
+        // Special case for the user's CSV format
+        quantityStr = record['批號存量'];
+      } else if (record['分倉存量']) {
+        // Alternative field in the user's CSV
+        quantityStr = record['分倉存量'];
       } else {
         // Try all possible quantity columns
         for (const col of possibleQuantityColumns) {
@@ -228,6 +285,12 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       let location = 'default';
       if (locationColumn && record[locationColumn]) {
         location = record[locationColumn];
+      } else if (record['倉庫名稱']) {
+        // Special case for the user's CSV format
+        location = record['倉庫名稱'];
+      } else if (record['倉庫代號']) {
+        // Alternative field in the user's CSV
+        location = record['倉庫代號'];
       } else {
         // Try all possible location columns
         for (const col of possibleLocationColumns) {
@@ -248,7 +311,8 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
           expirationDate, 
           quantityStr, 
           quantity, 
-          location 
+          location,
+          record // Log the full record for debugging
         });
       }
       
