@@ -678,11 +678,6 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     
     for (const [variantId, expirationData] of variantExpirationMap.entries()) {
       try {
-        // Sort expiration data by date (earliest first)
-        expirationData.sort((a: any, b: any) => 
-          new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime()
-        );
-        
         // Update the variant's metafield with expiration data using metafieldsSet mutation
         const response = await admin.graphql(`
           mutation {
