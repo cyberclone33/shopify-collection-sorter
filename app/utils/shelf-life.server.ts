@@ -688,7 +688,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         const metafieldValue = JSON.stringify(expirationData);
         
         // Update the variant's metafield with expiration data using metafieldsSet mutation
-        const response: any = await admin.graphql(`
+        const response = await admin.graphql(`
           mutation {
             metafieldsSet(metafields: [
               {
@@ -712,7 +712,14 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
           }
         `);
         
-        const result = response.body.data.metafieldsSet;
+        const responseJson = await response.json(); // Parse the JSON properly
+        
+        if (responseJson.errors) {
+          console.error('GraphQL errors:', responseJson.errors);
+          throw new Error(`GraphQL error: ${responseJson.errors[0].message}`);
+        }
+        
+        const result = responseJson.data.metafieldsSet;
         
         if (result.userErrors && result.userErrors.length > 0) {
           console.error(`Error updating metafield for variant ${variantId}:`, result.userErrors);
