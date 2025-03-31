@@ -36,66 +36,66 @@
 {% endschema %}
 
 {% assign current_variant = product.selected_or_first_available_variant %}
-{% assign batch_data = current_variant.metafields.alpha_dog.expiration_data %}
+{% assign batch_data_string = current_variant.metafields.alpha_dog.expiration_data %}
 
-{% if batch_data %}
-<div id="batch-info-block" class="batch-info-block">
-  <h3>Batch Information</h3>
-  <div class="batch-info-details">
-    {% for item in batch_data %}
-      <div class="batch-info-item">
-        {% if section.settings.show_batch_id %}
-          <div><span class="batch-info-label">Batch ID:</span> {{ item.batchId }}</div>
-        {% endif %}
-        
-        {% if section.settings.show_quantity %}
-          <div><span class="batch-info-label">Quantity:</span> {{ item.quantity }}</div>
-        {% endif %}
-        
-        {% if section.settings.show_location and item.location != blank and item.location != empty %}
-          <div><span class="batch-info-label">Location:</span> {{ item.location }}</div>
-        {% endif %}
-      </div>
-    {% endfor %}
+{% if batch_data_string != blank %}
+  {% assign batch_data = batch_data_string | json_parse %}
+  
+  <div id="batch-info-block" class="batch-info-block">
+    <h3>Batch Information</h3>
+    <div class="batch-info-details">
+      {% for item in batch_data %}
+        <div class="batch-info-item">
+          {% if section.settings.show_batch_id %}
+            <div><span class="batch-info-label">Batch ID:</span> {{ item.batchId }}</div>
+          {% endif %}
+          
+          {% if section.settings.show_quantity %}
+            <div><span class="batch-info-label">Quantity:</span> {{ item.quantity }}</div>
+          {% endif %}
+          
+          {% if section.settings.show_location and item.location != blank %}
+            <div><span class="batch-info-label">Location:</span> {{ item.location }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
   </div>
-</div>
 
-<style>
-  .batch-info-block {
-    margin: 20px 0;
-    padding: 15px;
-    border: 1px solid #e8e8e8;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-  }
-  
-  .batch-info-block h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    font-size: 16px;
-    font-weight: 600;
-  }
-  
-  .batch-info-details {
-    font-size: 14px;
-  }
-  
-  .batch-info-item {
-    margin-bottom: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #e8e8e8;
-  }
-  
-  .batch-info-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-  }
-  
-  .batch-info-label {
-    font-weight: 500;
-    display: inline-block;
-    min-width: 120px;
-  }
-</style>
+  <style>
+    .batch-info-block {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #e8e8e8;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    
+    .batch-info-block h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .batch-info-details {
+      font-size: 14px;
+    }
+    
+    .batch-info-item {
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    
+    .batch-info-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    
+    .batch-info-label {
+      font-weight: 600;
+    }
+  </style>
 {% endif %}
