@@ -692,7 +692,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
                 namespace: "alpha_dog",
                 key: "expiration_data",
                 type: "json",
-                value: ${JSON.stringify(expirationData)}
+                value: "${JSON.stringify(expirationData).replace(/"/g, '\\"')}"
               }
             ]) {
               metafields {
