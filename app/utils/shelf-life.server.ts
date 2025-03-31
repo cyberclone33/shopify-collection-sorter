@@ -615,6 +615,9 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     let matchedCount = 0;
     const unmatchedItems = [];
     
+    // Group shelf life items by variant ID for metafield updates
+    const variantExpirationMap = new Map();
+    
     for (const item of shelfLifeItems) {
       const variantDetails = skuToVariantMap.get(item.productId);
       
@@ -632,6 +635,19 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
             syncStatus: "MATCHED",
             syncMessage: "Successfully matched with Shopify variant"
           }
+        });
+        
+        // Add this item to the variant expiration map
+        if (!variantExpirationMap.has(variantDetails.variantId)) {
+          variantExpirationMap.set(variantDetails.variantId, []);
+        }
+        
+        // Add this batch to the variant's expiration data
+        variantExpirationMap.get(variantDetails.variantId).push({
+          batchId: item.batchId,
+          expirationDate: item.expirationDate.toISOString(),
+          quantity: item.quantity,
+          location: item.location || ""
         });
         
         matchedCount++;
@@ -657,6 +673,56 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
       }
     }
     
+    // Update metafields for each variant with expiration data
+    console.log(`Updating metafields for ${variantExpirationMap.size} variants`);
+    let metafieldUpdateCount = 0;
+    
+    for (const [variantId, expirationData] of variantExpirationMap.entries()) {
+      try {
+        // Sort expiration data by date (earliest first)
+        expirationData.sort((a: any, b: any) => 
+          new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime()
+        );
+        
+        // Convert expiration data to JSON string
+        const metafieldValue = JSON.stringify(expirationData);
+        
+        // Update the variant's metafield with expiration data
+        await admin.graphql(`
+          mutation {
+            productVariantUpdate(input: {
+              id: "${variantId}",
+              metafields: [
+                {
+                  namespace: "alpha_dog",
+                  key: "expiration_data",
+                  value: ${JSON.stringify(metafieldValue)},
+                  type: "json"
+                }
+              ]
+            }) {
+              productVariant {
+                id
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `);
+        
+        metafieldUpdateCount++;
+        
+        // Add a small delay between API calls to avoid rate limiting
+        if (metafieldUpdateCount % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        console.error(`Error updating metafield for variant ${variantId}:`, error);
+      }
+    }
+    
     const apiLimitMessage = hasNextPage ? 
       ` Note: API call limit reached after processing ${productsProcessed} products. Some products may not have been checked.` : '';
     
@@ -664,7 +730,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
       success: true,
       matchedCount,
       unmatchedItems,
-      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products.${apiLimitMessage}`
+      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products. Updated metafields for ${variantExpirationMap.size} variants.${apiLimitMessage}`
     };
   } catch (error) {
     console.error("Error syncing with Shopify:", error);
