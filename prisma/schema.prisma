@@ -91,3 +91,17 @@ model FacebookUser {
 
   @@unique([shop, facebookId], name: "shop_facebookId")
 }
+
+model ShelfLifeItem {
+  id              String   @id @default(cuid())
+  shop            String
+  productId       String   // Product ID (SKU or ERP ID)
+  batchId         String   // Batch identifier
+  expirationDate  DateTime // When this batch expires
+  quantity        Int      // Quantity in this batch
+  location        String?  // Optional storage location
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([productId, batchId], name: "productId_batchId")
+}
