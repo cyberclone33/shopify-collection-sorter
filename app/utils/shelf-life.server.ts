@@ -495,16 +495,27 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     let cursor: string | null = null;
     let productsProcessed = 0;
     let apiCallCount = 0;
+    const MAX_API_CALLS = 25; // Increased from 10 to 25
+    
+    // Extract unique product IDs from shelf life items to optimize fetching
+    const uniqueProductIds = new Set<string>();
+    shelfLifeItems.forEach(item => {
+      if (item.productId) {
+        uniqueProductIds.add(item.productId);
+      }
+    });
+    
+    console.log(`Found ${uniqueProductIds.size} unique product IDs to check against Shopify`);
     
     // Fetch products in batches to respect API limits
-    while (hasNextPage && apiCallCount < 10) { // Limit to 10 API calls to avoid excessive usage
+    while (hasNextPage && apiCallCount < MAX_API_CALLS) {
       apiCallCount++;
       
       // Build the query with pagination
       const afterParam: string = cursor ? `, after: "${cursor}"` : '';
       const response: any = await admin.graphql(`
         query {
-          products(first: 50${afterParam}) {
+          products(first: 100${afterParam}) {
             pageInfo {
               hasNextPage
               endCursor
@@ -513,7 +524,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
               node {
                 id
                 title
-                variants(first: 50) {
+                variants(first: 100) {
                   edges {
                     node {
                       id
@@ -550,13 +561,14 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
       productsProcessed += productEdges.length;
       
       // Process this batch of products
+      let newMatchesInBatch = 0;
       productEdges.forEach((productEdge: any) => {
         const product = productEdge.node;
         const variantEdges = product.variants.edges;
         
         variantEdges.forEach((variantEdge: any) => {
           const variant = variantEdge.node;
-          if (variant.sku) {
+          if (variant.sku && uniqueProductIds.has(variant.sku)) {
             skuToVariantMap.set(variant.sku, {
               variantId: variant.id,
               productId: product.id,
@@ -564,9 +576,29 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
               variantTitle: variant.title,
               inventoryQuantity: variant.inventoryQuantity
             });
+            newMatchesInBatch++;
           }
         });
       });
+      
+      console.log(`API call ${apiCallCount}: Processed ${productEdges.length} products, found ${newMatchesInBatch} new matches`);
+      
+      // If we've found matches for all unique product IDs, we can stop
+      if (skuToVariantMap.size >= uniqueProductIds.size) {
+        console.log(`Found matches for all ${uniqueProductIds.size} unique product IDs. Stopping API calls.`);
+        break;
+      }
+      
+      // If no new matches were found in this batch, and we've processed a significant number of products,
+      // we might want to consider stopping to save API calls
+      if (newMatchesInBatch === 0 && productsProcessed > 300) {
+        const matchPercentage = (skuToVariantMap.size / uniqueProductIds.size) * 100;
+        // If we've already matched more than 80% of products and no new matches in this batch, stop
+        if (matchPercentage > 80) {
+          console.log(`No new matches found in this batch and already matched ${matchPercentage.toFixed(1)}% of products. Stopping API calls to save quota.`);
+          break;
+        }
+      }
       
       // Add a small delay between API calls to avoid rate limiting
       if (hasNextPage) {
