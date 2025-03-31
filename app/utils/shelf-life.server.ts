@@ -9,6 +9,7 @@ interface ShelfLifeData {
   batchId: string;
   expirationDate: Date;
   quantity: number;
+  batchQuantity?: number;
   location?: string;
 }
 
@@ -71,11 +72,18 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       '到期日', '效期'
     ];
     
-    // Try to identify the quantity column - look for '批號存量' or '分倉存量' first
+    // Try to identify the quantity column - look for '分倉存量' first
     const possibleQuantityColumns = [
-      '批號存量', '分倉存量', // These are the primary column names in the user's CSV
+      '分倉存量', // This is the primary column name in the user's CSV
       'quantity', 'Quantity', 'qty', 'Qty', 'QTY', 'Amount', 'amount',
       '數量', '庫存', '庫存數量', '數目'
+    ];
+    
+    // Try to identify the batch quantity column - specifically look for '批號存量'
+    const possibleBatchQuantityColumns = [
+      '批號存量', // This is the primary column name in the user's CSV
+      'batchQuantity', 'batch_quantity', 'batch quantity', 'Batch Quantity',
+      '批次數量', '批號數量'
     ];
     
     // Try to identify the location column - look for '倉庫名稱' or '倉庫代號' first
@@ -90,6 +98,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
     let batchIdColumn = '';
     let expirationDateColumn = '';
     let quantityColumn = '';
+    let batchQuantityColumn = '';
     let locationColumn = '';
     
     if (records.length > 0) {
@@ -124,6 +133,13 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         )
       ) || '';
       
+      // Find batch quantity column
+      batchQuantityColumn = csvColumns.find(col => 
+        possibleBatchQuantityColumns.some(possible => 
+          col.toLowerCase() === possible.toLowerCase()
+        )
+      ) || '';
+      
       // Find location column
       locationColumn = csvColumns.find(col => 
         possibleLocationColumns.some(possible => 
@@ -136,6 +152,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         batchIdColumn,
         expirationDateColumn,
         quantityColumn,
+        batchQuantityColumn,
         locationColumn
       });
     }
@@ -260,11 +277,8 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       let quantityStr = '';
       if (quantityColumn && record[quantityColumn]) {
         quantityStr = record[quantityColumn];
-      } else if (record['批號存量']) {
-        // Special case for the user's CSV format
-        quantityStr = record['批號存量'];
       } else if (record['分倉存量']) {
-        // Alternative field in the user's CSV
+        // Special case for the user's CSV format
         quantityStr = record['分倉存量'];
       } else {
         // Try all possible quantity columns
@@ -282,6 +296,31 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         quantity = parseInt(quantityStr, 10) || 0;
       } catch (e) {
         console.error(`Error parsing quantity '${quantityStr}' for row ${index + 1}:`, e);
+      }
+      
+      // Get batch quantity
+      let batchQuantityStr = '';
+      if (batchQuantityColumn && record[batchQuantityColumn]) {
+        batchQuantityStr = record[batchQuantityColumn];
+      } else if (record['批號存量']) {
+        // Special case for the user's CSV format
+        batchQuantityStr = record['批號存量'];
+      } else {
+        // Try all possible batch quantity columns
+        for (const col of possibleBatchQuantityColumns) {
+          if (record[col]) {
+            batchQuantityStr = record[col];
+            break;
+          }
+        }
+      }
+      
+      // Parse the batch quantity
+      let batchQuantity = 0;
+      try {
+        batchQuantity = parseInt(batchQuantityStr, 10) || 0;
+      } catch (e) {
+        console.error(`Error parsing batch quantity '${batchQuantityStr}' for row ${index + 1}:`, e);
       }
       
       // Get location
@@ -314,6 +353,8 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
           expirationDate, 
           quantityStr, 
           quantity, 
+          batchQuantityStr, 
+          batchQuantity, 
           location,
           record // Log the full record for debugging
         });
@@ -324,6 +365,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         batchId,
         expirationDate,
         quantity,
+        batchQuantity,
         location,
       };
     });
@@ -352,6 +394,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
           shop,
           expirationDate: item.expirationDate,
           quantity: item.quantity,
+          batchQuantity: item.batchQuantity,
           location: item.location,
         },
         create: {
@@ -360,6 +403,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
           batchId: item.batchId,
           expirationDate: item.expirationDate,
           quantity: item.quantity,
+          batchQuantity: item.batchQuantity,
           location: item.location || "default",
         },
       });
