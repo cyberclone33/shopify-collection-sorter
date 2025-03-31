@@ -14,6 +14,28 @@ interface ShelfLifeData {
 }
 
 /**
+ * Interface for ShelfLifeItem from database
+ */
+interface ShelfLifeItem {
+  id: string;
+  shop: string;
+  productId: string;
+  batchId: string;
+  expirationDate: Date;
+  quantity: number;
+  batchQuantity: number | null;
+  location: string | null;
+  shopifyProductId: string | null;
+  shopifyVariantId: string | null;
+  shopifyProductTitle: string | null;
+  shopifyVariantTitle: string | null;
+  syncStatus: string | null;
+  syncMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
  * Clean product ID by removing leading equals sign
  */
 function cleanProductId(productId: string): string {
@@ -420,7 +442,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
 /**
  * Get all shelf life items
  */
-export async function getAllShelfLifeItems(shop: string) {
+export async function getAllShelfLifeItems(shop: string): Promise<ShelfLifeItem[]> {
   try {
     return await prisma.shelfLifeItem.findMany({
       where: {
@@ -429,7 +451,7 @@ export async function getAllShelfLifeItems(shop: string) {
       orderBy: {
         expirationDate: 'asc',
       },
-    });
+    }) as ShelfLifeItem[];
   } catch (error) {
     console.error("Error fetching shelf life items:", error);
     throw new Error(`Failed to fetch shelf life items: ${error instanceof Error ? error.message : String(error)}`);
@@ -690,6 +712,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         variantExpirationMap.get(variantDetails.variantId).push({
           batchId: item.batchId,
           quantity: item.quantity,
+          batchQuantity: item.batchQuantity !== null && item.batchQuantity !== undefined ? item.batchQuantity : item.quantity,
           location: item.location || ""
         });
         
