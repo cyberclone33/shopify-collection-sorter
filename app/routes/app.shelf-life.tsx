@@ -35,8 +35,9 @@ interface ShelfLifeItem {
   shop: string;
   productId: string;
   batchId: string;
-  expirationDate: string;
+  expirationDate: Date | string;
   quantity: number;
+  batchQuantity?: number | null;
   location: string | null;
   shopifyProductId: string | null;
   shopifyVariantId: string | null;
@@ -44,8 +45,8 @@ interface ShelfLifeItem {
   shopifyVariantTitle: string | null;
   syncStatus: string | null;
   syncMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -281,7 +282,7 @@ export default function ShelfLifeManagement() {
   );
 
   // Format date for display
-  const formatDate = (date: string) => {
+  const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleString();
   };
 
@@ -301,6 +302,7 @@ export default function ShelfLifeManagement() {
     item.productId,
     item.batchId,
     item.quantity.toString(),
+    item.batchQuantity !== undefined && item.batchQuantity !== null ? item.batchQuantity.toString() : "N/A",
     item.location || "N/A",
     item.shopifyProductTitle || "Not synced",
     getSyncStatusText(item),
@@ -428,6 +430,7 @@ export default function ShelfLifeManagement() {
                           'text',
                           'text',
                           'numeric',
+                          'numeric',
                           'text',
                           'text',
                           'text',
@@ -438,6 +441,7 @@ export default function ShelfLifeManagement() {
                           'Product ID',
                           'Batch ID',
                           'Quantity',
+                          'Batch Quantity (批號存量)',
                           'Location',
                           'Shopify Product',
                           'Sync Status',
