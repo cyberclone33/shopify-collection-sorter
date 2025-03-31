@@ -471,3 +471,103 @@ export async function processCSVFile(fileContent: string, shop: string): Promise
     throw new Error(`Failed to process CSV file: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+/**
+ * Sync shelf life items with Shopify products
+ * This function matches shelf life product IDs with Shopify variant SKUs
+ */
+export async function syncWithShopify(shop: string, admin: any): Promise<{ 
+  success: boolean; 
+  matchedCount: number; 
+  message: string;
+}> {
+  try {
+    // Get all shelf life items
+    const shelfLifeItems = await getAllShelfLifeItems(shop);
+    
+    // Get all product variants from Shopify
+    const response = await admin.graphql(`
+      query {
+        products(first: 250) {
+          edges {
+            node {
+              id
+              title
+              variants(first: 250) {
+                edges {
+                  node {
+                    id
+                    sku
+                    inventoryQuantity
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+    
+    const responseJson = await response.json();
+    const productEdges = responseJson.data.products.edges;
+    
+    // Create a map of SKU to variant details
+    const skuToVariantMap = new Map();
+    
+    productEdges.forEach((productEdge: any) => {
+      const product = productEdge.node;
+      const variantEdges = product.variants.edges;
+      
+      variantEdges.forEach((variantEdge: any) => {
+        const variant = variantEdge.node;
+        if (variant.sku) {
+          skuToVariantMap.set(variant.sku, {
+            variantId: variant.id,
+            productId: product.id,
+            productTitle: product.title,
+            variantTitle: variant.title,
+            inventoryQuantity: variant.inventoryQuantity
+          });
+        }
+      });
+    });
+    
+    // Match shelf life items with Shopify variants
+    let matchedCount = 0;
+    
+    for (const item of shelfLifeItems) {
+      const variantDetails = skuToVariantMap.get(item.productId);
+      
+      if (variantDetails) {
+        // Update the shelf life item with Shopify variant details
+        await prisma.shelfLifeItem.update({
+          where: {
+            id: item.id
+          },
+          data: {
+            shopifyVariantId: variantDetails.variantId,
+            shopifyProductId: variantDetails.productId,
+            shopifyProductTitle: variantDetails.productTitle,
+            shopifyVariantTitle: variantDetails.variantTitle
+          }
+        });
+        
+        matchedCount++;
+      }
+    }
+    
+    return {
+      success: true,
+      matchedCount,
+      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products.`
+    };
+  } catch (error) {
+    console.error("Error syncing with Shopify:", error);
+    return {
+      success: false,
+      matchedCount: 0,
+      message: `Failed to sync with Shopify: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
