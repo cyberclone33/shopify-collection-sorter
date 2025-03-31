@@ -213,12 +213,10 @@ export default function ShelfLifeManagement() {
     return new Date(date).toLocaleString();
   };
 
-  // Prepare data for the DataTable
+  // Prepare data for the DataTable - remove ID and expiration date columns
   const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
-    item.id,
     item.productId,
     item.batchId,
-    formatDate(item.expirationDate),
     item.quantity.toString(),
     item.location || "N/A",
     formatDate(item.createdAt),
@@ -319,18 +317,14 @@ export default function ShelfLifeManagement() {
                       columnContentTypes={[
                         'text',
                         'text',
-                        'text',
-                        'text',
                         'numeric',
                         'text',
                         'text',
                         'text'
                       ]}
                       headings={[
-                        'ID',
                         'Product ID',
                         'Batch ID',
-                        'Expiration Date',
                         'Quantity',
                         'Location',
                         'Created At',
