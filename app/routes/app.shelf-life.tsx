@@ -20,7 +20,9 @@ import {
   Tabs,
   ButtonGroup,
   Toast,
-  Frame
+  Frame,
+  Modal,
+  List
 } from "@shopify/polaris";
 import { NoteIcon, RefreshIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
@@ -40,6 +42,8 @@ interface ShelfLifeItem {
   shopifyVariantId: string | null;
   shopifyProductTitle: string | null;
   shopifyVariantTitle: string | null;
+  syncStatus: string | null;
+  syncMessage: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +71,10 @@ interface ActionData {
     success: boolean;
     matchedCount: number;
     message: string;
+    unmatchedItems?: Array<{
+      productId: string;
+      reason: string;
+    }>;
   };
 }
 
@@ -154,12 +162,13 @@ export default function ShelfLifeManagement() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastActive, setToastActive] = useState(false);
   const [toastContent, setToastContent] = useState({ message: "", tone: "success" });
+  const [syncResultModalActive, setSyncResultModalActive] = useState(false);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
   const submit = useSubmit();
 
-  // Handle toast when action data changes
+  // Handle toast and modal when action data changes
   useEffect(() => {
     if (actionData?.syncResult) {
       setToastActive(true);
@@ -168,6 +177,11 @@ export default function ShelfLifeManagement() {
         tone: actionData.status === "success" ? "success" : "critical"
       });
       setIsSyncing(false);
+      
+      // If there are unmatched items, show the modal
+      if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
+        setSyncResultModalActive(true);
+      }
     }
   }, [actionData]);
 
@@ -271,6 +285,17 @@ export default function ShelfLifeManagement() {
     return new Date(date).toLocaleString();
   };
 
+  // Get sync status text and color
+  const getSyncStatusText = (item: ShelfLifeItem) => {
+    if (item.syncStatus === "MATCHED") {
+      return <Text as="span" tone="success">Matched</Text>;
+    } else if (item.syncStatus === "UNMATCHED") {
+      return <Text as="span" tone="critical">Not Matched</Text>;
+    } else {
+      return <Text as="span" tone="subdued">Not Synced</Text>;
+    }
+  };
+
   // Prepare data for the DataTable - remove ID and expiration date columns
   const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
     item.productId,
@@ -278,7 +303,8 @@ export default function ShelfLifeManagement() {
     item.quantity.toString(),
     item.location || "N/A",
     item.shopifyProductTitle || "Not synced",
-    formatDate(item.createdAt),
+    getSyncStatusText(item),
+    item.syncMessage || "Not synced yet",
     formatDate(item.updatedAt)
   ]);
 
@@ -296,6 +322,7 @@ export default function ShelfLifeManagement() {
   ];
 
   const toggleActive = useCallback(() => setToastActive((active) => !active), []);
+  const handleModalClose = useCallback(() => setSyncResultModalActive(false), []);
 
   return (
     <Frame>
@@ -404,6 +431,7 @@ export default function ShelfLifeManagement() {
                           'text',
                           'text',
                           'text',
+                          'text',
                           'text'
                         ]}
                         headings={[
@@ -412,7 +440,8 @@ export default function ShelfLifeManagement() {
                           'Quantity',
                           'Location',
                           'Shopify Product',
-                          'Created At',
+                          'Sync Status',
+                          'Sync Message',
                           'Updated At'
                         ]}
                         rows={rows}
@@ -435,6 +464,43 @@ export default function ShelfLifeManagement() {
           onDismiss={toggleActive}
         />
       )}
+      
+      {/* Modal to display unmatched items with reasons */}
+      <Modal
+        open={syncResultModalActive}
+        onClose={handleModalClose}
+        title="Sync Results"
+        primaryAction={{
+          content: "Close",
+          onAction: handleModalClose,
+        }}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p">
+              {actionData?.syncResult?.message}
+            </Text>
+            
+            {actionData?.syncResult?.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0 && (
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingMd">Products that couldn't be matched:</Text>
+                <List type="bullet">
+                  {actionData.syncResult.unmatchedItems.map((item, index) => (
+                    <List.Item key={index}>
+                      <Text as="span" tone="critical">
+                        {item.productId}: {item.reason}
+                      </Text>
+                    </List.Item>
+                  ))}
+                </List>
+                <Text as="p">
+                  To fix these issues, make sure the Product IDs in your CSV match the SKUs in your Shopify store.
+                </Text>
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
     </Frame>
   );
 }

@@ -104,6 +104,8 @@ model ShelfLifeItem {
   shopifyVariantId   String?  // Shopify Variant ID (GraphQL ID)
   shopifyProductTitle String? // Shopify Product Title
   shopifyVariantTitle String? // Shopify Variant Title
+  syncStatus         String?  // Status of Shopify sync (MATCHED, UNMATCHED)
+  syncMessage        String?  // Message about sync result or failure reason
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

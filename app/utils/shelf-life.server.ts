@@ -480,6 +480,10 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
   success: boolean; 
   matchedCount: number; 
   message: string;
+  unmatchedItems?: Array<{
+    productId: string;
+    reason: string;
+  }>;
 }> {
   try {
     // Get all shelf life items
@@ -535,6 +539,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     
     // Match shelf life items with Shopify variants
     let matchedCount = 0;
+    const unmatchedItems = [];
     
     for (const item of shelfLifeItems) {
       const variantDetails = skuToVariantMap.get(item.productId);
@@ -549,17 +554,39 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
             shopifyVariantId: variantDetails.variantId,
             shopifyProductId: variantDetails.productId,
             shopifyProductTitle: variantDetails.productTitle,
-            shopifyVariantTitle: variantDetails.variantTitle
+            shopifyVariantTitle: variantDetails.variantTitle,
+            syncStatus: "MATCHED",
+            syncMessage: "Successfully matched with Shopify variant"
           }
         });
         
         matchedCount++;
+      } else {
+        // Record the reason why this item wasn't matched
+        const reason = "No matching SKU found in Shopify";
+        
+        // Update the item with the sync status
+        await prisma.shelfLifeItem.update({
+          where: {
+            id: item.id
+          },
+          data: {
+            syncStatus: "UNMATCHED",
+            syncMessage: reason
+          }
+        });
+        
+        unmatchedItems.push({
+          productId: item.productId,
+          reason
+        });
       }
     }
     
     return {
       success: true,
       matchedCount,
+      unmatchedItems,
       message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products.`
     };
   } catch (error) {
