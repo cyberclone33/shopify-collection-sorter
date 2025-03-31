@@ -442,7 +442,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
 /**
  * Get all shelf life items
  */
-export async function getAllShelfLifeItems(shop: string): Promise<ShelfLifeItem[]> {
+export async function getAllShelfLifeItems(shop: string) {
   try {
     return await prisma.shelfLifeItem.findMany({
       where: {
@@ -451,7 +451,7 @@ export async function getAllShelfLifeItems(shop: string): Promise<ShelfLifeItem[
       orderBy: {
         expirationDate: 'asc',
       },
-    }) as ShelfLifeItem[];
+    });
   } catch (error) {
     console.error("Error fetching shelf life items:", error);
     throw new Error(`Failed to fetch shelf life items: ${error instanceof Error ? error.message : String(error)}`);
@@ -712,7 +712,8 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         variantExpirationMap.get(variantDetails.variantId).push({
           batchId: item.batchId,
           quantity: item.quantity,
-          batchQuantity: item.batchQuantity !== null && item.batchQuantity !== undefined ? item.batchQuantity : item.quantity,
+          batchQuantity: item.batchQuantity !== null && item.batchQuantity !== undefined ? item.batchQuantity : item.quantity, // Use batchQuantity if available, otherwise fall back to quantity
+          expirationDate: item.expirationDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
           location: item.location || ""
         });
         

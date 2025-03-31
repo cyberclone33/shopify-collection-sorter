@@ -13,42 +13,92 @@
 {% endschema %}
 
 <div style="margin: 10px 0; padding: 8px; border: 1px solid #e8e8e8; border-radius: 4px; background-color: #f9f9f9; font-size: 12px;">
-  <h3 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600;">批次資訊</h3>
+  <h3 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600;">保存期限</h3>
   
   {% assign has_batch_info = false %}
   
-  {% for variant in product.variants %}
-    {% if variant.metafields.alpha_dog.expiration_data %}
-      {% assign has_batch_info = true %}
-      {% assign raw_data = variant.metafields.alpha_dog.expiration_data %}
-      
-      {% comment %}
-        Extract the values from the raw JSON string using string manipulation
-        since Liquid has limited JSON parsing capabilities
-      {% endcomment %}
-      {% assign batch_id_start = raw_data | split: '"batchId":"' | last %}
-      {% assign batch_id = batch_id_start | split: '"' | first %}
-      
-      {% assign quantity_start = raw_data | split: '"quantity":' | last %}
-      {% assign quantity = quantity_start | split: ',' | first %}
-      
-      {% assign location_start = raw_data | split: '"location":"' | last %}
-      {% assign location = location_start | split: '"' | first %}
-      
-      <div style="margin-bottom: 6px; padding-bottom: 6px; {% unless forloop.last %}border-bottom: 1px solid #eee;{% endunless %}">
-        <div style="display: flex; flex-wrap: wrap; align-items: center; font-size: 12px;">
-          <div style="font-weight: 600; margin-right: 8px; color: #333;">{{ variant.title }}:</div>
-          <div style="color: #555; display: flex; flex-wrap: wrap;">
-            <div style="margin-right: 8px;"><span style="color: #666;">保存期限:</span> {{ batch_id }}</div>
-            <div style="margin-right: 8px;"><span style="color: #666;">庫存:</span> {{ quantity }}</div>
-            <div><span style="color: #666;">倉庫:</span> {{ location }}</div>
-          </div>
-        </div>
-      </div>
-    {% endif %}
-  {% endfor %}
+  {% if product.variants.size > 0 %}
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+      <thead>
+        <tr style="border-bottom: 1px solid #ddd; text-align: left;">
+          <th style="padding: 4px; font-weight: 600; color: #333;">產品</th>
+          <th style="padding: 4px; font-weight: 600; color: #333;">保存期限</th>
+          <th style="padding: 4px; font-weight: 600; color: #333;">批號存量</th>
+          <th style="padding: 4px; font-weight: 600; color: #333;">總庫存</th>
+          <th style="padding: 4px; font-weight: 600; color: #333;">倉庫</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for variant in product.variants %}
+          {% if variant.metafields.alpha_dog.expiration_data %}
+            {% assign has_batch_info = true %}
+            {% assign raw_data = variant.metafields.alpha_dog.expiration_data %}
+            
+            {% comment %}
+              Get all batch IDs
+            {% endcomment %}
+            {% assign all_batch_ids = '' %}
+            {% assign batch_id_parts = raw_data | split: '"batchId":"' %}
+            {% for part in batch_id_parts %}
+              {% if forloop.first == false %}
+                {% assign batch_id = part | split: '"' | first %}
+                {% assign all_batch_ids = all_batch_ids | append: ',' | append: batch_id %}
+              {% endif %}
+            {% endfor %}
+            {% assign batch_id_array = all_batch_ids | remove_first: ',' | split: ',' %}
+            
+            {% for batch_id in batch_id_array %}
+              {% comment %}
+                Find the segment containing this batch ID
+              {% endcomment %}
+              {% assign batch_segment = raw_data | split: batch_id | last %}
+              {% assign segment_end = batch_segment | split: '}' | first | append: '}' %}
+              
+              {% comment %}
+                Extract batch quantity
+              {% endcomment %}
+              {% if segment_end contains '"batchQuantity":' %}
+                {% assign batch_quantity_part = segment_end | split: '"batchQuantity":' | last %}
+                {% assign batch_quantity = batch_quantity_part | split: ',' | first | strip %}
+              {% else %}
+                {% assign batch_quantity = 'N/A' %}
+              {% endif %}
+              
+              {% comment %}
+                Extract quantity
+              {% endcomment %}
+              {% if segment_end contains '"quantity":' %}
+                {% assign quantity_part = segment_end | split: '"quantity":' | last %}
+                {% assign quantity = quantity_part | split: ',' | first | strip %}
+              {% else %}
+                {% assign quantity = 'N/A' %}
+              {% endif %}
+              
+              {% comment %}
+                Extract location
+              {% endcomment %}
+              {% if segment_end contains '"location":"' %}
+                {% assign location_part = segment_end | split: '"location":"' | last %}
+                {% assign location = location_part | split: '"' | first %}
+              {% else %}
+                {% assign location = 'N/A' %}
+              {% endif %}
+              
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 4px; color: #333; font-weight: 500;">{{ variant.title }}</td>
+                <td style="padding: 4px; color: #555;">{{ batch_id }}</td>
+                <td style="padding: 4px; color: #555;">{{ batch_quantity }}</td>
+                <td style="padding: 4px; color: #555;">{{ quantity }}</td>
+                <td style="padding: 4px; color: #555;">{{ location }}</td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
   
   {% if has_batch_info == false %}
-    <p style="margin: 0; color: #777; font-style: italic; font-size: 12px;">此產品暫無批次資訊</p>
+    <p style="margin: 0; color: #777; font-style: italic; font-size: 12px;">此產品暫無保存期限資訊</p>
   {% endif %}
 </div>
