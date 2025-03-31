@@ -18,6 +18,7 @@ import {
 import { NoteIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { processCSVFile } from "../utils/shelf-life.server";
+import iconv from "iconv-lite";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -44,8 +45,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   
   try {
-    // Read the file content
-    const fileContent = await file.text();
+    // Read the file content as ArrayBuffer to handle different encodings
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Try to convert from Big5 to UTF-8 using iconv-lite
+    // This will handle Traditional Chinese characters properly
+    let fileContent;
+    try {
+      fileContent = iconv.decode(buffer, 'big5');
+    } catch (encodingError) {
+      console.warn("Failed to decode as Big5, falling back to UTF-8:", encodingError);
+      fileContent = iconv.decode(buffer, 'utf8');
+    }
     
     // Process the CSV file
     const result = await processCSVFile(fileContent);
@@ -202,7 +214,7 @@ export default function ShelfLifeManagement() {
                   {fileUpload}
                 </DropZone>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Files must be in CSV format
+                  Files must be in CSV format. Big5 encoding is supported. Product IDs starting with "=" will have the "=" removed.
                 </Text>
               </BlockStack>
             </Card>
@@ -225,7 +237,7 @@ export default function ShelfLifeManagement() {
                   Your CSV file should include the following columns:
                 </Text>
                 <ul>
-                  <li>Product ID (SKU or ERP ID)</li>
+                  <li>Product ID (SKU or ERP ID) - Leading "=" will be removed</li>
                   <li>Batch ID</li>
                   <li>Expiration Date (YYYY-MM-DD)</li>
                   <li>Quantity</li>

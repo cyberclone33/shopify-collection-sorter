@@ -13,23 +13,43 @@ interface ShelfLifeData {
 }
 
 /**
+ * Clean product ID by removing leading equals sign
+ */
+function cleanProductId(productId: string): string {
+  if (productId && productId.startsWith('=')) {
+    return productId.substring(1);
+  }
+  return productId;
+}
+
+/**
  * Parse CSV data into ShelfLifeData objects
  */
 export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
   try {
+    // Handle Big5 encoding by using a more relaxed parsing approach
     const records = parse(csvContent, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      relax_quotes: true,  // More forgiving quote handling
+      relax_column_count: true, // Allow varying column counts
+      encoding: 'utf8', // We'll handle encoding conversion separately if needed
     });
 
-    return records.map((record: any) => ({
-      productId: record.productId || record.product_id || record.sku || "",
-      batchId: record.batchId || record.batch_id || "",
-      expirationDate: new Date(record.expirationDate || record.expiration_date || record.date),
-      quantity: parseInt(record.quantity, 10) || 0,
-      location: record.location || "default",
-    }));
+    return records.map((record: any) => {
+      // Get product ID from various possible column names and clean it
+      const rawProductId = record.productId || record.product_id || record.sku || "";
+      const productId = cleanProductId(rawProductId);
+      
+      return {
+        productId,
+        batchId: record.batchId || record.batch_id || "",
+        expirationDate: new Date(record.expirationDate || record.expiration_date || record.date),
+        quantity: parseInt(record.quantity, 10) || 0,
+        location: record.location || "default",
+      };
+    });
   } catch (error) {
     console.error("Error parsing CSV:", error);
     throw new Error(`Failed to parse CSV: ${error instanceof Error ? error.message : String(error)}`);
