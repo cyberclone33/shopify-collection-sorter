@@ -20,23 +20,7 @@ CREATE TABLE "new_ShelfLifeItem" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
-
--- Copy data from the old table to the new table, using quantity for both totalQuantity and batchQuantity
-INSERT INTO "new_ShelfLifeItem" (
-    "id", "shop", "productId", "batchId", "expirationDate", 
-    "totalQuantity", "batchQuantity", "quantity",
-    "location", "shopifyProductId", "shopifyProductTitle", 
-    "shopifyVariantId", "shopifyVariantTitle", "syncStatus", 
-    "syncMessage", "createdAt", "updatedAt"
-) 
-SELECT 
-    "id", "shop", "productId", "batchId", "expirationDate", 
-    "quantity", "quantity", "quantity",
-    "location", "shopifyProductId", "shopifyProductTitle", 
-    "shopifyVariantId", "shopifyVariantTitle", "syncStatus", 
-    "syncMessage", "createdAt", "updatedAt" 
-FROM "ShelfLifeItem";
-
+INSERT INTO "new_ShelfLifeItem" ("batchId", "batchQuantity", "createdAt", "expirationDate", "id", "location", "productId", "shop", "shopifyProductId", "shopifyProductTitle", "shopifyVariantId", "shopifyVariantTitle", "syncMessage", "syncStatus", "totalQuantity", "updatedAt") SELECT "batchId", "batchQuantity", "createdAt", "expirationDate", "id", "location", "productId", "shop", "shopifyProductId", "shopifyProductTitle", "shopifyVariantId", "shopifyVariantTitle", "syncMessage", "syncStatus", "totalQuantity", "updatedAt" FROM "ShelfLifeItem";
 DROP TABLE "ShelfLifeItem";
 ALTER TABLE "new_ShelfLifeItem" RENAME TO "ShelfLifeItem";
 CREATE UNIQUE INDEX "ShelfLifeItem_productId_batchId_key" ON "ShelfLifeItem"("productId", "batchId");

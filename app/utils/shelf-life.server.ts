@@ -8,8 +8,7 @@ interface ShelfLifeData {
   productId: string;
   batchId: string;
   expirationDate: Date;
-  totalQuantity: number;
-  batchQuantity: number;
+  quantity: number;
   location?: string;
 }
 
@@ -72,20 +71,11 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
       '到期日', '效期'
     ];
     
-    // Try to identify the total quantity column - look for '分倉存量' exactly
-    const possibleTotalQuantityColumns = [
-      '分倉存量', // This is the exact column name in the user's CSV
-      'totalQuantity', 'total_quantity', 'Total Quantity', 'total quantity',
-      'Total QTY', 'total qty', 'Total Amount', 'total amount',
-      '總數量', '總庫存', '總庫存數量'
-    ];
-    
-    // Try to identify the batch quantity column - look for '批號存量' exactly
-    const possibleBatchQuantityColumns = [
-      '批號存量', // This is the exact column name in the user's CSV
-      'batchQuantity', 'batch_quantity', 'Batch Quantity', 'batch quantity',
-      'Batch QTY', 'batch qty', 'Batch Amount', 'batch amount',
-      '批次數量', '批次庫存', '批次庫存數量'
+    // Try to identify the quantity column - look for '批號存量' or '分倉存量' first
+    const possibleQuantityColumns = [
+      '批號存量', '分倉存量', // These are the primary column names in the user's CSV
+      'quantity', 'Quantity', 'qty', 'Qty', 'QTY', 'Amount', 'amount',
+      '數量', '庫存', '庫存數量', '數目'
     ];
     
     // Try to identify the location column - look for '倉庫名稱' or '倉庫代號' first
@@ -99,8 +89,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
     let productIdColumn = '';
     let batchIdColumn = '';
     let expirationDateColumn = '';
-    let totalQuantityColumn = '';
-    let batchQuantityColumn = '';
+    let quantityColumn = '';
     let locationColumn = '';
     
     if (records.length > 0) {
@@ -128,16 +117,9 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         )
       ) || '';
       
-      // Find total quantity column
-      totalQuantityColumn = csvColumns.find(col => 
-        possibleTotalQuantityColumns.some(possible => 
-          col.toLowerCase() === possible.toLowerCase()
-        )
-      ) || '';
-      
-      // Find batch quantity column
-      batchQuantityColumn = csvColumns.find(col => 
-        possibleBatchQuantityColumns.some(possible => 
+      // Find quantity column
+      quantityColumn = csvColumns.find(col => 
+        possibleQuantityColumns.some(possible => 
           col.toLowerCase() === possible.toLowerCase()
         )
       ) || '';
@@ -153,8 +135,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         productIdColumn,
         batchIdColumn,
         expirationDateColumn,
-        totalQuantityColumn,
-        batchQuantityColumn,
+        quantityColumn,
         locationColumn
       });
     }
@@ -275,54 +256,32 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         expirationDate.setDate(expirationDate.getDate() + 30);
       }
       
-      // Get total quantity
-      let totalQuantityStr = '';
-      if (totalQuantityColumn && record[totalQuantityColumn]) {
-        totalQuantityStr = record[totalQuantityColumn];
-      } else if (record['分倉存量']) {
-        // Special case for the user's CSV format
-        totalQuantityStr = record['分倉存量'];
-      } else {
-        // Try all possible total quantity columns
-        for (const col of possibleTotalQuantityColumns) {
-          if (record[col]) {
-            totalQuantityStr = record[col];
-            break;
-          }
-        }
-      }
-      
-      // Parse the total quantity
-      let totalQuantity = 0;
-      try {
-        totalQuantity = parseInt(totalQuantityStr, 10) || 0;
-      } catch (e) {
-        console.error(`Error parsing total quantity '${totalQuantityStr}' for row ${index + 1}:`, e);
-      }
-      
-      // Get batch quantity
-      let batchQuantityStr = '';
-      if (batchQuantityColumn && record[batchQuantityColumn]) {
-        batchQuantityStr = record[batchQuantityColumn];
+      // Get quantity
+      let quantityStr = '';
+      if (quantityColumn && record[quantityColumn]) {
+        quantityStr = record[quantityColumn];
       } else if (record['批號存量']) {
         // Special case for the user's CSV format
-        batchQuantityStr = record['批號存量'];
+        quantityStr = record['批號存量'];
+      } else if (record['分倉存量']) {
+        // Alternative field in the user's CSV
+        quantityStr = record['分倉存量'];
       } else {
-        // Try all possible batch quantity columns
-        for (const col of possibleBatchQuantityColumns) {
+        // Try all possible quantity columns
+        for (const col of possibleQuantityColumns) {
           if (record[col]) {
-            batchQuantityStr = record[col];
+            quantityStr = record[col];
             break;
           }
         }
       }
       
-      // Parse the batch quantity
-      let batchQuantity = 0;
+      // Parse the quantity
+      let quantity = 0;
       try {
-        batchQuantity = parseInt(batchQuantityStr, 10) || 0;
+        quantity = parseInt(quantityStr, 10) || 0;
       } catch (e) {
-        console.error(`Error parsing batch quantity '${batchQuantityStr}' for row ${index + 1}:`, e);
+        console.error(`Error parsing quantity '${quantityStr}' for row ${index + 1}:`, e);
       }
       
       // Get location
@@ -353,10 +312,8 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
           batchId, 
           expirationDateStr, 
           expirationDate, 
-          totalQuantityStr, 
-          totalQuantity, 
-          batchQuantityStr, 
-          batchQuantity, 
+          quantityStr, 
+          quantity, 
           location,
           record // Log the full record for debugging
         });
@@ -366,8 +323,7 @@ export async function parseCSV(csvContent: string): Promise<ShelfLifeData[]> {
         productId,
         batchId,
         expirationDate,
-        totalQuantity,
-        batchQuantity,
+        quantity,
         location,
       };
     });
@@ -395,8 +351,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
         update: {
           shop,
           expirationDate: item.expirationDate,
-          totalQuantity: item.totalQuantity,
-          batchQuantity: item.batchQuantity,
+          quantity: item.quantity,
           location: item.location,
         },
         create: {
@@ -404,8 +359,7 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
           productId: item.productId,
           batchId: item.batchId,
           expirationDate: item.expirationDate,
-          totalQuantity: item.totalQuantity,
-          batchQuantity: item.batchQuantity,
+          quantity: item.quantity,
           location: item.location || "default",
         },
       });
@@ -452,7 +406,7 @@ export async function getExpiringItems(shop: string, daysThreshold: number = 30)
         expirationDate: {
           lte: thresholdDate,
         },
-        totalQuantity: {
+        quantity: {
           gt: 0,
         },
       },
@@ -494,7 +448,7 @@ export async function processCSVFile(fileContent: string, shop: string): Promise
         errors.push(errorMsg);
         return false;
       }
-      if (item.totalQuantity < 0) {
+      if (item.quantity < 0) {
         const errorMsg = `Invalid quantity for product ${item.productId}, batch ${item.batchId} at row ${index + 1}`;
         console.error(errorMsg);
         errors.push(errorMsg);
@@ -691,7 +645,7 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         // Add this batch to the variant's expiration data
         variantExpirationMap.get(variantDetails.variantId).push({
           batchId: item.batchId,
-          quantity: item.totalQuantity,
+          quantity: item.quantity,
           location: item.location || ""
         });
         

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { useActionData, useSubmit, useLoaderData } from "@remix-run/react";
 import {
@@ -36,8 +36,7 @@ interface ShelfLifeItem {
   productId: string;
   batchId: string;
   expirationDate: string;
-  totalQuantity: number;
-  batchQuantity: number;
+  quantity: number;
   location: string | null;
   shopifyProductId: string | null;
   shopifyVariantId: string | null;
@@ -297,18 +296,17 @@ export default function ShelfLifeManagement() {
     }
   };
 
-  // Create rows for the data table
-  const rows = useMemo(() => shelfLifeItems.map(item => [
+  // Prepare data for the DataTable - remove ID and expiration date columns
+  const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
     item.productId,
     item.batchId,
-    item.totalQuantity?.toString() || "0",
-    item.batchQuantity?.toString() || "0",
+    item.quantity.toString(),
     item.location || "N/A",
     item.shopifyProductTitle || "Not synced",
     getSyncStatusText(item),
     item.syncMessage || "Not synced yet",
     formatDate(item.updatedAt)
-  ]), [shelfLifeItems]);
+  ]);
 
   const tabs = [
     {
@@ -430,7 +428,6 @@ export default function ShelfLifeManagement() {
                           'text',
                           'text',
                           'numeric',
-                          'numeric',
                           'text',
                           'text',
                           'text',
@@ -440,8 +437,7 @@ export default function ShelfLifeManagement() {
                         headings={[
                           'Product ID',
                           'Batch ID',
-                          'Total Quantity',
-                          'Batch Quantity',
+                          'Quantity',
                           'Location',
                           'Shopify Product',
                           'Sync Status',
