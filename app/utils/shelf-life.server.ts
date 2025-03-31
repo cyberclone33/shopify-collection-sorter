@@ -489,53 +489,95 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     // Get all shelf life items
     const shelfLifeItems = await getAllShelfLifeItems(shop);
     
-    // Get all product variants from Shopify
-    const response = await admin.graphql(`
-      query {
-        products(first: 250) {
-          edges {
-            node {
-              id
-              title
-              variants(first: 250) {
-                edges {
-                  node {
-                    id
-                    sku
-                    inventoryQuantity
-                    title
+    // Create a map of SKU to variant details
+    const skuToVariantMap = new Map();
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let productsProcessed = 0;
+    let apiCallCount = 0;
+    
+    // Fetch products in batches to respect API limits
+    while (hasNextPage && apiCallCount < 10) { // Limit to 10 API calls to avoid excessive usage
+      apiCallCount++;
+      
+      // Build the query with pagination
+      const afterParam: string = cursor ? `, after: "${cursor}"` : '';
+      const response: any = await admin.graphql(`
+        query {
+          products(first: 50${afterParam}) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                title
+                variants(first: 50) {
+                  edges {
+                    node {
+                      id
+                      sku
+                      inventoryQuantity
+                      title
+                    }
                   }
                 }
               }
             }
           }
         }
-      }
-    `);
-    
-    const responseJson = await response.json();
-    const productEdges = responseJson.data.products.edges;
-    
-    // Create a map of SKU to variant details
-    const skuToVariantMap = new Map();
-    
-    productEdges.forEach((productEdge: any) => {
-      const product = productEdge.node;
-      const variantEdges = product.variants.edges;
+      `);
       
-      variantEdges.forEach((variantEdge: any) => {
-        const variant = variantEdge.node;
-        if (variant.sku) {
-          skuToVariantMap.set(variant.sku, {
-            variantId: variant.id,
-            productId: product.id,
-            productTitle: product.title,
-            variantTitle: variant.title,
-            inventoryQuantity: variant.inventoryQuantity
-          });
-        }
+      const responseJson: any = await response.json();
+      
+      // Check for errors
+      if (responseJson.errors) {
+        console.error("GraphQL errors:", responseJson.errors);
+        return {
+          success: false,
+          matchedCount: 0,
+          message: `Error fetching products: ${responseJson.errors[0].message}`
+        };
+      }
+      
+      const productData: any = responseJson.data.products;
+      const productEdges = productData.edges;
+      
+      // Update pagination info
+      hasNextPage = productData.pageInfo.hasNextPage;
+      cursor = productData.pageInfo.endCursor;
+      productsProcessed += productEdges.length;
+      
+      // Process this batch of products
+      productEdges.forEach((productEdge: any) => {
+        const product = productEdge.node;
+        const variantEdges = product.variants.edges;
+        
+        variantEdges.forEach((variantEdge: any) => {
+          const variant = variantEdge.node;
+          if (variant.sku) {
+            skuToVariantMap.set(variant.sku, {
+              variantId: variant.id,
+              productId: product.id,
+              productTitle: product.title,
+              variantTitle: variant.title,
+              inventoryQuantity: variant.inventoryQuantity
+            });
+          }
+        });
       });
-    });
+      
+      // Add a small delay between API calls to avoid rate limiting
+      if (hasNextPage) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // If we stopped because of the API call limit, log a warning
+    if (hasNextPage) {
+      console.warn(`Stopped product fetching after ${apiCallCount} API calls. Not all products may have been processed.`);
+    }
     
     // Match shelf life items with Shopify variants
     let matchedCount = 0;
@@ -583,11 +625,14 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
       }
     }
     
+    const apiLimitMessage = hasNextPage ? 
+      ` Note: API call limit reached after processing ${productsProcessed} products. Some products may not have been checked.` : '';
+    
     return {
       success: true,
       matchedCount,
       unmatchedItems,
-      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products.`
+      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products.${apiLimitMessage}`
     };
   } catch (error) {
     console.error("Error syncing with Shopify:", error);
