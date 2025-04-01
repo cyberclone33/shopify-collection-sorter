@@ -114,7 +114,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
   
-  // Handle updating compare at price
+  // Handle updating sale price (and setting current price as compare-at price)
   if (action === "updateCompareAtPrice") {
     try {
       const variantId = formData.get("variantId");
@@ -123,31 +123,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!variantId) {
         return json<ActionData>({ 
           status: "error", 
-          message: "Variant ID is required for updating compare at price" 
+          message: "Variant ID is required for updating sale price" 
         });
       }
       
       if (!compareAtPrice) {
         return json<ActionData>({ 
           status: "error", 
-          message: "Compare at price is required" 
+          message: "Sale price is required" 
         });
       }
       
-      // Parse compare at price as float
+      // Parse sale price as float
       const compareAtPriceFloat = parseFloat(compareAtPrice.toString());
       
       if (isNaN(compareAtPriceFloat)) {
         return json<ActionData>({ 
           status: "error", 
-          message: "Compare at price must be a valid number" 
+          message: "Sale price must be a valid number" 
         });
       }
       
-      console.log(`Using GraphQL productVariantsBulkUpdate to update variant ${variantId} compare-at price to ${compareAtPriceFloat}`);
+      console.log(`Using GraphQL productVariantsBulkUpdate to update variant ${variantId} regular price to ${compareAtPriceFloat}, setting original price as compare-at price`);
       
       try {
-        // First, we need to look up the product ID from the database
+        // First, we need to look up the product ID and current price from the database
         // Get all shelf life items from the database for this shop
         const shelfLifeItemsFromDb = await prisma.shelfLifeItem.findMany({
           where: { shop: session.shop }
@@ -158,6 +158,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Find the item with matching variant ID
         const item = shelfLifeItemsFromDb.find(item => item.shopifyVariantId === variantId);
         const productId = item?.shopifyProductId;
+        const currentPrice = item?.variantPrice;
         
         if (!productId) {
           console.error(`Cannot find product ID for variant ${variantId}`);
@@ -167,9 +168,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           });
         }
         
+        if (!currentPrice) {
+          console.error(`Cannot find current price for variant ${variantId}`);
+          return json<ActionData>({
+            status: "error",
+            message: "Cannot find current price for this variant"
+          });
+        }
+        
         console.log(`Found corresponding product ID: ${productId} for variant: ${variantId}`);
+        console.log(`Current price: ${currentPrice}, setting as compare-at price`);
         
         // Use the productVariantsBulkUpdate with the correct productId parameter
+        // Setting the sale price as the new price, and current price as compare-at price
         const response = await admin.graphql(
           `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
             productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -191,7 +202,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               variants: [
                 {
                   id: variantId,
-                  compareAtPrice: compareAtPriceFloat.toFixed(2)
+                  price: compareAtPriceFloat.toFixed(2),
+                  compareAtPrice: currentPrice.toString()
                 }
               ]
             }
@@ -218,10 +230,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           });
         }
         
-        console.log("Successfully updated variant compare-at price with GraphQL");
+        console.log("Successfully updated variant sale price with GraphQL");
         return json<ActionData>({
           status: "success",
-          message: `Compare at price updated successfully to ${compareAtPriceFloat}`
+          message: `Sale price updated successfully to ${compareAtPriceFloat}`
         });
       } catch (error) {
         console.error("GraphQL exception:", error);
@@ -479,7 +491,7 @@ export default function ShelfLifeManagement() {
     submit(formData, { method: "post" });
   };
   
-  // Handle updating compare at price
+  // Handle updating sale price
   const handleUpdateCompareAtPrice = (variantId: string, value: string) => {
     setCompareAtPrices(prev => ({
       ...prev,
@@ -487,7 +499,7 @@ export default function ShelfLifeManagement() {
     }));
   };
   
-  // Handle submitting compare at price update
+  // Handle submitting sale price update
   const submitCompareAtPrice = (variantId: string, compareAtPrice: string) => {
     if (!variantId || !compareAtPrice) return;
     
@@ -805,7 +817,7 @@ export default function ShelfLifeManagement() {
               borderRadius: '4px',
               fontSize: '0.8125rem'
             }}
-            placeholder="Set price"
+            placeholder="Set sale price"
             value={compareAtPrices[item.shopifyVariantId || ''] || ''}
             onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
             disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
@@ -1165,7 +1177,7 @@ export default function ShelfLifeManagement() {
                           'Location',
                           'Shopify Product',
                           'Price',
-                          'Compare At',
+                          'Sale Price',
                           'Cost',
                           'Sync Status',
                           'Sync Message',
