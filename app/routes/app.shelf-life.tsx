@@ -708,10 +708,15 @@ export default function ShelfLifeManagement() {
     }
   };
   
-  // Filter items based on their expiration status
+  // Filter items based on their sync status and expiration status
   const getFilteredItems = (items: ShelfLifeItem[], tabId: string) => {
     if (tabId === 'view') {
       return items; // Return all items for the "All Inventory" tab
+    }
+    
+    // Special case for "Not Synced" tab
+    if (tabId === 'not-synced') {
+      return items.filter(item => !item.syncStatus || item.syncStatus === "UNMATCHED");
     }
     
     return items.filter(item => {
@@ -857,10 +862,16 @@ export default function ShelfLifeManagement() {
       expiringSoon: 0,
       expiring60: 0,
       expiring90: 0,
-      good: 0
+      good: 0,
+      notSynced: 0
     };
     
     shelfLifeItems.forEach(item => {
+      // Count not synced items first
+      if (!item.syncStatus || item.syncStatus === "UNMATCHED") {
+        counts.notSynced++;
+      }
+      
       const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
       
       if (daysUntilExpiration === null) return;
@@ -895,6 +906,11 @@ export default function ShelfLifeManagement() {
       id: 'view',
       content: `All Inventory (${shelfLifeItems.length})`,
       panelID: 'view-panel',
+    },
+    {
+      id: 'not-synced',
+      content: `Not Synced (${expirationCounts.notSynced})`,
+      panelID: 'not-synced-panel',
     },
     {
       id: 'expired',
@@ -1092,7 +1108,8 @@ export default function ShelfLifeManagement() {
                           getCurrentTabId() === 'expired' ? 'critical' :
                           getCurrentTabId() === 'expiring-soon' ? 'warning' :
                           getCurrentTabId() === 'expiring-60' ? 'info' :
-                          getCurrentTabId() === 'expiring-90' ? 'info' : 'success'
+                          getCurrentTabId() === 'expiring-90' ? 'info' :
+                          getCurrentTabId() === 'not-synced' ? 'warning' : 'success'
                         }>
                           <Text as="p">
                             {getCurrentTabId() === 'expired' && `Showing ${rows.length} expired items. These products have passed their expiration date.`}
@@ -1100,6 +1117,7 @@ export default function ShelfLifeManagement() {
                             {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
                             {getCurrentTabId() === 'expiring-90' && `Showing ${rows.length} items expiring within 61-90 days.`}
                             {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 90 days until expiration.`}
+                            {getCurrentTabId() === 'not-synced' && `Showing ${rows.length} items that have not been synced with Shopify. Click "Sync with Shopify" to match these items with your products.`}
                           </Text>
                         </Banner>
                       </Box>
