@@ -803,34 +803,6 @@ export default function ShelfLifeManagement() {
       expired: 0,
       expiringSoon: 0,
       expiring60: 0,
-      good: 0
-    };
-    
-    shelfLifeItems.forEach(item => {
-      const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
-      
-      if (daysUntilExpiration === null) return;
-      
-      if (daysUntilExpiration < 0) {
-        counts.expired++;
-      } else if (daysUntilExpiration <= 30) {
-        counts.expiringSoon++;
-      } else if (daysUntilExpiration <= 60) {
-        counts.expiring60++;
-      } else {
-        counts.good++;
-      }
-    });
-    
-    return counts;
-  };
-  
-  // Get counts of items in each category for tab badges
-  const getExpirationCounts = () => {
-    const counts = {
-      expired: 0,
-      expiringSoon: 0,
-      expiring60: 0,
       expiring90: 0,
       good: 0
     };
