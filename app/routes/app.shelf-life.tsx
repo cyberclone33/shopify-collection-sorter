@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { useActionData, useSubmit, useLoaderData } from "@remix-run/react";
+import { useActionData, useSubmit, useLoaderData, useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -22,9 +22,14 @@ import {
   Toast,
   Frame,
   Modal,
-  List
+  List,
+  Popover,
+  ActionList,
+  Loading,
+  Icon,
+  ContextualSaveBar
 } from "@shopify/polaris";
-import { NoteIcon, RefreshIcon } from "@shopify/polaris-icons";
+import { NoteIcon, RefreshIcon, DeleteIcon, MobileHorizontalDotsIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { processCSVFile, getAllShelfLifeItems, syncWithShopify } from "../utils/shelf-life.server";
 import iconv from "iconv-lite";
@@ -80,6 +85,7 @@ interface ActionData {
       reason: string;
     }>;
   };
+  deletedCount?: number;
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -103,6 +109,91 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json<ActionData>({
         status: "error",
         message: `Error syncing with Shopify: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
+  
+  // Handle item deletion
+  if (action === "delete") {
+    try {
+      const id = formData.get("id");
+      
+      if (!id) {
+        return json<ActionData>({ 
+          status: "error", 
+          message: "Item ID is required for deletion" 
+        });
+      }
+      
+      await prisma.shelfLifeItem.delete({
+        where: { id: id.toString() }
+      });
+      
+      return json<ActionData>({
+        status: "success",
+        message: "Item deleted successfully"
+      });
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error deleting item: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
+  
+  // Handle bulk deletion
+  if (action === "bulkDelete") {
+    try {
+      const idsString = formData.get("ids");
+      
+      if (!idsString) {
+        return json<ActionData>({ 
+          status: "error", 
+          message: "Item IDs are required for bulk deletion" 
+        });
+      }
+      
+      const ids = idsString.toString().split(",");
+      
+      await prisma.shelfLifeItem.deleteMany({
+        where: {
+          id: {
+            in: ids
+          },
+          shop // Ensure we only delete items for this shop
+        }
+      });
+      
+      return json<ActionData>({
+        status: "success",
+        message: `${ids.length} items deleted successfully`
+      });
+    } catch (error) {
+      console.error("Error deleting items:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error deleting items: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
+  
+  // Handle delete all items
+  if (action === "deleteAll") {
+    try {
+      const result = await prisma.shelfLifeItem.deleteMany({
+        where: { shop }
+      });
+      
+      return json<ActionData>({
+        status: "success",
+        message: `${result.count} items deleted successfully`
+      });
+    } catch (error) {
+      console.error("Error deleting all items:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error deleting all items: ${error instanceof Error ? error.message : String(error)}`
       });
     }
   }
@@ -167,24 +258,42 @@ export default function ShelfLifeManagement() {
   const [toastActive, setToastActive] = useState(false);
   const [toastContent, setToastContent] = useState({ message: "", tone: "success" });
   const [syncResultModalActive, setSyncResultModalActive] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDeleteModalActive, setConfirmDeleteModalActive] = useState(false);
+  const [confirmDeleteAllModalActive, setConfirmDeleteAllModalActive] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [actionsPopoverActive, setActionsPopoverActive] = useState(false);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
   const submit = useSubmit();
+  const deleteFormRef = useRef<HTMLFormElement>(null);
 
   // Handle toast and modal when action data changes
   useEffect(() => {
-    if (actionData?.syncResult) {
+    if (actionData) {
       setToastActive(true);
       setToastContent({
         message: actionData.message,
         tone: actionData.status === "success" ? "success" : "critical"
       });
-      setIsSyncing(false);
       
-      // If there are unmatched items, show the modal
-      if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
-        setSyncResultModalActive(true);
+      // Handle sync results
+      if (actionData.syncResult) {
+        setIsSyncing(false);
+        
+        // If there are unmatched items, show the modal
+        if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
+          setSyncResultModalActive(true);
+        }
+      }
+      
+      // Reset delete states if deletion succeeded
+      if (actionData.status === "success" && !actionData.syncResult) {
+        setIsDeleting(false);
+        setSelectedItems([]);
+        setItemToDelete(null);
       }
     }
   }, [actionData]);
@@ -214,6 +323,87 @@ export default function ShelfLifeManagement() {
     
     submit(formData, { method: "post" });
   };
+  
+  // Handle deleting a single item
+  const handleDeleteItem = (id: string) => {
+    setItemToDelete(id);
+    setConfirmDeleteModalActive(true);
+  };
+  
+  // Handle confirming the deletion of a single item
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
+    
+    setIsDeleting(true);
+    setConfirmDeleteModalActive(false);
+    
+    const formData = new FormData();
+    formData.append("action", "delete");
+    formData.append("id", itemToDelete);
+    
+    submit(formData, { method: "post" });
+  };
+  
+  // Handle deleting selected items
+  const handleDeleteSelected = () => {
+    if (selectedItems.length === 0) return;
+    
+    setConfirmDeleteModalActive(true);
+  };
+  
+  // Handle confirming the deletion of selected items
+  const confirmDeleteSelected = () => {
+    if (selectedItems.length === 0) return;
+    
+    setIsDeleting(true);
+    setConfirmDeleteModalActive(false);
+    
+    const formData = new FormData();
+    formData.append("action", "bulkDelete");
+    formData.append("ids", selectedItems.join(","));
+    
+    submit(formData, { method: "post" });
+  };
+  
+  // Handle deleting all items
+  const handleDeleteAll = () => {
+    if (shelfLifeItems.length === 0) return;
+    
+    setConfirmDeleteAllModalActive(true);
+  };
+  
+  // Handle confirming the deletion of all items
+  const confirmDeleteAll = () => {
+    setIsDeleting(true);
+    setConfirmDeleteAllModalActive(false);
+    
+    const formData = new FormData();
+    formData.append("action", "deleteAll");
+    
+    submit(formData, { method: "post" });
+  };
+  
+  // Handle toggling item selection for bulk actions
+  const handleSelectItem = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedItems(prev => [...prev, id]);
+    } else {
+      setSelectedItems(prev => prev.filter(itemId => itemId !== id));
+    }
+  };
+  
+  // Handle selecting all items
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedItems(shelfLifeItems.map(item => item.id));
+    } else {
+      setSelectedItems([]);
+    }
+  };
+  
+  // Toggle actions popover
+  const toggleActionsPopover = useCallback(() => 
+    setActionsPopoverActive(active => !active), []);
 
   const validImageTypes = ["text/csv"];
   
@@ -361,8 +551,14 @@ export default function ShelfLifeManagement() {
     }
   };
 
-  // Prepare data for the DataTable - remove ID and expiration date columns
+  // Prepare data for the DataTable - add checkboxes and actions
   const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
+    <input 
+      type="checkbox" 
+      checked={selectedItems.includes(item.id)} 
+      onChange={(e) => handleSelectItem(item.id, e.target.checked)}
+      disabled={isDeleting}
+    />,
     item.productId,
     <Text as="span" fontWeight={getDaysUntilExpiration(item.batchId) !== null && getDaysUntilExpiration(item.batchId)! <= 30 ? "bold" : "regular"}>
       {item.batchId}
@@ -376,9 +572,39 @@ export default function ShelfLifeManagement() {
     formatCurrency(item.variantCost, item.currencyCode),
     getSyncStatusText(item),
     item.syncMessage || "Not synced yet",
-    formatDate(item.updatedAt)
+    formatDate(item.updatedAt),
+    <Button 
+      icon={DeleteIcon} 
+      onClick={() => handleDeleteItem(item.id)} 
+      variant="tertiary" 
+      tone="critical"
+      disabled={isDeleting}
+      accessibilityLabel={`Delete ${item.productId}`}
+    />
   ]);
 
+  // Prepare actions popover
+  const actionsPopoverButton = (
+    <Button
+      icon={MobileHorizontalDotsIcon}
+      onClick={toggleActionsPopover}
+      variant="tertiary"
+      disabled={isDeleting}
+    >
+      Actions
+    </Button>
+  );
+  
+  const handlePopoverActionSelect = (action: string) => {
+    setActionsPopoverActive(false);
+    
+    if (action === 'delete_selected') {
+      handleDeleteSelected();
+    } else if (action === 'delete_all') {
+      handleDeleteAll();
+    }
+  };
+  
   const tabs = [
     {
       id: 'upload',
@@ -394,6 +620,13 @@ export default function ShelfLifeManagement() {
 
   const toggleActive = useCallback(() => setToastActive((active) => !active), []);
   const handleModalClose = useCallback(() => setSyncResultModalActive(false), []);
+  const handleDeleteModalClose = useCallback(() => {
+    setConfirmDeleteModalActive(false);
+    setItemToDelete(null);
+  }, []);
+  const handleDeleteAllModalClose = useCallback(() => {
+    setConfirmDeleteAllModalActive(false);
+  }, []);
 
   return (
     <Frame>
@@ -476,16 +709,54 @@ export default function ShelfLifeManagement() {
                     <InlineStack align="space-between">
                       <Text as="h2" variant="headingMd">Shelf Life Inventory</Text>
                       <ButtonGroup>
+                        {selectedItems.length > 0 && (
+                          <Button 
+                            tone="critical"
+                            onClick={handleDeleteSelected} 
+                            disabled={isDeleting}
+                          >
+                            Delete Selected ({selectedItems.length})
+                          </Button>
+                        )}
                         <Button 
                           icon={RefreshIcon} 
                           onClick={handleSync} 
                           loading={isSyncing}
-                          disabled={isSyncing}
+                          disabled={isSyncing || isDeleting}
                         >
                           Sync with Shopify
                         </Button>
+                        
+                        <Popover
+                          active={actionsPopoverActive}
+                          activator={actionsPopoverButton}
+                          onClose={toggleActionsPopover}
+                          preferredAlignment="right"
+                        >
+                          <ActionList
+                            actionRole="menuitem"
+                            items={[
+                              {
+                                content: 'Delete Selected',
+                                onAction: () => handlePopoverActionSelect('delete_selected'),
+                                disabled: selectedItems.length === 0 || isDeleting
+                              },
+                              {
+                                content: 'Delete All Items',
+                                onAction: () => handlePopoverActionSelect('delete_all'),
+                                disabled: shelfLifeItems.length === 0 || isDeleting
+                              }
+                            ]}
+                          />
+                        </Popover>
                       </ButtonGroup>
                     </InlineStack>
+                    {/* Hidden form for delete operations */}
+                    <form method="post" ref={deleteFormRef} style={{ display: 'none' }}>
+                      <input type="hidden" name="action" value="delete" />
+                      <input type="hidden" name="id" id="deleteItemId" />
+                    </form>
+                    
                     {shelfLifeItems.length === 0 ? (
                       <EmptyState
                         heading="No shelf life data found"
@@ -499,17 +770,25 @@ export default function ShelfLifeManagement() {
                           'text',
                           'text',
                           'text',
+                          'text',
                           'numeric',
                           'numeric',
                           'text',
                           'text',
                           'numeric',
                           'numeric',
+                          'text',
                           'text',
                           'text',
                           'text'
                         ]}
                         headings={[
+                          <input 
+                            type="checkbox" 
+                            checked={selectedItems.length === shelfLifeItems.length && shelfLifeItems.length > 0} 
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                            disabled={isDeleting || shelfLifeItems.length === 0}
+                          />,
                           'Product ID',
                           'Batch ID',
                           'Expiration Status',
@@ -521,7 +800,8 @@ export default function ShelfLifeManagement() {
                           'Cost',
                           'Sync Status',
                           'Sync Message',
-                          'Updated At'
+                          'Updated At',
+                          'Actions'
                         ]}
                         rows={rows}
                         hoverable
@@ -535,6 +815,8 @@ export default function ShelfLifeManagement() {
           )}
         </BlockStack>
       </Page>
+      
+      {isDeleting && <Loading />}
       
       {toastActive && (
         <Toast
@@ -577,6 +859,66 @@ export default function ShelfLifeManagement() {
                 </Text>
               </BlockStack>
             )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Confirm Delete Modal for single or selected items */}
+      <Modal
+        open={confirmDeleteModalActive}
+        onClose={handleDeleteModalClose}
+        title={itemToDelete ? "Delete Item" : "Delete Selected Items"}
+        primaryAction={{
+          content: "Delete",
+          onAction: itemToDelete ? confirmDeleteItem : confirmDeleteSelected,
+          destructive: true,
+          loading: isDeleting
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: handleDeleteModalClose,
+            disabled: isDeleting
+          }
+        ]}
+      >
+        <Modal.Section>
+          <Text as="p">
+            {itemToDelete 
+              ? "Are you sure you want to delete this item? This action cannot be undone."
+              : `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`
+            }
+          </Text>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Confirm Delete All Modal */}
+      <Modal
+        open={confirmDeleteAllModalActive}
+        onClose={handleDeleteAllModalClose}
+        title="Delete All Items"
+        primaryAction={{
+          content: "Delete All",
+          onAction: confirmDeleteAll,
+          destructive: true,
+          loading: isDeleting
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: handleDeleteAllModalClose,
+            disabled: isDeleting
+          }
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p" tone="critical" fontWeight="bold">
+              Warning: This action will delete all {shelfLifeItems.length} items in your shelf life inventory.
+            </Text>
+            <Text as="p">
+              This is a permanent action and cannot be undone. Are you sure you want to proceed?
+            </Text>
           </BlockStack>
         </Modal.Section>
       </Modal>
