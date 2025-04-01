@@ -144,61 +144,58 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
       }
       
-      // Use GraphQL mutation with variables as suggested
-      console.log(`Using GraphQL to update variant ${variantId} compare-at price to ${compareAtPriceFloat}`);
+      // Extract the numeric ID from the GraphQL ID
+      // The format is typically "gid://shopify/ProductVariant/12345678"
+      let numericId = variantId;
+      
+      // If it's a GraphQL ID, extract the numeric portion
+      if (variantId.includes('/')) {
+        const parts = variantId.split('/');
+        numericId = parts[parts.length - 1];
+      }
+      
+      console.log(`Using REST API to update variant ${numericId} compare-at price to ${compareAtPriceFloat}`);
       
       try {
-        const response = await admin.graphql(
-          `mutation updateProductVariant($input: ProductVariantInput!) {
-            productVariantUpdate(input: $input) {
-              productVariant {
-                id
-                price
-                compareAtPrice
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              input: {
-                id: variantId,
-                compareAtPrice: compareAtPriceFloat.toFixed(2)
-              }
+        // Use the REST Admin API instead of GraphQL for stability
+        const restEndpoint = `/admin/api/2025-01/variants/${numericId}.json`;
+        
+        // Log the request details for debugging
+        console.log(`REST endpoint: ${restEndpoint}`);
+        console.log(`Request data:`, {
+          variant: {
+            id: numericId,
+            compare_at_price: compareAtPriceFloat.toFixed(2)
+          }
+        });
+        
+        const response = await admin.rest.put({
+          path: restEndpoint,
+          data: {
+            variant: {
+              id: numericId,
+              compare_at_price: compareAtPriceFloat.toFixed(2)
             }
           }
-        );
-        
-        const responseJson = await response.json();
-        
-        if (responseJson.errors) {
-          console.error("GraphQL errors:", responseJson.errors);
-          return json<ActionData>({
-            status: "error",
-            message: `Error updating compare at price: ${responseJson.errors[0].message}`
-          });
-        }
-        
-        const result = responseJson.data?.productVariantUpdate;
-        
-        if (result?.userErrors?.length > 0) {
-          console.error("GraphQL user errors:", result.userErrors);
-          return json<ActionData>({
-            status: "error",
-            message: `Error updating compare at price: ${result.userErrors[0].message}`
-          });
-        }
-        
-        console.log("Successfully updated variant compare-at price");
-        return json<ActionData>({
-          status: "success",
-          message: `Compare at price updated successfully to ${compareAtPriceFloat}`
         });
+        
+        console.log("REST API response status:", response.status);
+        
+        if (response.status >= 200 && response.status < 300) {
+          console.log("Successfully updated variant compare-at price");
+          return json<ActionData>({
+            status: "success",
+            message: `Compare at price updated successfully to ${compareAtPriceFloat}`
+          });
+        } else {
+          console.error("REST API error:", response.statusText);
+          return json<ActionData>({
+            status: "error",
+            message: `Error updating compare at price: ${response.statusText}`
+          });
+        }
       } catch (error) {
-        console.error("GraphQL exception:", error);
+        console.error("REST API exception:", error);
         return json<ActionData>({
           status: "error",
           message: `Error updating compare at price: ${error instanceof Error ? error.message : String(error)}`
