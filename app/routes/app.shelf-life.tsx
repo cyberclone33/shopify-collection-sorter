@@ -147,9 +147,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.log(`Using GraphQL productVariantsBulkUpdate to update variant ${variantId} compare-at price to ${compareAtPriceFloat}`);
       
       try {
-        // For productVariantsBulkUpdate, we need the product ID
-        // First, find the shelf life item in the database to get the product ID
-        const item = shelfLifeItems.find(item => item.shopifyVariantId === variantId);
+        // First, we need to look up the product ID from the database
+        // Get all shelf life items from the database for this shop
+        const shelfLifeItemsFromDb = await prisma.shelfLifeItem.findMany({
+          where: { shop: session.shop }
+        });
+        
+        console.log(`Found ${shelfLifeItemsFromDb.length} shelf life items in database`);
+        
+        // Find the item with matching variant ID
+        const item = shelfLifeItemsFromDb.find(item => item.shopifyVariantId === variantId);
         const productId = item?.shopifyProductId;
         
         if (!productId) {
