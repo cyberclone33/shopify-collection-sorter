@@ -32,6 +32,7 @@ import {
 import { NoteIcon, RefreshIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { processCSVFile, getAllShelfLifeItems, syncWithShopify } from "../utils/shelf-life.server";
+import prisma from "../db.server";
 import iconv from "iconv-lite";
 
 // Define the ShelfLifeItem interface
