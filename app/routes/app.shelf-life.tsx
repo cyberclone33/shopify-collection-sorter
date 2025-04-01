@@ -29,7 +29,7 @@ import {
   Icon,
   ContextualSaveBar
 } from "@shopify/polaris";
-import { NoteIcon, RefreshIcon, DeleteIcon, MobileHorizontalDotsIcon } from "@shopify/polaris-icons";
+import { NoteIcon, RefreshIcon, DeleteIcon, HorizontalDotsIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { processCSVFile, getAllShelfLifeItems, syncWithShopify } from "../utils/shelf-life.server";
 import iconv from "iconv-lite";
@@ -586,7 +586,7 @@ export default function ShelfLifeManagement() {
   // Prepare actions popover
   const actionsPopoverButton = (
     <Button
-      icon={MobileHorizontalDotsIcon}
+      icon={HorizontalDotsIcon}
       onClick={toggleActionsPopover}
       variant="tertiary"
       disabled={isDeleting}
