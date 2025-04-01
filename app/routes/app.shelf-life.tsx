@@ -395,10 +395,21 @@ export default function ShelfLifeManagement() {
   
   // Handle selecting all items
   const handleSelectAll = (checked: boolean) => {
+    const currentItems = getFilteredItems(shelfLifeItems, getCurrentTabId());
+    
     if (checked) {
-      setSelectedItems(shelfLifeItems.map(item => item.id));
+      // Add current filtered items to selection
+      const newSelectedItems = [...selectedItems];
+      currentItems.forEach(item => {
+        if (!selectedItems.includes(item.id)) {
+          newSelectedItems.push(item.id);
+        }
+      });
+      setSelectedItems(newSelectedItems);
     } else {
-      setSelectedItems([]);
+      // Remove current filtered items from selection
+      const currentItemIds = currentItems.map(item => item.id);
+      setSelectedItems(selectedItems.filter(id => !currentItemIds.includes(id)));
     }
   };
   
@@ -522,6 +533,34 @@ export default function ShelfLifeManagement() {
     }
   };
   
+  // Filter items based on their expiration status
+  const getFilteredItems = (items: ShelfLifeItem[], tabId: string) => {
+    if (tabId === 'view') {
+      return items; // Return all items for the "All Inventory" tab
+    }
+    
+    return items.filter(item => {
+      const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
+      
+      if (daysUntilExpiration === null) {
+        return false; // Filter out items with invalid expiration dates for category tabs
+      }
+      
+      switch (tabId) {
+        case 'expired':
+          return daysUntilExpiration < 0;
+        case 'expiring-soon':
+          return daysUntilExpiration >= 0 && daysUntilExpiration <= 30;
+        case 'expiring-60':
+          return daysUntilExpiration > 30 && daysUntilExpiration <= 60;
+        case 'good':
+          return daysUntilExpiration > 60;
+        default:
+          return true;
+      }
+    });
+  };
+  
   // Get expiration status text and color
   const getExpirationStatus = (batchId: string) => {
     const daysUntilExpiration = getDaysUntilExpiration(batchId);
@@ -552,38 +591,95 @@ export default function ShelfLifeManagement() {
     }
   };
 
-  // Prepare data for the DataTable - add checkboxes and actions
-  const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
-    <input 
-      type="checkbox" 
-      checked={selectedItems.includes(item.id)} 
-      onChange={(e) => handleSelectItem(item.id, e.target.checked)}
-      disabled={isDeleting}
-    />,
-    item.productId,
-    <Text as="span" fontWeight={getDaysUntilExpiration(item.batchId) !== null && getDaysUntilExpiration(item.batchId)! <= 30 ? "bold" : "regular"}>
-      {item.batchId}
-    </Text>,
-    getExpirationStatus(item.batchId),
-    item.quantity.toString(),
-    item.batchQuantity !== undefined && item.batchQuantity !== null ? item.batchQuantity.toString() : "N/A",
-    item.location || "N/A",
-    item.shopifyProductTitle || "Not synced",
-    formatCurrency(item.variantPrice, item.currencyCode),
-    formatCurrency(item.variantCost, item.currencyCode),
-    getSyncStatusText(item),
-    item.syncMessage || "Not synced yet",
-    formatDate(item.updatedAt),
-    <Button 
-      onClick={() => handleDeleteItem(item.id)} 
-      variant="tertiary" 
-      tone="critical"
-      disabled={isDeleting}
-      accessibilityLabel={`Delete ${item.productId}`}
-    >
-      Delete
-    </Button>
-  ]);
+  // Get filtered items based on the selected tab
+  const getFilteredRows = (tabId: string) => {
+    // For upload tab, return empty rows
+    if (tabId === 'upload') {
+      return [];
+    }
+    
+    // Get filtered items for the selected tab
+    const filteredItems = getFilteredItems(shelfLifeItems, tabId);
+    
+    // Map filtered items to rows for the data table
+    return filteredItems.map((item: ShelfLifeItem) => {
+      const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
+      const isExpired = daysUntilExpiration !== null && daysUntilExpiration < 0;
+      const isExpiringSoon = daysUntilExpiration !== null && daysUntilExpiration >= 0 && daysUntilExpiration <= 30;
+      
+      // Determine row styling based on expiration status
+      const textTone = isExpired ? "critical" : isExpiringSoon ? "caution" : undefined;
+      const fontWeight = isExpired || isExpiringSoon ? "bold" : "regular";
+      
+      return [
+        <input 
+          type="checkbox" 
+          checked={selectedItems.includes(item.id)} 
+          onChange={(e) => handleSelectItem(item.id, e.target.checked)}
+          disabled={isDeleting}
+        />,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.productId}</Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.batchId}</Text>,
+        getExpirationStatus(item.batchId),
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.quantity.toString()}</Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>
+          {item.batchQuantity !== undefined && item.batchQuantity !== null ? item.batchQuantity.toString() : "N/A"}
+        </Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.location || "N/A"}</Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.shopifyProductTitle || "Not synced"}</Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantCost, item.currencyCode)}</Text>,
+        getSyncStatusText(item),
+        <Text as="span" tone={textTone}>{item.syncMessage || "Not synced yet"}</Text>,
+        <Text as="span" tone={textTone}>{formatDate(item.updatedAt)}</Text>,
+        <ButtonGroup>
+          <Button 
+            onClick={() => handleDeleteItem(item.id)} 
+            variant="tertiary" 
+            tone="critical"
+            disabled={isDeleting}
+            accessibilityLabel={`Delete ${item.productId}`}
+          >
+            Delete
+          </Button>
+        </ButtonGroup>
+      ];
+    });
+  };
+  
+  // Get counts of items in each category for tab badges
+  const getExpirationCounts = () => {
+    const counts = {
+      expired: 0,
+      expiringSoon: 0,
+      expiring60: 0,
+      good: 0
+    };
+    
+    shelfLifeItems.forEach(item => {
+      const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
+      
+      if (daysUntilExpiration === null) return;
+      
+      if (daysUntilExpiration < 0) {
+        counts.expired++;
+      } else if (daysUntilExpiration <= 30) {
+        counts.expiringSoon++;
+      } else if (daysUntilExpiration <= 60) {
+        counts.expiring60++;
+      } else {
+        counts.good++;
+      }
+    });
+    
+    return counts;
+  };
+  // Get the current filtered rows based on the selected tab ID
+  const getCurrentTabId = () => {
+    return tabs[selectedTab]?.id || 'view';
+  };
+  
+  const rows = getFilteredRows(getCurrentTabId());
 
   // Prepare actions popover
   const actionsPopoverButton = (
@@ -606,6 +702,10 @@ export default function ShelfLifeManagement() {
     }
   };
   
+  // Get expiration counts
+  const expirationCounts = getExpirationCounts();
+  
+  // Define tabs with counts
   const tabs = [
     {
       id: 'upload',
@@ -614,8 +714,28 @@ export default function ShelfLifeManagement() {
     },
     {
       id: 'view',
-      content: 'View Inventory',
+      content: `All Inventory (${shelfLifeItems.length})`,
       panelID: 'view-panel',
+    },
+    {
+      id: 'expired',
+      content: `Expired (${expirationCounts.expired})`,
+      panelID: 'expired-panel',
+    },
+    {
+      id: 'expiring-soon',
+      content: `Expiring Soon (${expirationCounts.expiringSoon})`,
+      panelID: 'expiring-soon-panel',
+    },
+    {
+      id: 'expiring-60',
+      content: `60 Days (${expirationCounts.expiring60})`,
+      panelID: 'expiring-60-panel',
+    },
+    {
+      id: 'good',
+      content: `Good Inventory (${expirationCounts.good})`,
+      panelID: 'good-panel',
     },
   ];
 
@@ -752,18 +872,44 @@ export default function ShelfLifeManagement() {
                         </Popover>
                       </ButtonGroup>
                     </InlineStack>
+                    
+                    {/* Display category-specific banner */}
+                    {getCurrentTabId() !== 'upload' && getCurrentTabId() !== 'view' && (
+                      <Box paddingBlockEnd="300">
+                        <Banner tone={
+                          getCurrentTabId() === 'expired' ? 'critical' :
+                          getCurrentTabId() === 'expiring-soon' ? 'warning' :
+                          getCurrentTabId() === 'expiring-60' ? 'info' : 'success'
+                        }>
+                          <Text as="p">
+                            {getCurrentTabId() === 'expired' && `Showing ${rows.length} expired items. These products have passed their expiration date.`}
+                            {getCurrentTabId() === 'expiring-soon' && `Showing ${rows.length} items expiring within 30 days. These products need immediate attention.`}
+                            {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
+                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 60 days until expiration.`}
+                          </Text>
+                        </Banner>
+                      </Box>
+                    )}
+                    
                     {/* Hidden form for delete operations */}
                     <form method="post" ref={deleteFormRef} style={{ display: 'none' }}>
                       <input type="hidden" name="action" value="delete" />
                       <input type="hidden" name="id" id="deleteItemId" />
                     </form>
                     
-                    {shelfLifeItems.length === 0 ? (
+                    {getCurrentTabId() === 'upload' ? (
+                      <></>
+                    ) : rows.length === 0 ? (
                       <EmptyState
-                        heading="No shelf life data found"
+                        heading={shelfLifeItems.length === 0 
+                          ? "No shelf life data found" 
+                          : `No items found in this category`}
                         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                       >
-                        <p>Upload a CSV file to add shelf life data.</p>
+                        <p>{shelfLifeItems.length === 0 
+                          ? "Upload a CSV file to add shelf life data." 
+                          : "Try selecting a different category or upload more items."}
+                        </p>
                       </EmptyState>
                     ) : (
                       <DataTable
@@ -786,9 +932,27 @@ export default function ShelfLifeManagement() {
                         headings={[
                           <input 
                             type="checkbox" 
-                            checked={selectedItems.length === shelfLifeItems.length && shelfLifeItems.length > 0} 
-                            onChange={(e) => handleSelectAll(e.target.checked)}
-                            disabled={isDeleting || shelfLifeItems.length === 0}
+                            checked={rows.length > 0 && 
+                              getFilteredItems(shelfLifeItems, getCurrentTabId())
+                                .every(item => selectedItems.includes(item.id))} 
+                            onChange={(e) => {
+                              const currentItems = getFilteredItems(shelfLifeItems, getCurrentTabId());
+                              if (e.target.checked) {
+                                // Select all visible items in the current tab
+                                const newSelectedItems = [...selectedItems];
+                                currentItems.forEach(item => {
+                                  if (!selectedItems.includes(item.id)) {
+                                    newSelectedItems.push(item.id);
+                                  }
+                                });
+                                setSelectedItems(newSelectedItems);
+                              } else {
+                                // Deselect all visible items in the current tab
+                                const currentItemIds = currentItems.map(item => item.id);
+                                setSelectedItems(selectedItems.filter(id => !currentItemIds.includes(id)));
+                              }
+                            }}
+                            disabled={isDeleting || rows.length === 0}
                           />,
                           'Product ID',
                           'Batch ID',
