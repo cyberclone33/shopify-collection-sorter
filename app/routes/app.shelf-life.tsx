@@ -114,6 +114,91 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
   
+  // Handle updating compare at price
+  if (action === "updateCompareAtPrice") {
+    try {
+      const variantId = formData.get("variantId");
+      const compareAtPrice = formData.get("compareAtPrice");
+      
+      if (!variantId) {
+        return json<ActionData>({ 
+          status: "error", 
+          message: "Variant ID is required for updating compare at price" 
+        });
+      }
+      
+      if (!compareAtPrice) {
+        return json<ActionData>({ 
+          status: "error", 
+          message: "Compare at price is required" 
+        });
+      }
+      
+      // Parse compare at price as float
+      const compareAtPriceFloat = parseFloat(compareAtPrice.toString());
+      
+      if (isNaN(compareAtPriceFloat)) {
+        return json<ActionData>({ 
+          status: "error", 
+          message: "Compare at price must be a valid number" 
+        });
+      }
+      
+      // Update the variant's compare at price using Shopify API
+      const response = await admin.graphql(`
+        mutation updateProductVariant($input: ProductVariantInput!) {
+          productVariantUpdate(input: $input) {
+            productVariant {
+              id
+              compareAtPrice
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `, {
+        variables: {
+          input: {
+            id: variantId.toString(),
+            compareAtPrice: compareAtPriceFloat.toString()
+          }
+        }
+      });
+      
+      const responseJson = await response.json();
+      
+      if (responseJson.errors) {
+        console.error("GraphQL errors:", responseJson.errors);
+        return json<ActionData>({
+          status: "error",
+          message: `Error updating compare at price: ${responseJson.errors[0].message}`
+        });
+      }
+      
+      const result = responseJson.data.productVariantUpdate;
+      
+      if (result.userErrors && result.userErrors.length > 0) {
+        return json<ActionData>({
+          status: "error",
+          message: `Error updating compare at price: ${result.userErrors[0].message}`
+        });
+      }
+      
+      return json<ActionData>({
+        status: "success",
+        message: `Compare at price updated successfully to ${compareAtPriceFloat}`
+      });
+    } catch (error) {
+      console.error("Error updating compare at price:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error updating compare at price: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
+  
   // Handle item deletion
   if (action === "delete") {
     try {
@@ -265,6 +350,8 @@ export default function ShelfLifeManagement() {
   const [confirmDeleteAllModalActive, setConfirmDeleteAllModalActive] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [actionsPopoverActive, setActionsPopoverActive] = useState(false);
+  const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
+  const [isUpdatingCompareAtPrice, setIsUpdatingCompareAtPrice] = useState(false);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -291,13 +378,19 @@ export default function ShelfLifeManagement() {
       }
       
       // Reset delete states if deletion succeeded
-      if (actionData.status === "success" && !actionData.syncResult) {
-        setIsDeleting(false);
-        setSelectedItems([]);
-        setItemToDelete(null);
+      if (actionData.status === "success") {
+        if (isDeleting) {
+          setIsDeleting(false);
+          setSelectedItems([]);
+          setItemToDelete(null);
+        }
+        
+        if (isUpdatingCompareAtPrice) {
+          setIsUpdatingCompareAtPrice(false);
+        }
       }
     }
-  }, [actionData]);
+  }, [actionData, isDeleting, isUpdatingCompareAtPrice]);
 
   const handleDropZoneDrop = useCallback(
     (_dropFiles: File[], acceptedFiles: File[], rejectedFiles: File[]) => {
@@ -343,6 +436,35 @@ export default function ShelfLifeManagement() {
     formData.append("id", itemToDelete);
     
     submit(formData, { method: "post" });
+  };
+  
+  // Handle updating compare at price
+  const handleUpdateCompareAtPrice = (variantId: string, value: string) => {
+    setCompareAtPrices(prev => ({
+      ...prev,
+      [variantId]: value
+    }));
+  };
+  
+  // Handle submitting compare at price update
+  const submitCompareAtPrice = (variantId: string, compareAtPrice: string) => {
+    if (!variantId || !compareAtPrice) return;
+    
+    setIsUpdatingCompareAtPrice(true);
+    
+    const formData = new FormData();
+    formData.append("action", "updateCompareAtPrice");
+    formData.append("variantId", variantId);
+    formData.append("compareAtPrice", compareAtPrice);
+    
+    submit(formData, { method: "post" });
+    
+    // Clear the input after submission
+    setCompareAtPrices(prev => {
+      const newState = { ...prev };
+      delete newState[variantId];
+      return newState;
+    });
   };
   
   // Handle deleting selected items
@@ -553,8 +675,10 @@ export default function ShelfLifeManagement() {
           return daysUntilExpiration >= 0 && daysUntilExpiration <= 30;
         case 'expiring-60':
           return daysUntilExpiration > 30 && daysUntilExpiration <= 60;
+        case 'expiring-90':
+          return daysUntilExpiration > 60 && daysUntilExpiration <= 90;
         case 'good':
-          return daysUntilExpiration > 60;
+          return daysUntilExpiration > 90;
         default:
           return true;
       }
@@ -573,6 +697,8 @@ export default function ShelfLifeManagement() {
       return <Text as="span" tone="critical">Expiring soon ({daysUntilExpiration} days)</Text>;
     } else if (daysUntilExpiration <= 60) {
       return <Text as="span" tone="caution">60 days ({daysUntilExpiration} days left)</Text>;
+    } else if (daysUntilExpiration <= 90) {
+      return <Text as="span" tone="info">90 days ({daysUntilExpiration} days left)</Text>;
     } else if (daysUntilExpiration <= 180) {
       return <Text as="span" tone="success">180 days ({daysUntilExpiration} days left)</Text>;
     } else {
@@ -628,6 +754,30 @@ export default function ShelfLifeManagement() {
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.location || "N/A"}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.shopifyProductTitle || "Not synced"}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>,
+        <InlineStack gap="100" align="center">
+          <input
+            type="number"
+            style={{ 
+              width: '80px', 
+              padding: '6px', 
+              border: '1px solid #c9cccf', 
+              borderRadius: '4px',
+              fontSize: '0.8125rem'
+            }}
+            placeholder="Set price"
+            value={compareAtPrices[item.shopifyVariantId || ''] || ''}
+            onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
+            disabled={!item.shopifyVariantId || isUpdatingCompareAtPrice}
+          />
+          <Button
+            size="micro"
+            onClick={() => submitCompareAtPrice(item.shopifyVariantId || '', compareAtPrices[item.shopifyVariantId || ''])}
+            disabled={!item.shopifyVariantId || !compareAtPrices[item.shopifyVariantId || ''] || isUpdatingCompareAtPrice}
+            loading={isUpdatingCompareAtPrice}
+          >
+            Set
+          </Button>
+        </InlineStack>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantCost, item.currencyCode)}</Text>,
         getSyncStatusText(item),
         <Text as="span" tone={textTone}>{item.syncMessage || "Not synced yet"}</Text>,
@@ -675,6 +825,37 @@ export default function ShelfLifeManagement() {
     return counts;
   };
   
+  // Get counts of items in each category for tab badges
+  const getExpirationCounts = () => {
+    const counts = {
+      expired: 0,
+      expiringSoon: 0,
+      expiring60: 0,
+      expiring90: 0,
+      good: 0
+    };
+    
+    shelfLifeItems.forEach(item => {
+      const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
+      
+      if (daysUntilExpiration === null) return;
+      
+      if (daysUntilExpiration < 0) {
+        counts.expired++;
+      } else if (daysUntilExpiration <= 30) {
+        counts.expiringSoon++;
+      } else if (daysUntilExpiration <= 60) {
+        counts.expiring60++;
+      } else if (daysUntilExpiration <= 90) {
+        counts.expiring90++;
+      } else {
+        counts.good++;
+      }
+    });
+    
+    return counts;
+  };
+  
   // Get expiration counts
   const expirationCounts = getExpirationCounts();
   
@@ -704,6 +885,11 @@ export default function ShelfLifeManagement() {
       id: 'expiring-60',
       content: `60 Days (${expirationCounts.expiring60})`,
       panelID: 'expiring-60-panel',
+    },
+    {
+      id: 'expiring-90',
+      content: `90 Days (${expirationCounts.expiring90})`,
+      panelID: 'expiring-90-panel',
     },
     {
       id: 'good',
@@ -880,13 +1066,15 @@ export default function ShelfLifeManagement() {
                         <Banner tone={
                           getCurrentTabId() === 'expired' ? 'critical' :
                           getCurrentTabId() === 'expiring-soon' ? 'warning' :
-                          getCurrentTabId() === 'expiring-60' ? 'info' : 'success'
+                          getCurrentTabId() === 'expiring-60' ? 'info' :
+                          getCurrentTabId() === 'expiring-90' ? 'info' : 'success'
                         }>
                           <Text as="p">
                             {getCurrentTabId() === 'expired' && `Showing ${rows.length} expired items. These products have passed their expiration date.`}
                             {getCurrentTabId() === 'expiring-soon' && `Showing ${rows.length} items expiring within 30 days. These products need immediate attention.`}
                             {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
-                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 60 days until expiration.`}
+                            {getCurrentTabId() === 'expiring-90' && `Showing ${rows.length} items expiring within 61-90 days.`}
+                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 90 days until expiration.`}
                           </Text>
                         </Banner>
                       </Box>
@@ -923,6 +1111,7 @@ export default function ShelfLifeManagement() {
                           'numeric',
                           'text',
                           'text',
+                          'numeric',
                           'numeric',
                           'numeric',
                           'text',
@@ -963,6 +1152,7 @@ export default function ShelfLifeManagement() {
                           'Location',
                           'Shopify Product',
                           'Price',
+                          'Compare At',
                           'Cost',
                           'Sync Status',
                           'Sync Message',
