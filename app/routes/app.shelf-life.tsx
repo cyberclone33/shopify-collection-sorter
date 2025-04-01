@@ -674,33 +674,6 @@ export default function ShelfLifeManagement() {
     
     return counts;
   };
-  // Get the current filtered rows based on the selected tab ID
-  const getCurrentTabId = () => {
-    return tabs[selectedTab]?.id || 'view';
-  };
-  
-  const rows = getFilteredRows(getCurrentTabId());
-
-  // Prepare actions popover
-  const actionsPopoverButton = (
-    <Button
-      onClick={toggleActionsPopover}
-      variant="tertiary"
-      disabled={isDeleting}
-    >
-      • • • Actions
-    </Button>
-  );
-  
-  const handlePopoverActionSelect = (action: string) => {
-    setActionsPopoverActive(false);
-    
-    if (action === 'delete_selected') {
-      handleDeleteSelected();
-    } else if (action === 'delete_all') {
-      handleDeleteAll();
-    }
-  };
   
   // Get expiration counts
   const expirationCounts = getExpirationCounts();
@@ -738,6 +711,34 @@ export default function ShelfLifeManagement() {
       panelID: 'good-panel',
     },
   ];
+  
+  // Get the current filtered rows based on the selected tab ID
+  const getCurrentTabId = () => {
+    return tabs[selectedTab]?.id || 'view';
+  };
+  
+  const rows = getFilteredRows(getCurrentTabId());
+
+  // Prepare actions popover
+  const actionsPopoverButton = (
+    <Button
+      onClick={toggleActionsPopover}
+      variant="tertiary"
+      disabled={isDeleting}
+    >
+      • • • Actions
+    </Button>
+  );
+  
+  const handlePopoverActionSelect = (action: string) => {
+    setActionsPopoverActive(false);
+    
+    if (action === 'delete_selected') {
+      handleDeleteSelected();
+    } else if (action === 'delete_all') {
+      handleDeleteAll();
+    }
+  };
 
   const toggleActive = useCallback(() => setToastActive((active) => !active), []);
   const handleModalClose = useCallback(() => setSyncResultModalActive(false), []);
