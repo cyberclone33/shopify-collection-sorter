@@ -146,7 +146,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       // Update the variant's compare at price using Shopify API
       const response = await admin.graphql(`
-        mutation updateProductVariant($input: ProductVariantInput!) {
+        mutation productVariantUpdate($input: ProductVariantInput!) {
           productVariantUpdate(input: $input) {
             productVariant {
               id
@@ -351,7 +351,7 @@ export default function ShelfLifeManagement() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [actionsPopoverActive, setActionsPopoverActive] = useState(false);
   const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
-  const [isUpdatingCompareAtPrice, setIsUpdatingCompareAtPrice] = useState(false);
+  const [updatingVariantId, setUpdatingVariantId] = useState<string | null>(null);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -377,7 +377,7 @@ export default function ShelfLifeManagement() {
         }
       }
       
-      // Reset delete states if deletion succeeded
+      // Reset states if action succeeded
       if (actionData.status === "success") {
         if (isDeleting) {
           setIsDeleting(false);
@@ -385,12 +385,12 @@ export default function ShelfLifeManagement() {
           setItemToDelete(null);
         }
         
-        if (isUpdatingCompareAtPrice) {
-          setIsUpdatingCompareAtPrice(false);
+        if (updatingVariantId) {
+          setUpdatingVariantId(null);
         }
       }
     }
-  }, [actionData, isDeleting, isUpdatingCompareAtPrice]);
+  }, [actionData, isDeleting, updatingVariantId]);
 
   const handleDropZoneDrop = useCallback(
     (_dropFiles: File[], acceptedFiles: File[], rejectedFiles: File[]) => {
@@ -450,7 +450,7 @@ export default function ShelfLifeManagement() {
   const submitCompareAtPrice = (variantId: string, compareAtPrice: string) => {
     if (!variantId || !compareAtPrice) return;
     
-    setIsUpdatingCompareAtPrice(true);
+    setUpdatingVariantId(variantId);
     
     const formData = new FormData();
     formData.append("action", "updateCompareAtPrice");
@@ -767,13 +767,13 @@ export default function ShelfLifeManagement() {
             placeholder="Set price"
             value={compareAtPrices[item.shopifyVariantId || ''] || ''}
             onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
-            disabled={!item.shopifyVariantId || isUpdatingCompareAtPrice}
+            disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
           />
           <Button
             size="micro"
             onClick={() => submitCompareAtPrice(item.shopifyVariantId || '', compareAtPrices[item.shopifyVariantId || ''])}
-            disabled={!item.shopifyVariantId || !compareAtPrices[item.shopifyVariantId || ''] || isUpdatingCompareAtPrice}
-            loading={isUpdatingCompareAtPrice}
+            disabled={!item.shopifyVariantId || !compareAtPrices[item.shopifyVariantId || ''] || updatingVariantId === item.shopifyVariantId}
+            loading={updatingVariantId === item.shopifyVariantId}
           >
             Set
           </Button>
