@@ -449,7 +449,7 @@ export async function getAllShelfLifeItems(shop: string) {
         shop,
       },
       orderBy: {
-        expirationDate: 'asc',
+        batchId: 'asc', // Sort by batchId (YYYYMMDD format) in ascending order
       },
     });
   } catch (error) {

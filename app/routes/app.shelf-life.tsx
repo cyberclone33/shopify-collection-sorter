@@ -286,6 +286,50 @@ export default function ShelfLifeManagement() {
     return new Date(date).toLocaleString();
   };
 
+  // Calculate days until expiration based on batch ID
+  const getDaysUntilExpiration = (batchId: string) => {
+    if (!batchId || batchId.length !== 8) return null;
+    
+    try {
+      const year = parseInt(batchId.substring(0, 4));
+      const month = parseInt(batchId.substring(4, 6)) - 1; // JS months are 0-indexed
+      const day = parseInt(batchId.substring(6, 8));
+      
+      const expirationDate = new Date(year, month, day);
+      const today = new Date();
+      
+      // Reset time part to compare just the dates
+      today.setHours(0, 0, 0, 0);
+      expirationDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = expirationDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      return diffDays;
+    } catch (error) {
+      return null;
+    }
+  };
+  
+  // Get expiration status text and color
+  const getExpirationStatus = (batchId: string) => {
+    const daysUntilExpiration = getDaysUntilExpiration(batchId);
+    
+    if (daysUntilExpiration === null) {
+      return <Text as="span" tone="subdued">Unknown</Text>;
+    } else if (daysUntilExpiration < 0) {
+      return <Text as="span" tone="critical">Expired ({Math.abs(daysUntilExpiration)} days ago)</Text>;
+    } else if (daysUntilExpiration <= 30) {
+      return <Text as="span" tone="critical">Expiring soon ({daysUntilExpiration} days)</Text>;
+    } else if (daysUntilExpiration <= 60) {
+      return <Text as="span" tone="caution">60 days ({daysUntilExpiration} days left)</Text>;
+    } else if (daysUntilExpiration <= 180) {
+      return <Text as="span" tone="success">180 days ({daysUntilExpiration} days left)</Text>;
+    } else {
+      return <Text as="span" tone="success">Good ({daysUntilExpiration} days left)</Text>;
+    }
+  };
+
   // Get sync status text and color
   const getSyncStatusText = (item: ShelfLifeItem) => {
     if (item.syncStatus === "MATCHED") {
@@ -300,7 +344,10 @@ export default function ShelfLifeManagement() {
   // Prepare data for the DataTable - remove ID and expiration date columns
   const rows = shelfLifeItems.map((item: ShelfLifeItem) => [
     item.productId,
-    item.batchId,
+    <Text as="span" fontWeight={getDaysUntilExpiration(item.batchId) !== null && getDaysUntilExpiration(item.batchId)! <= 30 ? "bold" : "regular"}>
+      {item.batchId}
+    </Text>,
+    getExpirationStatus(item.batchId),
     item.quantity.toString(),
     item.batchQuantity !== undefined && item.batchQuantity !== null ? item.batchQuantity.toString() : "N/A",
     item.location || "N/A",
@@ -429,6 +476,7 @@ export default function ShelfLifeManagement() {
                         columnContentTypes={[
                           'text',
                           'text',
+                          'text',
                           'numeric',
                           'numeric',
                           'text',
@@ -440,6 +488,7 @@ export default function ShelfLifeManagement() {
                         headings={[
                           'Product ID',
                           'Batch ID',
+                          'Expiration Status',
                           'Quantity',
                           'Batch Quantity (批號存量)',
                           'Location',
