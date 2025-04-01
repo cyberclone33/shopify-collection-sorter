@@ -27,7 +27,8 @@ import {
   ActionList,
   Loading,
   Icon,
-  ContextualSaveBar
+  ContextualSaveBar,
+  Tooltip
 } from "@shopify/polaris";
 import { NoteIcon, RefreshIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
@@ -405,6 +406,7 @@ export default function ShelfLifeManagement() {
   const [actionsPopoverActive, setActionsPopoverActive] = useState(false);
   const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
   const [updatingVariantId, setUpdatingVariantId] = useState<string | null>(null);
+  const [updatedVariants, setUpdatedVariants] = useState<Record<string, { timestamp: number, newPrice: string }>>({});
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -428,6 +430,9 @@ export default function ShelfLifeManagement() {
         if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
           setSyncResultModalActive(true);
         }
+        
+        // Clear the updated variants tracker since we've synced
+        setUpdatedVariants({});
       }
       
       // Reset states if action succeeded
@@ -439,6 +444,15 @@ export default function ShelfLifeManagement() {
         }
         
         if (updatingVariantId) {
+          // Store the updated price for visual tracking
+          const priceValue = compareAtPrices[updatingVariantId] || '';
+          setUpdatedVariants(prev => ({
+            ...prev,
+            [updatingVariantId]: {
+              timestamp: Date.now(),
+              newPrice: priceValue
+            }
+          }));
           setUpdatingVariantId(null);
         }
       }
@@ -591,6 +605,18 @@ export default function ShelfLifeManagement() {
   // Toggle actions popover
   const toggleActionsPopover = useCallback(() => 
     setActionsPopoverActive(active => !active), []);
+    
+  // Refresh the UI every minute to update the "X min ago" text
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Object.keys(updatedVariants).length > 0) {
+        // Force a re-render by making a clone of the state
+        setUpdatedVariants({...updatedVariants});
+      }
+    }, 60000); // Every minute
+    
+    return () => clearInterval(timer);
+  }, [updatedVariants]);
 
   const validImageTypes = ["text/csv"];
   
@@ -811,7 +837,20 @@ export default function ShelfLifeManagement() {
         </Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.location || "N/A"}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.shopifyProductTitle || "Not synced"}</Text>,
-        <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>,
+        <InlineStack gap="100" align="center">
+          <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>
+          {updatedVariants[item.shopifyVariantId || ''] && (
+            <Tooltip content="Price updated in Shopify but may not be reflected in the database yet. Sync to update the database.">
+              <Text as="span" tone="success" fontWeight="bold">
+                ↺ Updated to {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), item.currencyCode)}
+                {' '}
+                <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
+                  {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
+                </span>
+              </Text>
+            </Tooltip>
+          )}
+        </InlineStack>,
         <InlineStack gap="100" align="center">
           <input
             type="number"
@@ -1072,8 +1111,11 @@ export default function ShelfLifeManagement() {
                           onClick={handleSync} 
                           loading={isSyncing}
                           disabled={isSyncing || isDeleting}
+                          tone={Object.keys(updatedVariants).length > 0 ? "success" : undefined}
                         >
-                          Sync with Shopify
+                          {Object.keys(updatedVariants).length > 0 
+                            ? `Sync with Shopify (${Object.keys(updatedVariants).length} updates pending)`
+                            : "Sync with Shopify"}
                         </Button>
                         
                         <Popover
