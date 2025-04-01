@@ -29,7 +29,7 @@ import {
   Icon,
   ContextualSaveBar
 } from "@shopify/polaris";
-import { NoteIcon, RefreshIcon, DeleteIcon, MoreIcon } from "@shopify/polaris-icons";
+import { NoteIcon, RefreshIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { processCSVFile, getAllShelfLifeItems, syncWithShopify } from "../utils/shelf-life.server";
 import iconv from "iconv-lite";
@@ -574,24 +574,24 @@ export default function ShelfLifeManagement() {
     item.syncMessage || "Not synced yet",
     formatDate(item.updatedAt),
     <Button 
-      icon={DeleteIcon} 
       onClick={() => handleDeleteItem(item.id)} 
       variant="tertiary" 
       tone="critical"
       disabled={isDeleting}
       accessibilityLabel={`Delete ${item.productId}`}
-    />
+    >
+      Delete
+    </Button>
   ]);
 
   // Prepare actions popover
   const actionsPopoverButton = (
     <Button
-      icon={MoreIcon}
       onClick={toggleActionsPopover}
       variant="tertiary"
       disabled={isDeleting}
     >
-      Actions
+      • • • Actions
     </Button>
   );
   
