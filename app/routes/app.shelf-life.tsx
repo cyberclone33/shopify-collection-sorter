@@ -144,54 +144,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
       }
       
-      // Update the variant's compare at price using Shopify API
-      // Simplified approach to prevent deployment issues
-      const mutation = `
-        mutation {
-          productVariantUpdate(
-            input: {
-              id: "${variantId}",
-              compareAtPrice: "${compareAtPriceFloat.toFixed(2)}"
-            }
-          ) {
-            productVariant {
-              id
-              compareAtPrice
-            }
-            userErrors {
-              field
-              message
+      // Extract the numeric ID from the GraphQL ID
+      // The format is typically "gid://shopify/ProductVariant/12345678"
+      const numericId = variantId.split('/').pop();
+      
+      if (!numericId) {
+        return json<ActionData>({
+          status: "error",
+          message: "Invalid variant ID format"
+        });
+      }
+      
+      console.log(`Using REST API to update variant ${numericId} compare-at price to ${compareAtPriceFloat}`);
+      
+      try {
+        // Use the REST Admin API instead of GraphQL
+        const restEndpoint = `/admin/api/2025-01/variants/${numericId}.json`;
+        
+        const response = await admin.rest.put({
+          path: restEndpoint,
+          data: {
+            variant: {
+              id: numericId,
+              compare_at_price: compareAtPriceFloat.toFixed(2)
             }
           }
+        });
+        
+        if (response.status >= 200 && response.status < 300) {
+          console.log("Successfully updated variant compare-at price");
+          return json<ActionData>({
+            status: "success",
+            message: `Compare at price updated successfully to ${compareAtPriceFloat}`
+          });
+        } else {
+          console.error("REST API error:", response.statusText);
+          return json<ActionData>({
+            status: "error",
+            message: `Error updating compare at price: ${response.statusText}`
+          });
         }
-      `;
-      
-      console.log("Executing GraphQL mutation:", mutation);
-      const response = await admin.graphql(mutation);
-      
-      const responseJson = await response.json();
-      
-      if (responseJson.errors) {
-        console.error("GraphQL errors:", responseJson.errors);
+      } catch (error) {
+        console.error("REST API exception:", error);
         return json<ActionData>({
           status: "error",
-          message: `Error updating compare at price: ${responseJson.errors[0].message}`
+          message: `Error updating compare at price: ${error instanceof Error ? error.message : String(error)}`
         });
       }
       
-      const result = responseJson.data && responseJson.data.productVariantUpdate;
-      
-      if (result && result.userErrors && result.userErrors.length > 0) {
-        return json<ActionData>({
-          status: "error",
-          message: `Error updating compare at price: ${result.userErrors[0].message}`
-        });
-      }
-      
-      return json<ActionData>({
-        status: "success",
-        message: `Compare at price updated successfully to ${compareAtPriceFloat}`
-      });
     } catch (error) {
       console.error("Error updating compare at price:", error);
       return json<ActionData>({
