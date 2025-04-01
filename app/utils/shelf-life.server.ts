@@ -597,6 +597,13 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
                       sku
                       inventoryQuantity
                       title
+                      price
+                      inventoryItem {
+                        unitCost {
+                          amount
+                          currencyCode
+                        }
+                      }
                     }
                   }
                 }
@@ -635,12 +642,39 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
         variantEdges.forEach((variantEdge: any) => {
           const variant = variantEdge.node;
           if (variant.sku && uniqueProductIds.has(variant.sku)) {
+            // Extract price and cost information
+            const price = variant.price ? parseFloat(variant.price) : null;
+            
+            // Extract cost information safely, handling nested structure
+            let cost = null;
+            let currencyCode = null;
+            
+            if (variant.inventoryItem && 
+                variant.inventoryItem.unitCost && 
+                variant.inventoryItem.unitCost.amount) {
+              cost = parseFloat(variant.inventoryItem.unitCost.amount);
+              currencyCode = variant.inventoryItem.unitCost.currencyCode || null;
+            }
+            
+            // If we only got currencyCode from cost but not from price, use it for price too
+            if (!currencyCode && variant.presentmentPrices && 
+                variant.presentmentPrices.edges && 
+                variant.presentmentPrices.edges.length > 0) {
+              const presentment = variant.presentmentPrices.edges[0].node;
+              if (presentment.price && presentment.price.currencyCode) {
+                currencyCode = presentment.price.currencyCode;
+              }
+            }
+            
             skuToVariantMap.set(variant.sku, {
               variantId: variant.id,
               productId: product.id,
               productTitle: product.title,
               variantTitle: variant.title,
-              inventoryQuantity: variant.inventoryQuantity
+              inventoryQuantity: variant.inventoryQuantity,
+              price: price,
+              cost: cost,
+              currencyCode: currencyCode
             });
             newMatchesInBatch++;
           }
@@ -698,6 +732,9 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
             shopifyProductId: variantDetails.productId,
             shopifyProductTitle: variantDetails.productTitle,
             shopifyVariantTitle: variantDetails.variantTitle,
+            variantPrice: variantDetails.price,
+            variantCost: variantDetails.cost,
+            currencyCode: variantDetails.currencyCode,
             syncStatus: "MATCHED",
             syncMessage: "Successfully matched with Shopify variant"
           }

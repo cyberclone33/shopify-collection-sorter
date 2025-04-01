@@ -43,6 +43,9 @@ interface ShelfLifeItem {
   shopifyVariantId: string | null;
   shopifyProductTitle: string | null;
   shopifyVariantTitle: string | null;
+  variantPrice: number | null;
+  variantCost: number | null;
+  currencyCode: string | null;
   syncStatus: string | null;
   syncMessage: string | null;
   createdAt: Date | string;
@@ -285,6 +288,23 @@ export default function ShelfLifeManagement() {
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleString();
   };
+  
+  // Format currency for display
+  const formatCurrency = (amount: number | null, currencyCode: string | null) => {
+    if (amount === null) return 'N/A';
+    
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currencyCode || 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount);
+    } catch (error) {
+      // Fall back to basic formatting if currency code is invalid
+      return `${currencyCode || '$'}${amount.toFixed(2)}`;
+    }
+  };
 
   // Calculate days until expiration based on batch ID
   const getDaysUntilExpiration = (batchId: string) => {
@@ -352,6 +372,8 @@ export default function ShelfLifeManagement() {
     item.batchQuantity !== undefined && item.batchQuantity !== null ? item.batchQuantity.toString() : "N/A",
     item.location || "N/A",
     item.shopifyProductTitle || "Not synced",
+    formatCurrency(item.variantPrice, item.currencyCode),
+    formatCurrency(item.variantCost, item.currencyCode),
     getSyncStatusText(item),
     item.syncMessage || "Not synced yet",
     formatDate(item.updatedAt)
@@ -481,6 +503,8 @@ export default function ShelfLifeManagement() {
                           'numeric',
                           'text',
                           'text',
+                          'numeric',
+                          'numeric',
                           'text',
                           'text',
                           'text'
@@ -493,6 +517,8 @@ export default function ShelfLifeManagement() {
                           'Batch Quantity (批號存量)',
                           'Location',
                           'Shopify Product',
+                          'Price',
+                          'Cost',
                           'Sync Status',
                           'Sync Message',
                           'Updated At'
