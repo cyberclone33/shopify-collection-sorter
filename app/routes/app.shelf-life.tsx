@@ -145,11 +145,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       
       // Update the variant's compare at price using Shopify API
-      // Note: Shopify API requires the full graphql ID with variables
-      const response = await admin.graphql(
-        `mutation productVariantsBulkUpdate($variants: [ProductVariantsBulkInput!]!) {
-          productVariantsBulkUpdate(variants: $variants) {
-            productVariants {
+      // Simplified approach to prevent deployment issues
+      const mutation = `
+        mutation {
+          productVariantUpdate(
+            input: {
+              id: "${variantId}",
+              compareAtPrice: "${compareAtPriceFloat.toFixed(2)}"
+            }
+          ) {
+            productVariant {
               id
               compareAtPrice
             }
@@ -158,18 +163,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               message
             }
           }
-        }`,
-        {
-          variables: {
-            variants: [
-              {
-                id: variantId,
-                compareAtPrice: compareAtPriceFloat.toFixed(2)
-              }
-            ]
-          }
         }
-      );
+      `;
+      
+      console.log("Executing GraphQL mutation:", mutation);
+      const response = await admin.graphql(mutation);
       
       const responseJson = await response.json();
       
@@ -181,9 +179,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
       }
       
-      const result = responseJson.data.productVariantsBulkUpdate;
+      const result = responseJson.data && responseJson.data.productVariantUpdate;
       
-      if (result.userErrors && result.userErrors.length > 0) {
+      if (result && result.userErrors && result.userErrors.length > 0) {
         return json<ActionData>({
           status: "error",
           message: `Error updating compare at price: ${result.userErrors[0].message}`
