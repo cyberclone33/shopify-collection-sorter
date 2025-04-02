@@ -240,8 +240,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.log(`Found corresponding product ID: ${productId} for variant: ${variantId}`);
         console.log(`Current price: ${currentPrice}, updating to: ${compareAtPriceFloat}`);
         
+        // Determine the price values to use for the update
+        const newPriceValue = compareAtPriceFloat.toFixed(2);
+        
+        // Determine what to do with the Compare At price
+        let compareAtPriceValue = null;
+        if (formData.get("newCompareAtPrice")) {
+          // Use the explicitly provided Compare At price
+          compareAtPriceValue = parseFloat(formData.get("newCompareAtPrice")!.toString()).toFixed(2);
+        } else {
+          // Check if there's an existing Compare At price in the latest price change
+          const priceChangesFromDb = await prisma.$queryRawUnsafe(`
+            SELECT * FROM "ShelfLifeItemPriceChange"
+            WHERE "shopifyVariantId" = ?
+            ORDER BY "appliedAt" DESC
+            LIMIT 1
+          `, variantId);
+          
+          if (Array.isArray(priceChangesFromDb) && priceChangesFromDb.length > 0 && 
+              priceChangesFromDb[0].newCompareAtPrice) {
+            compareAtPriceValue = priceChangesFromDb[0].newCompareAtPrice.toFixed(2);
+          }
+        }
+        
+        // Build the variant input based on what values we have
+        const variantInput: any = {
+          id: variantId,
+          price: newPriceValue
+        };
+        
+        // Only include compareAtPrice if we have a value for it
+        if (compareAtPriceValue !== null) {
+          variantInput.compareAtPrice = compareAtPriceValue;
+        }
+        
         // Use the productVariantsBulkUpdate with the correct productId parameter
-        // Setting only the price without affecting the compareAtPrice
         const response = await admin.graphql(
           `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
             productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -260,15 +293,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           {
             variables: {
               productId: productId,
-              variants: [
-                {
-                  id: variantId,
-                  price: compareAtPriceFloat.toFixed(2),
-                  compareAtPrice: formData.get("newCompareAtPrice") 
-                    ? parseFloat(formData.get("newCompareAtPrice")!.toString()).toFixed(2)
-                    : currentPrice.toFixed(2) // Use custom compareAtPrice if provided, otherwise use current price
-                }
-              ]
+              variants: [variantInput]
             }
           }
         );
@@ -308,6 +333,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             currencyCode: item.currencyCode || "USD"
           });
           
+          // Get the current compareAtPrice value from the database or previous price changes
+          let currentCompareAtPrice = null;
+          const priceChangesFromDb = await prisma.$queryRawUnsafe(`
+            SELECT * FROM "ShelfLifeItemPriceChange"
+            WHERE "shopifyVariantId" = ?
+            ORDER BY "appliedAt" DESC
+            LIMIT 1
+          `, variantId);
+          
+          if (Array.isArray(priceChangesFromDb) && priceChangesFromDb.length > 0) {
+            currentCompareAtPrice = priceChangesFromDb[0].newCompareAtPrice;
+          }
+          
+          // Determine what to use for the new Compare At price
+          const newCompareAtPrice = formData.get("newCompareAtPrice")
+            ? parseFloat(formData.get("newCompareAtPrice")!.toString())
+            : currentCompareAtPrice !== null ? currentCompareAtPrice : currentPrice;
+          
           // Use Prisma's create method instead of raw SQL for more reliable insertion
           try {
             // Try to use Prisma's built-in methods first (much more reliable)
@@ -330,11 +373,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ${item.id},
                 ${variantId},
                 ${currentPrice},
-                NULL,
+                ${currentCompareAtPrice},
                 ${compareAtPriceFloat},
-                ${formData.get("newCompareAtPrice") 
-                  ? parseFloat(formData.get("newCompareAtPrice")!.toString())
-                  : currentPrice},
+                ${newCompareAtPrice},
                 ${item.currencyCode || "USD"},
                 ${new Date().toISOString()},
                 'APPLIED'
@@ -345,7 +386,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           } catch (prismaError) {
             console.error("Failed with Prisma insertion, trying raw SQL as fallback:", prismaError);
             
-            // Fallback to the previous method
+            // Fallback to the previous method with the same values
             await prisma.$executeRawUnsafe(`
               INSERT INTO "ShelfLifeItemPriceChange" (
                 "id", 
@@ -366,11 +407,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               item.id,
               variantId,
               currentPrice,
-              null,
+              currentCompareAtPrice,
               compareAtPriceFloat,
-              formData.get("newCompareAtPrice") 
-                ? parseFloat(formData.get("newCompareAtPrice")!.toString())
-                : currentPrice,
+              newCompareAtPrice,
               item.currencyCode || "USD",
               new Date().toISOString(),
               "APPLIED"
@@ -874,17 +913,23 @@ export default function ShelfLifeManagement() {
     }
   };
   
-  // Handle submitting sale price update
+  // Handle submitting price updates
   const submitCompareAtPrice = (variantId: string, compareAtPrice: string | undefined, compareAtPriceOnly: boolean = false) => {
     if (!variantId) return;
     
-    // If we're only updating the Compare At price, use the existing price
+    const item = shelfLifeItems.find(item => item.shopifyVariantId === variantId);
+    if (!item) return;
+    
+    let newSalePrice = compareAtPrice;
+    
+    // If only updating Compare At price, keep the existing price as is
     if (compareAtPriceOnly) {
-      const item = shelfLifeItems.find(item => item.shopifyVariantId === variantId);
-      if (!item || !item.variantPrice) return;
+      // Use the current price from the item
+      const currentPrice = item.variantPrice;
+      if (!currentPrice && currentPrice !== 0) return;
       
-      compareAtPrice = item.variantPrice.toString();
-    } else if (!compareAtPrice) {
+      newSalePrice = currentPrice.toString();
+    } else if (!newSalePrice) {
       return;
     }
     
@@ -893,10 +938,19 @@ export default function ShelfLifeManagement() {
     const formData = new FormData();
     formData.append("action", "updateCompareAtPrice");
     formData.append("variantId", variantId);
-    formData.append("compareAtPrice", compareAtPrice);
+    formData.append("compareAtPrice", newSalePrice);
     
-    // Add the newCompareAtPrice if it exists
-    const newCompareAtPrice = newCompareAtPrices[variantId];
+    // For the Compare At price:
+    // If we have a new Compare At price specified, use that
+    // Otherwise, if we're only updating the regular price, keep the existing Compare At price
+    let newCompareAtPrice = newCompareAtPrices[variantId];
+    
+    // If there's no explicit Compare At price in the input field, check if we should keep the existing one
+    if (!newCompareAtPrice && compareAtPriceOnly && (item as any).latestPriceChange?.newCompareAtPrice) {
+      // Use the existing Compare At price
+      newCompareAtPrice = (item as any).latestPriceChange.newCompareAtPrice.toString();
+    }
+    
     if (newCompareAtPrice) {
       formData.append("newCompareAtPrice", newCompareAtPrice);
     }
