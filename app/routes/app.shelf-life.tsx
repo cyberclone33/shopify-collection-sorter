@@ -566,6 +566,7 @@ export default function ShelfLifeManagement() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<string>('');
   const [toastActive, setToastActive] = useState(false);
   const [toastContent, setToastContent] = useState({ message: "", tone: "success" });
   const [syncResultModalActive, setSyncResultModalActive] = useState(false);
@@ -713,20 +714,45 @@ export default function ShelfLifeManagement() {
     setIsSyncing(true);
     setSyncProgress(0);
     
-    // Start a progress simulation
-    const totalSteps = 20;
-    let currentStep = 0;
+    // Define sync progress stages that match the server-side logs
+    const stages = [
+      { message: "Initializing sync...", progress: 5 },
+      { message: "Finding unique product IDs...", progress: 10 },
+      { message: "Found product IDs to check against Shopify", progress: 15 }
+    ];
     
-    // Use an interval to simulate progress steps
+    // Add API call stages based on the logs showing 14-15 API calls
+    const apiCalls = 14;
+    for (let i = 1; i <= apiCalls; i++) {
+      const productsPerCall = i === apiCalls ? 25 : 100; // Last call usually has fewer products
+      const percentComplete = 15 + Math.min(75, Math.round((i / apiCalls) * 70));
+      stages.push({
+        message: `API call ${i}: Processed ${productsPerCall} products`,
+        progress: percentComplete
+      });
+    }
+    
+    // Final stage for updating metafields
+    stages.push({ message: "Updating metafields for variants", progress: 90 });
+    stages.push({ message: "Finalizing sync...", progress: 95 });
+    
+    let currentStage = 0;
+    
+    // Update progress based on stages to match the server logs
     const progressInterval = setInterval(() => {
-      currentStep++;
-      const newProgress = Math.min(95, Math.floor((currentStep / totalSteps) * 100));
-      setSyncProgress(newProgress);
-      
-      if (currentStep >= totalSteps) {
+      if (currentStage < stages.length) {
+        const stage = stages[currentStage];
+        setSyncProgress(stage.progress);
+        setSyncStatus(stage.message);
+        
+        // Add log message to console to match server behavior
+        console.log(`Sync progress: ${stage.message} (${stage.progress}%)`);
+        
+        currentStage++;
+      } else {
         clearInterval(progressInterval);
       }
-    }, 300);
+    }, 700); // Slightly slower to match real-world API calls
     
     const formData = new FormData();
     formData.append("action", "sync");
@@ -1472,20 +1498,34 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         {/* Show progress bar during syncing */}
         {isSyncing && (
           <Box paddingBlockEnd="300">
-            <div style={{ 
-              height: '4px', 
-              backgroundColor: '#e4e5e7',
-              borderRadius: '2px',
-              overflow: 'hidden',
-              width: '100%',
-              marginBottom: '12px'
-            }}>
+            <div>
               <div style={{ 
-                height: '100%', 
-                width: `${syncProgress}%`, 
-                backgroundColor: '#008060',
-                transition: 'width 0.3s ease'
-              }}></div>
+                height: '4px', 
+                backgroundColor: '#e4e5e7',
+                borderRadius: '2px',
+                overflow: 'hidden',
+                width: '100%',
+                marginBottom: '8px'
+              }}>
+                <div style={{ 
+                  height: '100%', 
+                  width: `${syncProgress}%`, 
+                  backgroundColor: '#008060',
+                  transition: 'width 0.3s ease'
+                }}></div>
+              </div>
+              <div style={{
+                fontSize: '0.8125rem',
+                color: '#637381',
+                margin: '0 0 12px'
+              }}>
+                {syncStatus || (
+                  syncProgress < 15 ? 'Finding products to check...' : 
+                  syncProgress < 85 ? `API call ${Math.floor((syncProgress - 15) / 5) + 1}: Processing products...` :
+                  syncProgress < 90 ? 'Updating metafields for variants...' : 
+                  'Finalizing sync...'
+                )}
+              </div>
             </div>
           </Box>
         )}
@@ -1567,9 +1607,11 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           disabled={isSyncing || isDeleting}
                           tone={Object.keys(updatedVariants).length > 0 ? "success" : undefined}
                         >
-                          {Object.keys(updatedVariants).length > 0 
-                            ? `Sync with Shopify (${Object.keys(updatedVariants).length} updates pending)`
-                            : "Sync with Shopify"}
+                          {isSyncing 
+                            ? `Syncing... ${syncProgress}%` 
+                            : Object.keys(updatedVariants).length > 0 
+                              ? `Sync with Shopify (${Object.keys(updatedVariants).length} updates pending)`
+                              : "Sync with Shopify"}
                         </Button>
                         
                         <Popover
