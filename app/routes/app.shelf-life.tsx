@@ -1233,8 +1233,10 @@ export default function ShelfLifeManagement() {
           return daysUntilExpiration > 30 && daysUntilExpiration <= 60;
         case 'expiring-90':
           return daysUntilExpiration > 60 && daysUntilExpiration <= 90;
+        case 'expiring-180':
+          return daysUntilExpiration > 90 && daysUntilExpiration <= 180;
         case 'good':
-          return daysUntilExpiration > 90;
+          return daysUntilExpiration > 180;
         default:
           return true;
       }
@@ -1258,7 +1260,7 @@ export default function ShelfLifeManagement() {
     } else if (daysUntilExpiration <= 180) {
       return <Text as="span" tone="success">180 days ({daysUntilExpiration} days left)</Text>;
     } else {
-      return <Text as="span" tone="success">Good ({daysUntilExpiration} days left)</Text>;
+      return <Text as="span" tone="success">Good (>{daysUntilExpiration} days left)</Text>;
     }
   };
 
@@ -1462,6 +1464,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       expiringSoon: 0,
       expiring60: 0,
       expiring90: 0,
+      expiring180: 0,
       good: 0,
       notSynced: 0
     };
@@ -1486,6 +1489,8 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         counts.expiring60++;
       } else if (daysUntilExpiration <= 90) {
         counts.expiring90++;
+      } else if (daysUntilExpiration <= 180) {
+        counts.expiring180++;
       } else {
         counts.good++;
       }
@@ -1539,8 +1544,14 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       disabled: expirationCounts.expiring90 === 0
     },
     {
+      id: 'expiring-180',
+      content: `180 Days (${expirationCounts.expiring180})`,
+      panelID: 'expiring-180-panel',
+      disabled: expirationCounts.expiring180 === 0
+    },
+    {
       id: 'good',
-      content: `Good Inventory (${expirationCounts.good})`,
+      content: `Good Inventory (>180 days) (${expirationCounts.good})`,
       panelID: 'good-panel',
       disabled: expirationCounts.good === 0
     },
@@ -1789,6 +1800,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           getCurrentTabId() === 'expiring-soon' ? 'warning' :
                           getCurrentTabId() === 'expiring-60' ? 'info' :
                           getCurrentTabId() === 'expiring-90' ? 'info' :
+                          getCurrentTabId() === 'expiring-180' ? 'info' :
                           getCurrentTabId() === 'not-synced' ? 'warning' : 'success'
                         }>
                           <Text as="p">
@@ -1796,7 +1808,8 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                             {getCurrentTabId() === 'expiring-soon' && `Showing ${rows.length} items expiring within 30 days. These products need immediate attention.`}
                             {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
                             {getCurrentTabId() === 'expiring-90' && `Showing ${rows.length} items expiring within 61-90 days.`}
-                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 90 days until expiration.`}
+                            {getCurrentTabId() === 'expiring-180' && `Showing ${rows.length} items expiring within 91-180 days.`}
+                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 180 days until expiration.`}
                             {getCurrentTabId() === 'not-synced' && (
                               <>
                                 Showing {rows.length} items that have not been successfully matched with Shopify products. 
