@@ -264,7 +264,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 {
                   id: variantId,
                   price: compareAtPriceFloat.toFixed(2),
-                  compareAtPrice: currentPrice.toFixed(2) // Set the current price as compareAtPrice
+                  compareAtPrice: formData.get("newCompareAtPrice") 
+                    ? parseFloat(formData.get("newCompareAtPrice")!.toString()).toFixed(2)
+                    : currentPrice.toFixed(2) // Use custom compareAtPrice if provided, otherwise use current price
                 }
               ]
             }
@@ -330,7 +332,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ${currentPrice},
                 NULL,
                 ${compareAtPriceFloat},
-                ${currentPrice},
+                ${formData.get("newCompareAtPrice") 
+                  ? parseFloat(formData.get("newCompareAtPrice")!.toString())
+                  : currentPrice},
                 ${item.currencyCode || "USD"},
                 ${new Date().toISOString()},
                 'APPLIED'
@@ -364,7 +368,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               currentPrice,
               null,
               compareAtPriceFloat,
-              currentPrice,
+              formData.get("newCompareAtPrice") 
+                ? parseFloat(formData.get("newCompareAtPrice")!.toString())
+                : currentPrice,
               item.currencyCode || "USD",
               new Date().toISOString(),
               "APPLIED"
@@ -568,6 +574,7 @@ export default function ShelfLifeManagement() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [actionsPopoverActive, setActionsPopoverActive] = useState(false);
   const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
+  const [newCompareAtPrices, setNewCompareAtPrices] = useState<Record<string, string>>({});
   const [updatingVariantId, setUpdatingVariantId] = useState<string | null>(null);
   const [updatedVariants, setUpdatedVariants] = useState<Record<string, { timestamp: number, newPrice: string }>>({});
   const [selectedPriceHistory, setSelectedPriceHistory] = useState<{ itemId: string, variantId: string } | null>(null);
@@ -678,6 +685,14 @@ export default function ShelfLifeManagement() {
     }));
   };
   
+  // Handle updating new Compare At price
+  const handleUpdateNewCompareAtPrice = (variantId: string, value: string) => {
+    setNewCompareAtPrices(prev => ({
+      ...prev,
+      [variantId]: value
+    }));
+  };
+  
   // Handle submitting sale price update
   const submitCompareAtPrice = (variantId: string, compareAtPrice: string) => {
     if (!variantId || !compareAtPrice) return;
@@ -689,10 +704,22 @@ export default function ShelfLifeManagement() {
     formData.append("variantId", variantId);
     formData.append("compareAtPrice", compareAtPrice);
     
+    // Add the newCompareAtPrice if it exists
+    const newCompareAtPrice = newCompareAtPrices[variantId];
+    if (newCompareAtPrice) {
+      formData.append("newCompareAtPrice", newCompareAtPrice);
+    }
+    
     submit(formData, { method: "post" });
     
-    // Clear the input after submission
+    // Clear the inputs after submission
     setCompareAtPrices(prev => {
+      const newState = { ...prev };
+      delete newState[variantId];
+      return newState;
+    });
+    
+    setNewCompareAtPrices(prev => {
       const newState = { ...prev };
       delete newState[variantId];
       return newState;
@@ -1046,20 +1073,38 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             : "N/A"}
         </Text>,
         <InlineStack gap="100" align="center">
-          <input
-            type="number"
-            style={{ 
-              width: '80px', 
-              padding: '6px', 
-              border: '1px solid #c9cccf', 
-              borderRadius: '4px',
-              fontSize: '0.8125rem'
-            }}
-            placeholder="New sale price"
-            value={compareAtPrices[item.shopifyVariantId || ''] || ''}
-            onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
-            disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
-          />
+          <div>
+            <input
+              type="number"
+              style={{ 
+                width: '80px', 
+                padding: '6px', 
+                border: '1px solid #c9cccf', 
+                borderRadius: '4px',
+                fontSize: '0.8125rem'
+              }}
+              placeholder="New sale price"
+              value={compareAtPrices[item.shopifyVariantId || ''] || ''}
+              onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
+              disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
+            />
+            <div style={{ marginTop: '4px' }}>
+              <input
+                type="number"
+                style={{ 
+                  width: '80px', 
+                  padding: '6px', 
+                  border: '1px solid #c9cccf', 
+                  borderRadius: '4px',
+                  fontSize: '0.8125rem'
+                }}
+                placeholder="New Compare At"
+                value={newCompareAtPrices[item.shopifyVariantId || ''] || ''}
+                onChange={(e) => handleUpdateNewCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
+                disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
+              />
+            </div>
+          </div>
           <Button
             size="micro"
             onClick={() => submitCompareAtPrice(item.shopifyVariantId || '', compareAtPrices[item.shopifyVariantId || ''])}
