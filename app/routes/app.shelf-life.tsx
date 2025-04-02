@@ -656,29 +656,40 @@ export default function ShelfLifeManagement() {
           // Immediately find and update the item in the shelfLifeItems array
           const updatedItem = shelfLifeItems.find(item => item.shopifyVariantId === updatingVariantId);
           if (updatedItem) {
-            // Update the item in-place with new price values
-            if (priceValue && !isNaN(parseFloat(priceValue))) {
-              updatedItem.variantPrice = parseFloat(priceValue);
-              
-              // Check if the item has latestPriceChange and update it
-              if ((updatedItem as any).latestPriceChange) {
-                (updatedItem as any).latestPriceChange.newPrice = parseFloat(priceValue);
-              } else {
-                // If no latestPriceChange exists, create one to show the history
-                (updatedItem as any).latestPriceChange = {
-                  originalPrice: updatedItem.variantPrice || 0,
-                  newPrice: parseFloat(priceValue),
-                  newCompareAtPrice: compareAtValue ? parseFloat(compareAtValue) : updatedItem.variantPrice,
-                  appliedAt: new Date().toISOString(),
-                  currencyCode: updatedItem.currencyCode
-                };
-              }
+            // Always ensure we have a valid variantPrice, even if it's the current one
+            const newPrice = priceValue && !isNaN(parseFloat(priceValue)) 
+              ? parseFloat(priceValue) 
+              : updatedItem.variantPrice;
+            
+            // Always update the variant price to ensure it's not null
+            if (newPrice !== null && !isNaN(Number(newPrice))) {
+              updatedItem.variantPrice = newPrice;
             }
             
-            if (compareAtValue && !isNaN(parseFloat(compareAtValue))) {
-              if ((updatedItem as any).latestPriceChange) {
+            // Check if the item has latestPriceChange and update it
+            if ((updatedItem as any).latestPriceChange) {
+              // Update the existing latestPriceChange
+              if (priceValue && !isNaN(parseFloat(priceValue))) {
+                (updatedItem as any).latestPriceChange.newPrice = parseFloat(priceValue);
+              }
+              
+              if (compareAtValue && !isNaN(parseFloat(compareAtValue))) {
                 (updatedItem as any).latestPriceChange.newCompareAtPrice = parseFloat(compareAtValue);
               }
+            } else {
+              // If no latestPriceChange exists, create one to show the history
+              const originalPrice = updatedItem.variantPrice || 0;
+              (updatedItem as any).latestPriceChange = {
+                originalPrice: originalPrice,
+                newPrice: priceValue && !isNaN(parseFloat(priceValue)) 
+                  ? parseFloat(priceValue) 
+                  : originalPrice,
+                newCompareAtPrice: compareAtValue && !isNaN(parseFloat(compareAtValue))
+                  ? parseFloat(compareAtValue) 
+                  : originalPrice,
+                appliedAt: new Date().toISOString(),
+                currencyCode: updatedItem.currencyCode
+              };
             }
           }
           
@@ -1092,7 +1103,10 @@ export default function ShelfLifeManagement() {
   
   // Format currency for display
   const formatCurrency = (amount: number | null, currencyCode: string | null) => {
-    if (amount === null || isNaN(Number(amount))) return 'N/A';
+    // Extra check to handle undefined or non-numeric values
+    if (amount === null || amount === undefined || isNaN(Number(amount))) {
+      return 'N/A';
+    }
     
     try {
       return new Intl.NumberFormat('en-US', {
@@ -1103,7 +1117,7 @@ export default function ShelfLifeManagement() {
       }).format(amount);
     } catch (error) {
       // Fall back to basic formatting if currency code is invalid
-      return `${currencyCode || '$'}${amount.toFixed(2)}`;
+      return `${currencyCode || '$'}${Number(amount).toFixed(2)}`;
     }
   };
 
@@ -1252,7 +1266,13 @@ export default function ShelfLifeManagement() {
               {formatCurrency((item as any).latestPriceChange.newPrice, item.currencyCode)}
             </Text>
           ) : (
-            <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>
+            <Text as="span" tone={textTone} fontWeight={fontWeight}>
+              {item.variantPrice !== null 
+                ? formatCurrency(item.variantPrice, item.currencyCode) 
+                : (item as any).latestPriceChange 
+                  ? formatCurrency((item as any).latestPriceChange.newPrice || (item as any).latestPriceChange.originalPrice, item.currencyCode)
+                  : "N/A"}
+            </Text>
           )}
           {(item as any).latestPriceChange && (
             <Tooltip content={`Original price: ${formatCurrency((item as any).latestPriceChange.originalPrice, (item as any).latestPriceChange.currencyCode)}
