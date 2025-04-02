@@ -263,8 +263,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               variants: [
                 {
                   id: variantId,
-                  price: compareAtPriceFloat.toFixed(2)
-                  // No compareAtPrice field here, so it remains unchanged
+                  price: compareAtPriceFloat.toFixed(2),
+                  compareAtPrice: currentPrice.toFixed(2) // Set the current price as compareAtPrice
                 }
               ]
             }
@@ -330,7 +330,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ${currentPrice},
                 NULL,
                 ${compareAtPriceFloat},
-                NULL,
+                ${currentPrice},
                 ${item.currencyCode || "USD"},
                 ${new Date().toISOString()},
                 'APPLIED'
@@ -364,7 +364,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               currentPrice,
               null,
               compareAtPriceFloat,
-              null,
+              currentPrice,
               item.currencyCode || "USD",
               new Date().toISOString(),
               "APPLIED"
@@ -1050,7 +1050,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
               borderRadius: '4px',
               fontSize: '0.8125rem'
             }}
-            placeholder="Set price"
+            placeholder="New sale price"
             value={compareAtPrices[item.shopifyVariantId || ''] || ''}
             onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
             disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
@@ -1061,7 +1061,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             disabled={!item.shopifyVariantId || !compareAtPrices[item.shopifyVariantId || ''] || updatingVariantId === item.shopifyVariantId}
             loading={updatingVariantId === item.shopifyVariantId}
           >
-            Set
+            Apply
           </Button>
         </InlineStack>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantCost, item.currencyCode)}</Text>,
@@ -1436,7 +1436,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           'Location',
                           'Shopify Product',
                           'Price',
-                          'Update Price',
+                          'Set Sale Price',
                           'Cost',
                           'Sync Status',
                           'Sync Message',
