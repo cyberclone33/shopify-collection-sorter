@@ -653,27 +653,34 @@ export default function ShelfLifeManagement() {
             }
           }));
           
-          // Force a refresh of the UI to show the updated price
-          setTimeout(() => {
-            // We can use the loader to refresh data from the server
-            // This is a client-side approach that shows immediate feedback
-            const updatedItem = shelfLifeItems.find(item => item.shopifyVariantId === updatingVariantId);
-            if (updatedItem) {
-              // Update the item in-place with new price values
-              if (priceValue && !isNaN(parseFloat(priceValue))) {
-                updatedItem.variantPrice = parseFloat(priceValue);
-                if (updatedItem.latestPriceChange) {
-                  updatedItem.latestPriceChange.newPrice = parseFloat(priceValue);
-                }
-              }
+          // Immediately find and update the item in the shelfLifeItems array
+          const updatedItem = shelfLifeItems.find(item => item.shopifyVariantId === updatingVariantId);
+          if (updatedItem) {
+            // Update the item in-place with new price values
+            if (priceValue && !isNaN(parseFloat(priceValue))) {
+              updatedItem.variantPrice = parseFloat(priceValue);
               
-              if (compareAtValue && !isNaN(parseFloat(compareAtValue))) {
-                if (updatedItem.latestPriceChange) {
-                  updatedItem.latestPriceChange.newCompareAtPrice = parseFloat(compareAtValue);
-                }
+              // Check if the item has latestPriceChange and update it
+              if ((updatedItem as any).latestPriceChange) {
+                (updatedItem as any).latestPriceChange.newPrice = parseFloat(priceValue);
+              } else {
+                // If no latestPriceChange exists, create one to show the history
+                (updatedItem as any).latestPriceChange = {
+                  originalPrice: updatedItem.variantPrice || 0,
+                  newPrice: parseFloat(priceValue),
+                  newCompareAtPrice: compareAtValue ? parseFloat(compareAtValue) : updatedItem.variantPrice,
+                  appliedAt: new Date().toISOString(),
+                  currencyCode: updatedItem.currencyCode
+                };
               }
             }
-          }, 100);
+            
+            if (compareAtValue && !isNaN(parseFloat(compareAtValue))) {
+              if ((updatedItem as any).latestPriceChange) {
+                (updatedItem as any).latestPriceChange.newCompareAtPrice = parseFloat(compareAtValue);
+              }
+            }
+          }
           
           setUpdatingVariantId(null);
         }
@@ -1265,7 +1272,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             <Text as="span" tone="success" fontWeight="bold">
               {formatCurrency(
                 updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice === '' || updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice === null
-                  ? null
+                  ? item.variantPrice
                   : parseFloat(updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice),
                 item.currencyCode
               )}
@@ -1278,7 +1285,9 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             <Text as="span" tone={textTone} fontWeight={fontWeight}>
               {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
                 ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
-                : "N/A"}
+                : item.variantPrice 
+                  ? formatCurrency(item.variantPrice, item.currencyCode)
+                  : "N/A"}
             </Text>
           )}
         </InlineStack>,
