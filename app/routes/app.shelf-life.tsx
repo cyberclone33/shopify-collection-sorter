@@ -864,8 +864,18 @@ export default function ShelfLifeManagement() {
   };
   
   // Handle submitting sale price update
-  const submitCompareAtPrice = (variantId: string, compareAtPrice: string) => {
-    if (!variantId || !compareAtPrice) return;
+  const submitCompareAtPrice = (variantId: string, compareAtPrice: string | undefined, compareAtPriceOnly: boolean = false) => {
+    if (!variantId) return;
+    
+    // If we're only updating the Compare At price, use the existing price
+    if (compareAtPriceOnly) {
+      const item = shelfLifeItems.find(item => item.shopifyVariantId === variantId);
+      if (!item || !item.variantPrice) return;
+      
+      compareAtPrice = item.variantPrice.toString();
+    } else if (!compareAtPrice) {
+      return;
+    }
     
     setUpdatingVariantId(variantId);
     
@@ -1226,18 +1236,20 @@ export default function ShelfLifeManagement() {
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.location || "N/A"}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.shopifyProductTitle || "Not synced"}</Text>,
         <InlineStack gap="100" align="center">
-          {updatedVariants[item.shopifyVariantId || ''] ? (
+          {updatedVariants[item.shopifyVariantId || ''] && updatedVariants[item.shopifyVariantId || ''].newPrice ? (
             <Text as="span" tone="success" fontWeight="bold">
               {formatCurrency(
-                updatedVariants[item.shopifyVariantId || ''].newPrice === '' 
-                  ? null 
-                  : parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), 
+                parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), 
                 item.currencyCode
               )}
               {' '}
               <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
                 {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
               </span>
+            </Text>
+          ) : ((item as any).latestPriceChange && (item as any).latestPriceChange.newPrice) ? (
+            <Text as="span" tone="success" fontWeight={fontWeight}>
+              {formatCurrency((item as any).latestPriceChange.newPrice, item.currencyCode)}
             </Text>
           ) : (
             <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>
@@ -1326,8 +1338,19 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
           </div>
           <Button
             size="micro"
-            onClick={() => submitCompareAtPrice(item.shopifyVariantId || '', compareAtPrices[item.shopifyVariantId || ''])}
-            disabled={!item.shopifyVariantId || !compareAtPrices[item.shopifyVariantId || ''] || updatingVariantId === item.shopifyVariantId}
+            onClick={() => {
+              // If there's a new sale price, submit that
+              if (compareAtPrices[item.shopifyVariantId || '']) {
+                submitCompareAtPrice(item.shopifyVariantId || '', compareAtPrices[item.shopifyVariantId || '']);
+              } 
+              // If there's only a Compare At price (no sale price), use the compareAtPriceOnly flag
+              else if (newCompareAtPrices[item.shopifyVariantId || '']) {
+                submitCompareAtPrice(item.shopifyVariantId || '', undefined, true);
+              }
+            }}
+            disabled={!item.shopifyVariantId || 
+              ((!compareAtPrices[item.shopifyVariantId || ''] && !newCompareAtPrices[item.shopifyVariantId || '']) 
+              || updatingVariantId === item.shopifyVariantId)}
             loading={updatingVariantId === item.shopifyVariantId}
           >
             Apply
