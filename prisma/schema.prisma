@@ -87,7 +87,7 @@ model FacebookUser {
 }
 
 model ShelfLifeItem {
-  id                  String   @id @default(cuid())
+  id                  String                   @id @default(cuid())
   shop                String
   productId           String
   batchId             String
@@ -101,11 +101,33 @@ model ShelfLifeItem {
   shopifyVariantTitle String?
   syncStatus          String?
   syncMessage         String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
   currencyCode        String?
   variantCost         Float?
   variantPrice        Float?
+  priceChanges        ShelfLifeItemPriceChange[]
 
   @@unique([productId, batchId], name: "productId_batchId")
+}
+
+model ShelfLifeItemPriceChange {
+  id                String    @id @default(cuid())
+  shop              String
+  shelfLifeItemId   String
+  shelfLifeItem     ShelfLifeItem @relation(fields: [shelfLifeItemId], references: [id], onDelete: Cascade)
+  shopifyVariantId  String
+  originalPrice     Float
+  originalCompareAtPrice Float?
+  newPrice          Float
+  newCompareAtPrice Float
+  currencyCode      String?
+  appliedAt         DateTime  @default(now())
+  appliedByUserId   String?
+  appliedByUserName String?
+  status            String    @default("APPLIED") // APPLIED, REVERTED, etc.
+  notes             String?
+
+  @@index([shelfLifeItemId])
+  @@index([shopifyVariantId])
 }

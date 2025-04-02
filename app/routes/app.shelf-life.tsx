@@ -59,6 +59,24 @@ interface ShelfLifeItem {
   updatedAt: Date | string;
 }
 
+// Define the ShelfLifeItemPriceChange interface
+interface ShelfLifeItemPriceChange {
+  id: string;
+  shop: string;
+  shelfLifeItemId: string;
+  shopifyVariantId: string;
+  originalPrice: number;
+  originalCompareAtPrice: number | null;
+  newPrice: number;
+  newCompareAtPrice: number;
+  currencyCode: string | null;
+  appliedAt: Date | string;
+  appliedByUserId: string | null;
+  appliedByUserName: string | null;
+  status: string;
+  notes: string | null;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -66,8 +84,50 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Fetch all shelf life items
   const shelfLifeItems: ShelfLifeItem[] = await getAllShelfLifeItems(shop);
   
+  // Fetch all price changes for this shop
+  let priceChanges: ShelfLifeItemPriceChange[] = [];
+  try {
+    // Use raw SQL since we had Prisma compatibility issues
+    const rawPriceChanges = await prisma.$queryRawUnsafe(`
+      SELECT * FROM "ShelfLifeItemPriceChange"
+      WHERE "shop" = ?
+      ORDER BY "appliedAt" DESC
+    `, shop);
+    
+    priceChanges = Array.isArray(rawPriceChanges) ? rawPriceChanges : [];
+    
+    // Map variant IDs to price change records for quick lookup
+    const priceChangesByVariantId = new Map<string, ShelfLifeItemPriceChange[]>();
+    
+    priceChanges.forEach(change => {
+      if (!priceChangesByVariantId.has(change.shopifyVariantId)) {
+        priceChangesByVariantId.set(change.shopifyVariantId, []);
+      }
+      priceChangesByVariantId.get(change.shopifyVariantId)?.push(change);
+    });
+    
+    // Attach most recent price change to each shelf life item
+    for (const item of shelfLifeItems) {
+      if (item.shopifyVariantId) {
+        const itemPriceChanges = priceChangesByVariantId.get(item.shopifyVariantId) || [];
+        // Sort by appliedAt in descending order (most recent first)
+        itemPriceChanges.sort((a, b) => 
+          new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()
+        );
+        
+        // Attach the most recent price change if available
+        if (itemPriceChanges.length > 0) {
+          (item as any).latestPriceChange = itemPriceChanges[0];
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching price changes:", error);
+  }
+  
   return json({
-    shelfLifeItems
+    shelfLifeItems,
+    priceChanges
   });
 };
 
@@ -229,6 +289,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             status: "error",
             message: `Error updating compare at price: ${result.userErrors[0].message}`
           });
+        }
+        
+        // Record the price change
+        try {
+          // Generate a unique ID for the price change record
+          const priceChangeId = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+          
+          // Insert the price change record using raw SQL since we had Prisma compatibility issues
+          await prisma.$executeRawUnsafe(`
+            INSERT INTO "ShelfLifeItemPriceChange" (
+              "id", 
+              "shop", 
+              "shelfLifeItemId", 
+              "shopifyVariantId", 
+              "originalPrice", 
+              "originalCompareAtPrice", 
+              "newPrice", 
+              "newCompareAtPrice", 
+              "currencyCode", 
+              "appliedAt", 
+              "status"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, 
+            priceChangeId,
+            session.shop,
+            item.id,
+            variantId,
+            currentPrice,
+            null, // Original compareAtPrice (null if not previously on sale)
+            compareAtPriceFloat,
+            currentPrice, // The current price becomes the compareAtPrice
+            item.currencyCode || "USD",
+            new Date().toISOString(),
+            "APPLIED"
+          );
+          
+          console.log(`Recorded price change with ID: ${priceChangeId}`);
+        } catch (dbError) {
+          console.error("Failed to record price change:", dbError);
+          // Continue anyway as the Shopify update was successful
         }
         
         console.log("Successfully updated variant sale price with GraphQL");
@@ -407,6 +507,8 @@ export default function ShelfLifeManagement() {
   const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
   const [updatingVariantId, setUpdatingVariantId] = useState<string | null>(null);
   const [updatedVariants, setUpdatedVariants] = useState<Record<string, { timestamp: number, newPrice: string }>>({});
+  const [selectedPriceHistory, setSelectedPriceHistory] = useState<{ itemId: string, variantId: string } | null>(null);
+  const [priceHistoryModalActive, setPriceHistoryModalActive] = useState(false);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -850,6 +952,30 @@ export default function ShelfLifeManagement() {
               </Text>
             </Tooltip>
           )}
+          {(item as any).latestPriceChange && (
+            <Tooltip content={`Original price: ${formatCurrency((item as any).latestPriceChange.originalPrice, (item as any).latestPriceChange.currencyCode)}
+Changed to: ${formatCurrency((item as any).latestPriceChange.newPrice, (item as any).latestPriceChange.currencyCode)}
+Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
+              <Button 
+                variant="plain" 
+                size="micro" 
+                onClick={() => handlePriceHistoryClick(item.id, item.shopifyVariantId || '')}
+              >
+                <span 
+                  style={{ 
+                    fontSize: '0.85em', 
+                    backgroundColor: '#f2f7f2', 
+                    padding: '2px 6px', 
+                    borderRadius: '4px',
+                    color: '#2c6e2c',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  History
+                </span>
+              </Button>
+            </Tooltip>
+          )}
         </InlineStack>,
         <InlineStack gap="100" align="center">
           <input
@@ -1014,6 +1140,16 @@ export default function ShelfLifeManagement() {
   }, []);
   const handleDeleteAllModalClose = useCallback(() => {
     setConfirmDeleteAllModalActive(false);
+  }, []);
+  
+  const handlePriceHistoryClick = useCallback((itemId: string, variantId: string) => {
+    setSelectedPriceHistory({ itemId, variantId });
+    setPriceHistoryModalActive(true);
+  }, []);
+  
+  const handlePriceHistoryModalClose = useCallback(() => {
+    setPriceHistoryModalActive(false);
+    setSelectedPriceHistory(null);
   }, []);
 
   return (
@@ -1361,6 +1497,61 @@ export default function ShelfLifeManagement() {
               This is a permanent action and cannot be undone. Are you sure you want to proceed?
             </Text>
           </BlockStack>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Price History Modal */}
+      <Modal
+        open={priceHistoryModalActive}
+        onClose={handlePriceHistoryModalClose}
+        title="Price Change History"
+        primaryAction={{
+          content: "Close",
+          onAction: handlePriceHistoryModalClose
+        }}
+      >
+        <Modal.Section>
+          {selectedPriceHistory && (
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingLg">
+                {shelfLifeItems.find(item => item.id === selectedPriceHistory.itemId)?.shopifyProductTitle || 'Product'}
+              </Text>
+              
+              {(() => {
+                const { priceChanges } = useLoaderData<typeof loader>();
+                const filteredChanges = priceChanges.filter(
+                  change => change.shopifyVariantId === selectedPriceHistory.variantId
+                ).sort((a, b) => 
+                  new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()
+                );
+                
+                if (filteredChanges.length === 0) {
+                  return (
+                    <EmptyState
+                      heading="No price change history"
+                      image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                    >
+                      <p>There are no recorded price changes for this product.</p>
+                    </EmptyState>
+                  );
+                }
+                
+                return (
+                  <DataTable
+                    columnContentTypes={['text', 'numeric', 'numeric', 'numeric', 'text']}
+                    headings={['Date', 'Original Price', 'New Price', 'Compare At', 'Status']}
+                    rows={filteredChanges.map(change => [
+                      new Date(change.appliedAt).toLocaleString(),
+                      formatCurrency(change.originalPrice, change.currencyCode),
+                      formatCurrency(change.newPrice, change.currencyCode),
+                      formatCurrency(change.newCompareAtPrice, change.currencyCode),
+                      <Text tone={change.status === 'APPLIED' ? 'success' : 'info'}>{change.status}</Text>
+                    ])}
+                  />
+                );
+              })()}
+            </BlockStack>
+          )}
         </Modal.Section>
       </Modal>
     </Frame>

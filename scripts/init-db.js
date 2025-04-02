@@ -195,11 +195,102 @@ async function main() {
       console.log('DEBUG: This should be handled by Prisma migrations. Make sure to run "npx prisma migrate deploy" before starting the app.');
     }
     
+    // Check if the ShelfLifeItemPriceChange table exists
+    console.log('DEBUG: Checking if ShelfLifeItemPriceChange table exists...');
+    let priceChangeTableExists = false;
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM ShelfLifeItemPriceChange LIMIT 1`;
+      priceChangeTableExists = true;
+      console.log('DEBUG: ShelfLifeItemPriceChange table exists');
+    } catch (err) {
+      console.log('DEBUG: ShelfLifeItemPriceChange table does not exist or cannot be accessed, creating it now...');
+      
+      try {
+        // Create the ShelfLifeItemPriceChange table
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "ShelfLifeItemPriceChange" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "shop" TEXT NOT NULL,
+            "shelfLifeItemId" TEXT NOT NULL,
+            "shopifyVariantId" TEXT NOT NULL,
+            "originalPrice" REAL NOT NULL,
+            "originalCompareAtPrice" REAL,
+            "newPrice" REAL NOT NULL,
+            "newCompareAtPrice" REAL NOT NULL,
+            "currencyCode" TEXT,
+            "appliedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "appliedByUserId" TEXT,
+            "appliedByUserName" TEXT,
+            "status" TEXT NOT NULL DEFAULT 'APPLIED',
+            "notes" TEXT,
+            FOREIGN KEY ("shelfLifeItemId") REFERENCES "ShelfLifeItem"("id") ON DELETE CASCADE
+          )
+        `;
+        
+        // Create indices for performance
+        await prisma.$executeRaw`
+          CREATE INDEX IF NOT EXISTS "shelfLifeItemId_idx" ON "ShelfLifeItemPriceChange"("shelfLifeItemId")
+        `;
+        
+        await prisma.$executeRaw`
+          CREATE INDEX IF NOT EXISTS "shopifyVariantId_idx" ON "ShelfLifeItemPriceChange"("shopifyVariantId")
+        `;
+        
+        console.log('DEBUG: Successfully created ShelfLifeItemPriceChange table');
+        priceChangeTableExists = true;
+      } catch (createErr) {
+        console.error('DEBUG: Error creating ShelfLifeItemPriceChange table:', createErr.message);
+        console.log('DEBUG: Attempting to create table using raw SQL via execSync...');
+        
+        try {
+          // Get database file path from environment variable
+          const dbUrl = process.env.DATABASE_URL || '';
+          let dbPath = '';
+          if (dbUrl.startsWith('file:')) {
+            dbPath = dbUrl.replace('file:', '');
+          } else {
+            // Default to a path that makes sense for your app
+            dbPath = path.join(process.cwd(), 'prisma', 'prod.db');
+          }
+          
+          const createTableSQL = `
+            CREATE TABLE IF NOT EXISTS "ShelfLifeItemPriceChange" (
+              "id" TEXT NOT NULL PRIMARY KEY,
+              "shop" TEXT NOT NULL,
+              "shelfLifeItemId" TEXT NOT NULL,
+              "shopifyVariantId" TEXT NOT NULL,
+              "originalPrice" REAL NOT NULL,
+              "originalCompareAtPrice" REAL,
+              "newPrice" REAL NOT NULL,
+              "newCompareAtPrice" REAL NOT NULL,
+              "currencyCode" TEXT,
+              "appliedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "appliedByUserId" TEXT,
+              "appliedByUserName" TEXT,
+              "status" TEXT NOT NULL DEFAULT 'APPLIED',
+              "notes" TEXT,
+              FOREIGN KEY ("shelfLifeItemId") REFERENCES "ShelfLifeItem"("id") ON DELETE CASCADE
+            );
+            
+            CREATE INDEX IF NOT EXISTS "shelfLifeItemId_idx" ON "ShelfLifeItemPriceChange"("shelfLifeItemId");
+            CREATE INDEX IF NOT EXISTS "shopifyVariantId_idx" ON "ShelfLifeItemPriceChange"("shopifyVariantId");
+          `;
+          
+          execSync(`sqlite3 "${dbPath}" "${createTableSQL}"`, { stdio: 'inherit' });
+          console.log('DEBUG: Successfully created ShelfLifeItemPriceChange table with execSync');
+          priceChangeTableExists = true;
+        } catch (execErr) {
+          console.error('DEBUG: Failed to create ShelfLifeItemPriceChange table with execSync:', execErr);
+        }
+      }
+    }
+    
     console.log('✅ Database initialization completed');
     console.log(`DEBUG: Session table exists: ${sessionTableExists}`);
     console.log(`DEBUG: LineUser table exists: ${lineUserTableExists}`);
     console.log(`DEBUG: GoogleUser table exists: ${googleUserTableExists}`);
     console.log(`DEBUG: FacebookUser table exists: ${facebookUserTableExists}`);
+    console.log(`DEBUG: ShelfLifeItemPriceChange table exists: ${priceChangeTableExists}`);
     
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
