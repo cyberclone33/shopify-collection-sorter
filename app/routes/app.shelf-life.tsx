@@ -563,7 +563,9 @@ export default function ShelfLifeManagement() {
   const [file, setFile] = useState<File | null>(null);
   const [rejectedFiles, setRejectedFiles] = useState<File[]>([]);
   const [selectedTab, setSelectedTab] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
   const [toastActive, setToastActive] = useState(false);
   const [toastContent, setToastContent] = useState({ message: "", tone: "success" });
   const [syncResultModalActive, setSyncResultModalActive] = useState(false);
@@ -576,7 +578,11 @@ export default function ShelfLifeManagement() {
   const [compareAtPrices, setCompareAtPrices] = useState<Record<string, string>>({});
   const [newCompareAtPrices, setNewCompareAtPrices] = useState<Record<string, string>>({});
   const [updatingVariantId, setUpdatingVariantId] = useState<string | null>(null);
-  const [updatedVariants, setUpdatedVariants] = useState<Record<string, { timestamp: number, newPrice: string }>>({});
+  const [updatedVariants, setUpdatedVariants] = useState<Record<string, { 
+    timestamp: number, 
+    newPrice: string, 
+    newCompareAtPrice: string | null 
+  }>>({});
   const [selectedPriceHistory, setSelectedPriceHistory] = useState<{ itemId: string, variantId: string } | null>(null);
   const [priceHistoryModalActive, setPriceHistoryModalActive] = useState(false);
   
@@ -596,15 +602,31 @@ export default function ShelfLifeManagement() {
       
       // Handle sync results
       if (actionData.syncResult) {
-        setIsSyncing(false);
+        // Set progress to 100% before stopping
+        setSyncProgress(100);
         
-        // If there are unmatched items, show the modal
-        if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
-          setSyncResultModalActive(true);
+        // Delay the completion to show 100% progress
+        setTimeout(() => {
+          setIsSyncing(false);
+          
+          // If there are unmatched items, show the modal
+          if (actionData.syncResult.unmatchedItems && actionData.syncResult.unmatchedItems.length > 0) {
+            setSyncResultModalActive(true);
+          }
+          
+          // Clear the updated variants tracker since we've synced
+          setUpdatedVariants({});
+        }, 500);
+      }
+      
+      // Handle file upload completion
+      if (actionData.filename) {
+        setIsUploading(false);
+        
+        // If CSV upload was successful, switch to inventory tab
+        if (actionData.status === "success") {
+          setTimeout(() => setSelectedTab(1), 1500);
         }
-        
-        // Clear the updated variants tracker since we've synced
-        setUpdatedVariants({});
       }
       
       // Reset states if action succeeded
@@ -618,13 +640,35 @@ export default function ShelfLifeManagement() {
         if (updatingVariantId) {
           // Store the updated price for visual tracking
           const priceValue = compareAtPrices[updatingVariantId] || '';
+          const compareAtValue = newCompareAtPrices[updatingVariantId] || '';
+          
+          // Update the variants with both price and compareAt values
           setUpdatedVariants(prev => ({
             ...prev,
             [updatingVariantId]: {
               timestamp: Date.now(),
-              newPrice: priceValue
+              newPrice: priceValue,
+              newCompareAtPrice: compareAtValue || null
             }
           }));
+          
+          // Force a refresh of the UI to show the updated price
+          setTimeout(() => {
+            // We can use the loader to refresh data from the server
+            // This is a client-side approach that shows immediate feedback
+            const updatedItem = shelfLifeItems.find(item => item.shopifyVariantId === updatingVariantId);
+            if (updatedItem) {
+              // Update the item in-place with new price values
+              updatedItem.variantPrice = parseFloat(priceValue);
+              if (updatedItem.latestPriceChange) {
+                updatedItem.latestPriceChange.newPrice = parseFloat(priceValue);
+                if (compareAtValue) {
+                  updatedItem.latestPriceChange.newCompareAtPrice = parseFloat(compareAtValue);
+                }
+              }
+            }
+          }, 100);
+          
           setUpdatingVariantId(null);
         }
       }
@@ -642,19 +686,51 @@ export default function ShelfLifeManagement() {
   const handleSubmit = () => {
     if (!file) return;
     
+    setIsUploading(true);
+    
     const formData = new FormData();
     formData.append("file", file);
     
     submit(formData, { method: "post", encType: "multipart/form-data" });
+    
+    // This simulates the success state after upload
+    const timer = setTimeout(() => {
+      if (actionData?.status !== "error") {
+        setSelectedTab(1); // Switch to the All Inventory tab
+      }
+      setIsUploading(false);
+    }, 3000);
+    
+    return () => clearTimeout(timer);
   };
   
   const handleSync = () => {
     setIsSyncing(true);
+    setSyncProgress(0);
+    
+    // Start a progress simulation
+    const totalSteps = 20;
+    let currentStep = 0;
+    
+    // Use an interval to simulate progress steps
+    const progressInterval = setInterval(() => {
+      currentStep++;
+      const newProgress = Math.min(95, Math.floor((currentStep / totalSteps) * 100));
+      setSyncProgress(newProgress);
+      
+      if (currentStep >= totalSteps) {
+        clearInterval(progressInterval);
+      }
+    }, 300);
     
     const formData = new FormData();
     formData.append("action", "sync");
     
     submit(formData, { method: "post" });
+    
+    return () => {
+      clearInterval(progressInterval);
+    };
   };
   
   // Handle deleting a single item
@@ -851,7 +927,33 @@ export default function ShelfLifeManagement() {
 
   const successMessage = actionData?.status === "success" && !actionData?.syncResult && (
     <Banner title="Success" tone="success">
-      {actionData.message}
+      <BlockStack gap="200">
+        <Text as="p">{actionData.message}</Text>
+        {actionData.filename && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ 
+              width: '16px', 
+              height: '16px', 
+              borderRadius: '50%', 
+              backgroundColor: '#008060', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center' 
+            }}>
+              <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>✓</span>
+            </div>
+            <Text as="p" fontWeight="medium">
+              {actionData.filename} processed successfully. 
+              {actionData.savedCount && ` ${actionData.savedCount} items saved.`}
+            </Text>
+          </div>
+        )}
+        {!selectedTab && (
+          <div style={{ marginTop: '8px' }}>
+            <Button onClick={() => setSelectedTab(1)}>View Inventory</Button>
+          </div>
+        )}
+      </BlockStack>
     </Banner>
   );
 
@@ -1030,17 +1132,16 @@ export default function ShelfLifeManagement() {
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.location || "N/A"}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.shopifyProductTitle || "Not synced"}</Text>,
         <InlineStack gap="100" align="center">
-          <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>
-          {updatedVariants[item.shopifyVariantId || ''] && (
-            <Tooltip content="Price updated in Shopify but may not be reflected in the database yet. Sync to update the database.">
-              <Text as="span" tone="success" fontWeight="bold">
-                ↺ Updated to {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), item.currencyCode)}
-                {' '}
-                <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
-                  {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
-                </span>
-              </Text>
-            </Tooltip>
+          {updatedVariants[item.shopifyVariantId || ''] ? (
+            <Text as="span" tone="success" fontWeight="bold">
+              {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), item.currencyCode)}
+              {' '}
+              <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
+                {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
+              </span>
+            </Text>
+          ) : (
+            <Text as="span" tone={textTone} fontWeight={fontWeight}>{formatCurrency(item.variantPrice, item.currencyCode)}</Text>
           )}
           {(item as any).latestPriceChange && (
             <Tooltip content={`Original price: ${formatCurrency((item as any).latestPriceChange.originalPrice, (item as any).latestPriceChange.currencyCode)}
@@ -1067,11 +1168,23 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             </Tooltip>
           )}
         </InlineStack>,
-        <Text as="span" tone={textTone} fontWeight={fontWeight}>
-          {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
-            ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
-            : "N/A"}
-        </Text>,
+        <InlineStack gap="100" align="center">
+          {updatedVariants[item.shopifyVariantId || ''] && updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice ? (
+            <Text as="span" tone="success" fontWeight="bold">
+              {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice), item.currencyCode)}
+              {' '}
+              <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
+                {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
+              </span>
+            </Text>
+          ) : (
+            <Text as="span" tone={textTone} fontWeight={fontWeight}>
+              {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
+                ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
+                : "N/A"}
+            </Text>
+          )}
+        </InlineStack>,
         <InlineStack gap="100" align="center">
           <div>
             <input
@@ -1270,13 +1383,14 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       <Page
         title="Shelf Life Management"
         primaryAction={selectedTab === 0 ? {
-          content: "Upload CSV",
+          content: isUploading ? "Uploading..." : "Upload CSV",
           onAction: handleSubmit,
-          disabled: !file,
+          disabled: !file || isUploading,
+          loading: isUploading
         } : undefined}
         secondaryActions={selectedTab === 1 ? [
           {
-            content: "Sync with Shopify",
+            content: isSyncing ? `Syncing... ${syncProgress}%` : "Sync with Shopify",
             icon: RefreshIcon,
             onAction: handleSync,
             loading: isSyncing,
@@ -1284,6 +1398,26 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
           }
         ] : undefined}
       >
+        {/* Show progress bar during syncing */}
+        {isSyncing && (
+          <Box paddingBlockEnd="300">
+            <div style={{ 
+              height: '4px', 
+              backgroundColor: '#e4e5e7',
+              borderRadius: '2px',
+              overflow: 'hidden',
+              width: '100%',
+              marginBottom: '12px'
+            }}>
+              <div style={{ 
+                height: '100%', 
+                width: `${syncProgress}%`, 
+                backgroundColor: '#008060',
+                transition: 'width 0.3s ease'
+              }}></div>
+            </div>
+          </Box>
+        )}
         <BlockStack gap="500">
           {successMessage}
           {warningMessage}
