@@ -191,7 +191,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!compareAtPrice) {
         return json<ActionData>({ 
           status: "error", 
-          message: "Sale price is required" 
+          message: "Price is required" 
         });
       }
       
@@ -201,11 +201,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (isNaN(compareAtPriceFloat)) {
         return json<ActionData>({ 
           status: "error", 
-          message: "Sale price must be a valid number" 
+          message: "Price must be a valid number" 
         });
       }
       
-      console.log(`Using GraphQL productVariantsBulkUpdate to update variant ${variantId} regular price to ${compareAtPriceFloat}, setting original price as compare-at price`);
+      console.log(`Using GraphQL productVariantsBulkUpdate to update variant ${variantId} price to ${compareAtPriceFloat}`);
       
       try {
         // First, we need to look up the product ID and current price from the database
@@ -238,10 +238,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
         
         console.log(`Found corresponding product ID: ${productId} for variant: ${variantId}`);
-        console.log(`Current price: ${currentPrice}, setting as compare-at price`);
+        console.log(`Current price: ${currentPrice}, updating to: ${compareAtPriceFloat}`);
         
         // Use the productVariantsBulkUpdate with the correct productId parameter
-        // Setting the sale price as the new price, and current price as compare-at price
+        // Setting only the price without affecting the compareAtPrice
         const response = await admin.graphql(
           `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
             productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -263,8 +263,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               variants: [
                 {
                   id: variantId,
-                  price: compareAtPriceFloat.toFixed(2),
-                  compareAtPrice: currentPrice.toString()
+                  price: compareAtPriceFloat.toFixed(2)
+                  // No compareAtPrice field here, so it remains unchanged
                 }
               ]
             }
@@ -317,9 +317,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             item.id,
             variantId,
             currentPrice,
-            null, // Original compareAtPrice (null if not previously on sale)
+            null, // Keep track of original compareAtPrice
             compareAtPriceFloat,
-            currentPrice, // The current price becomes the compareAtPrice
+            null, // Not changing the compareAtPrice
             item.currencyCode || "USD",
             new Date().toISOString(),
             "APPLIED"
@@ -334,7 +334,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.log("Successfully updated variant sale price with GraphQL");
         return json<ActionData>({
           status: "success",
-          message: `Sale price updated successfully to ${compareAtPriceFloat}`
+          message: `Price updated successfully to ${compareAtPriceFloat}`
         });
       } catch (error) {
         console.error("GraphQL exception:", error);
@@ -421,24 +421,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Handle delete all items
   if (action === "deleteAll") {
     try {
-      // First, update all ShelfLifeItemPriceChange records to remove the relationship
-      // This will prevent them from being deleted due to cascade effect
-      await prisma.$executeRawUnsafe(`
-        UPDATE "ShelfLifeItemPriceChange"
-        SET "shelfLifeItemId" = NULL
-        WHERE "shop" = ?
-      `, shop);
-      
-      // Then delete all shelf life items
-      const result = await prisma.shelfLifeItem.deleteMany({
-        where: { shop }
+      // In the short term, just get all item IDs and delete them individually
+      // This will use Prisma's onDelete behavior correctly
+      const items = await prisma.shelfLifeItem.findMany({
+        where: { shop },
+        select: { id: true }
       });
       
-      console.log(`Deleted ${result.count} shelf life items while preserving price change history`);
+      console.log(`Found ${items.length} items to delete`);
+      
+      // Delete items one by one (this is slower but more reliable)
+      let deletedCount = 0;
+      for (const item of items) {
+        await prisma.shelfLifeItem.delete({
+          where: { id: item.id }
+        });
+        deletedCount++;
+      }
+      
+      console.log(`Deleted ${deletedCount} items individually`);
       
       return json<ActionData>({
         status: "success",
-        message: `${result.count} items deleted successfully (price change history preserved)`
+        message: `${deletedCount} items deleted successfully (price change history preserved)`
       });
     } catch (error) {
       console.error("Error deleting all items:", error);
@@ -998,7 +1003,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
               borderRadius: '4px',
               fontSize: '0.8125rem'
             }}
-            placeholder="Set sale price"
+            placeholder="Set price"
             value={compareAtPrices[item.shopifyVariantId || ''] || ''}
             onChange={(e) => handleUpdateCompareAtPrice(item.shopifyVariantId || '', e.target.value)}
             disabled={!item.shopifyVariantId || updatingVariantId === item.shopifyVariantId}
@@ -1384,7 +1389,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           'Location',
                           'Shopify Product',
                           'Price',
-                          'Sale Price',
+                          'Update Price',
                           'Cost',
                           'Sync Status',
                           'Sync Message',
