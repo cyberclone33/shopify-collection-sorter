@@ -1260,7 +1260,7 @@ export default function ShelfLifeManagement() {
     } else if (daysUntilExpiration <= 180) {
       return <Text as="span" tone="success">180 days ({daysUntilExpiration} days left)</Text>;
     } else {
-      return <Text as="span" tone="success">Good (>{daysUntilExpiration} days left)</Text>;
+      return <Text as="span" tone="success">Good ({daysUntilExpiration} days left)</Text>;
     }
   };
 
