@@ -659,10 +659,15 @@ export default function ShelfLifeManagement() {
             const updatedItem = shelfLifeItems.find(item => item.shopifyVariantId === updatingVariantId);
             if (updatedItem) {
               // Update the item in-place with new price values
-              updatedItem.variantPrice = parseFloat(priceValue);
-              if (updatedItem.latestPriceChange) {
-                updatedItem.latestPriceChange.newPrice = parseFloat(priceValue);
-                if (compareAtValue) {
+              if (priceValue && !isNaN(parseFloat(priceValue))) {
+                updatedItem.variantPrice = parseFloat(priceValue);
+                if (updatedItem.latestPriceChange) {
+                  updatedItem.latestPriceChange.newPrice = parseFloat(priceValue);
+                }
+              }
+              
+              if (compareAtValue && !isNaN(parseFloat(compareAtValue))) {
+                if (updatedItem.latestPriceChange) {
                   updatedItem.latestPriceChange.newCompareAtPrice = parseFloat(compareAtValue);
                 }
               }
@@ -755,6 +760,13 @@ export default function ShelfLifeManagement() {
   
   // Handle updating sale price
   const handleUpdateCompareAtPrice = (variantId: string, value: string) => {
+    // Validate the input value is a number
+    const isValidNumber = value === '' || !isNaN(parseFloat(value));
+    if (!isValidNumber) {
+      // If invalid input, don't update the state
+      return;
+    }
+    
     // Update the input value
     setCompareAtPrices(prev => ({
       ...prev,
@@ -762,7 +774,7 @@ export default function ShelfLifeManagement() {
     }));
     
     // Instantly update the display in the table row
-    if (value) {
+    if (value && !isNaN(parseFloat(value))) {
       setUpdatedVariants(prev => {
         const existing = prev[variantId] || { 
           timestamp: Date.now(), 
@@ -784,6 +796,13 @@ export default function ShelfLifeManagement() {
   
   // Handle updating new Compare At price
   const handleUpdateNewCompareAtPrice = (variantId: string, value: string) => {
+    // Validate the input value is a number
+    const isValidNumber = value === '' || !isNaN(parseFloat(value));
+    if (!isValidNumber) {
+      // If invalid input, don't update the state
+      return;
+    }
+    
     // Update the input value
     setNewCompareAtPrices(prev => ({
       ...prev,
@@ -791,7 +810,7 @@ export default function ShelfLifeManagement() {
     }));
     
     // Instantly update the display in the table row
-    if (value) {
+    if (value && !isNaN(parseFloat(value))) {
       setUpdatedVariants(prev => {
         const existing = prev[variantId] || { 
           timestamp: Date.now(), 
@@ -1030,7 +1049,7 @@ export default function ShelfLifeManagement() {
   
   // Format currency for display
   const formatCurrency = (amount: number | null, currencyCode: string | null) => {
-    if (amount === null) return 'N/A';
+    if (amount === null || isNaN(Number(amount))) return 'N/A';
     
     try {
       return new Intl.NumberFormat('en-US', {
@@ -1176,7 +1195,12 @@ export default function ShelfLifeManagement() {
         <InlineStack gap="100" align="center">
           {updatedVariants[item.shopifyVariantId || ''] ? (
             <Text as="span" tone="success" fontWeight="bold">
-              {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), item.currencyCode)}
+              {formatCurrency(
+                updatedVariants[item.shopifyVariantId || ''].newPrice === '' 
+                  ? null 
+                  : parseFloat(updatedVariants[item.shopifyVariantId || ''].newPrice), 
+                item.currencyCode
+              )}
               {' '}
               <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
                 {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
@@ -1213,7 +1237,12 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         <InlineStack gap="100" align="center">
           {updatedVariants[item.shopifyVariantId || ''] && updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice ? (
             <Text as="span" tone="success" fontWeight="bold">
-              {formatCurrency(parseFloat(updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice), item.currencyCode)}
+              {formatCurrency(
+                updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice === '' || updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice === null
+                  ? null
+                  : parseFloat(updatedVariants[item.shopifyVariantId || ''].newCompareAtPrice),
+                item.currencyCode
+              )}
               {' '}
               <span style={{ fontSize: '0.7em', opacity: 0.7 }}>
                 {Math.floor((Date.now() - updatedVariants[item.shopifyVariantId || ''].timestamp) / 60000)} min ago
