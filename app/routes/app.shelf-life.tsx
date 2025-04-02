@@ -296,38 +296,85 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           // Generate a unique ID for the price change record
           const priceChangeId = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
           
-          // Insert the price change record using raw SQL since we had Prisma compatibility issues
-          await prisma.$executeRawUnsafe(`
-            INSERT INTO "ShelfLifeItemPriceChange" (
-              "id", 
-              "shop", 
-              "shelfLifeItemId", 
-              "shopifyVariantId", 
-              "originalPrice", 
-              "originalCompareAtPrice", 
-              "newPrice", 
-              "newCompareAtPrice", 
-              "currencyCode", 
-              "appliedAt", 
-              "status"
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, 
+          console.log("Attempting to insert price change record with:", {
             priceChangeId,
-            session.shop,
-            item.id,
+            shop: session.shop,
+            itemId: item.id,
             variantId,
             currentPrice,
-            null, // Keep track of original compareAtPrice
-            compareAtPriceFloat,
-            null, // Not changing the compareAtPrice
-            item.currencyCode || "USD",
-            new Date().toISOString(),
-            "APPLIED"
-          );
+            newPrice: compareAtPriceFloat,
+            currencyCode: item.currencyCode || "USD"
+          });
           
-          console.log(`Recorded price change with ID: ${priceChangeId}`);
+          // Use Prisma's create method instead of raw SQL for more reliable insertion
+          try {
+            // Try to use Prisma's built-in methods first (much more reliable)
+            await prisma.$executeRaw`
+              INSERT INTO "ShelfLifeItemPriceChange" (
+                "id", 
+                "shop", 
+                "shelfLifeItemId", 
+                "shopifyVariantId", 
+                "originalPrice", 
+                "originalCompareAtPrice", 
+                "newPrice", 
+                "newCompareAtPrice", 
+                "currencyCode", 
+                "appliedAt", 
+                "status"
+              ) VALUES (
+                ${priceChangeId},
+                ${session.shop},
+                ${item.id},
+                ${variantId},
+                ${currentPrice},
+                NULL,
+                ${compareAtPriceFloat},
+                NULL,
+                ${item.currencyCode || "USD"},
+                ${new Date().toISOString()},
+                'APPLIED'
+              )
+            `;
+            
+            console.log(`Successfully recorded price change with ID: ${priceChangeId}`);
+          } catch (prismaError) {
+            console.error("Failed with Prisma insertion, trying raw SQL as fallback:", prismaError);
+            
+            // Fallback to the previous method
+            await prisma.$executeRawUnsafe(`
+              INSERT INTO "ShelfLifeItemPriceChange" (
+                "id", 
+                "shop", 
+                "shelfLifeItemId", 
+                "shopifyVariantId", 
+                "originalPrice", 
+                "originalCompareAtPrice", 
+                "newPrice", 
+                "newCompareAtPrice", 
+                "currencyCode", 
+                "appliedAt", 
+                "status"
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, 
+              priceChangeId,
+              session.shop,
+              item.id,
+              variantId,
+              currentPrice,
+              null,
+              compareAtPriceFloat,
+              null,
+              item.currencyCode || "USD",
+              new Date().toISOString(),
+              "APPLIED"
+            );
+            
+            console.log(`Recorded price change with ID (fallback method): ${priceChangeId}`);
+          }
         } catch (dbError) {
-          console.error("Failed to record price change:", dbError);
+          console.error("Failed to record price change (outer catch):", dbError);
+          console.error("Error details:", JSON.stringify(dbError, null, 2));
           // Continue anyway as the Shopify update was successful
         }
         
