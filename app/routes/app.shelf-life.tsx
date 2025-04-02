@@ -1040,6 +1040,11 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
             </Tooltip>
           )}
         </InlineStack>,
+        <Text as="span" tone={textTone} fontWeight={fontWeight}>
+          {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
+            ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
+            : "N/A"}
+        </Text>,
         <InlineStack gap="100" align="center">
           <input
             type="number"
@@ -1398,6 +1403,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           'numeric',
                           'numeric',
                           'numeric',
+                          'numeric',
                           'text',
                           'text',
                           'text',
@@ -1436,6 +1442,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           'Location',
                           'Shopify Product',
                           'Price',
+                          'Compare At',
                           'Set Sale Price',
                           'Cost',
                           'Sync Status',
