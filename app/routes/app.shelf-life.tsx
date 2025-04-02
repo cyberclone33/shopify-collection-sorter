@@ -1211,7 +1211,13 @@ export default function ShelfLifeManagement() {
       return items.filter(item => !item.syncStatus || item.syncStatus === "UNMATCHED");
     }
     
+    // For expiration-based categories, only include items that ARE synced (have sync status of MATCHED)
     return items.filter(item => {
+      // First ensure that item is synced before including it in any expiration-based tabs
+      if (!item.syncStatus || item.syncStatus !== "MATCHED") {
+        return false; // Don't include not synced items in expiration tabs
+      }
+      
       const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
       
       if (daysUntilExpiration === null) {
@@ -1263,7 +1269,7 @@ export default function ShelfLifeManagement() {
     } else if (item.syncStatus === "UNMATCHED") {
       return <Text as="span" tone="critical">Not Matched</Text>;
     } else {
-      return <Text as="span" tone="subdued">Not Synced</Text>;
+      return <Text as="span" tone="warning">Pending Sync</Text>;
     }
   };
 
@@ -1464,8 +1470,10 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       // Count not synced items first
       if (!item.syncStatus || item.syncStatus === "UNMATCHED") {
         counts.notSynced++;
+        return; // Skip expiration counting for not synced items
       }
       
+      // Only count expiration for synced items
       const daysUntilExpiration = getDaysUntilExpiration(item.batchId);
       
       if (daysUntilExpiration === null) return;
@@ -1510,26 +1518,31 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       id: 'expired',
       content: `Expired (${expirationCounts.expired})`,
       panelID: 'expired-panel',
+      disabled: expirationCounts.expired === 0
     },
     {
       id: 'expiring-soon',
       content: `Expiring Soon (${expirationCounts.expiringSoon})`,
       panelID: 'expiring-soon-panel',
+      disabled: expirationCounts.expiringSoon === 0
     },
     {
       id: 'expiring-60',
       content: `60 Days (${expirationCounts.expiring60})`,
       panelID: 'expiring-60-panel',
+      disabled: expirationCounts.expiring60 === 0
     },
     {
       id: 'expiring-90',
       content: `90 Days (${expirationCounts.expiring90})`,
       panelID: 'expiring-90-panel',
+      disabled: expirationCounts.expiring90 === 0
     },
     {
       id: 'good',
       content: `Good Inventory (${expirationCounts.good})`,
       panelID: 'good-panel',
+      disabled: expirationCounts.good === 0
     },
   ];
   
@@ -1593,11 +1606,16 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         } : undefined}
         secondaryActions={selectedTab === 1 ? [
           {
-            content: isSyncing ? `Syncing... ${syncProgress}%` : "Sync with Shopify",
+            content: isSyncing 
+              ? `Syncing... ${syncProgress}%` 
+              : expirationCounts.notSynced > 0
+                ? `Sync with Shopify (${expirationCounts.notSynced} items need matching)`
+                : "Sync with Shopify",
             icon: RefreshIcon,
             onAction: handleSync,
             loading: isSyncing,
             disabled: isSyncing,
+            tone: expirationCounts.notSynced > 0 ? "warning" : undefined
           }
         ] : undefined}
       >
@@ -1711,13 +1729,22 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           onClick={handleSync} 
                           loading={isSyncing}
                           disabled={isSyncing || isDeleting}
-                          tone={Object.keys(updatedVariants).length > 0 ? "success" : undefined}
+                          tone={
+                            expirationCounts.notSynced > 0 
+                              ? "warning" 
+                              : Object.keys(updatedVariants).length > 0 
+                                ? "success" 
+                                : undefined
+                          }
                         >
                           {isSyncing 
                             ? `Syncing... ${syncProgress}%` 
-                            : Object.keys(updatedVariants).length > 0 
-                              ? `Sync with Shopify (${Object.keys(updatedVariants).length} updates pending)`
-                              : "Sync with Shopify"}
+                            : expirationCounts.notSynced > 0
+                              ? `Sync with Shopify (${expirationCounts.notSynced} items need matching)`
+                              : Object.keys(updatedVariants).length > 0 
+                                ? `Sync with Shopify (${Object.keys(updatedVariants).length} updates pending)`
+                                : "Sync with Shopify"
+                          }
                         </Button>
                         
                         <Popover
@@ -1746,6 +1773,15 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                     </InlineStack>
                     
                     {/* Display category-specific banner */}
+                    {getCurrentTabId() === 'view' && (
+                      <Box paddingBlockEnd="300">
+                        <Banner tone="info">
+                          <Text as="p">
+                            Showing all items regardless of sync status. Use the "Not Synced" tab to view only items that haven't been matched with Shopify products. Expiration tabs only show synced items.
+                          </Text>
+                        </Banner>
+                      </Box>
+                    )}
                     {getCurrentTabId() !== 'upload' && getCurrentTabId() !== 'view' && (
                       <Box paddingBlockEnd="300">
                         <Banner tone={
@@ -1761,7 +1797,20 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                             {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
                             {getCurrentTabId() === 'expiring-90' && `Showing ${rows.length} items expiring within 61-90 days.`}
                             {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 90 days until expiration.`}
-                            {getCurrentTabId() === 'not-synced' && `Showing ${rows.length} items that have not been synced with Shopify. Click "Sync with Shopify" to match these items with your products.`}
+                            {getCurrentTabId() === 'not-synced' && (
+                              <>
+                                Showing {rows.length} items that have not been successfully matched with Shopify products. 
+                                Click "Sync with Shopify" to attempt matching these items with your products again.
+                                <Box paddingBlockStart="300">
+                                  <Text fontWeight="medium" as="p">Common reasons for failed matching:</Text>
+                                  <ul>
+                                    <li>Product IDs (SKUs) in your CSV don't match SKUs in your Shopify store</li>
+                                    <li>Products may have been deleted or archived in Shopify</li>
+                                    <li>API limits may have been reached during sync</li>
+                                  </ul>
+                                </Box>
+                              </>
+                            )}
                           </Text>
                         </Banner>
                       </Box>
