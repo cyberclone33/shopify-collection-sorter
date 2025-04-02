@@ -755,18 +755,60 @@ export default function ShelfLifeManagement() {
   
   // Handle updating sale price
   const handleUpdateCompareAtPrice = (variantId: string, value: string) => {
+    // Update the input value
     setCompareAtPrices(prev => ({
       ...prev,
       [variantId]: value
     }));
+    
+    // Instantly update the display in the table row
+    if (value) {
+      setUpdatedVariants(prev => {
+        const existing = prev[variantId] || { 
+          timestamp: Date.now(), 
+          newPrice: '', 
+          newCompareAtPrice: prev[variantId]?.newCompareAtPrice || null 
+        };
+        
+        return {
+          ...prev,
+          [variantId]: {
+            ...existing,
+            timestamp: Date.now(),
+            newPrice: value
+          }
+        };
+      });
+    }
   };
   
   // Handle updating new Compare At price
   const handleUpdateNewCompareAtPrice = (variantId: string, value: string) => {
+    // Update the input value
     setNewCompareAtPrices(prev => ({
       ...prev,
       [variantId]: value
     }));
+    
+    // Instantly update the display in the table row
+    if (value) {
+      setUpdatedVariants(prev => {
+        const existing = prev[variantId] || { 
+          timestamp: Date.now(), 
+          newPrice: prev[variantId]?.newPrice || '', 
+          newCompareAtPrice: null 
+        };
+        
+        return {
+          ...prev,
+          [variantId]: {
+            ...existing,
+            timestamp: Date.now(),
+            newCompareAtPrice: value
+          }
+        };
+      });
+    }
   };
   
   // Handle submitting sale price update
