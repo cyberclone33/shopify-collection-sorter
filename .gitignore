@@ -22,3 +22,6 @@ database.sqlite
 # Ignore shopify files created during app dev
 .shopify/*
 .shopify.lock
+
+# macOS system files
+.DS_Store
