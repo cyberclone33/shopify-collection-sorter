@@ -421,13 +421,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Handle delete all items
   if (action === "deleteAll") {
     try {
+      // First, update all ShelfLifeItemPriceChange records to remove the relationship
+      // This will prevent them from being deleted due to cascade effect
+      await prisma.$executeRawUnsafe(`
+        UPDATE "ShelfLifeItemPriceChange"
+        SET "shelfLifeItemId" = NULL
+        WHERE "shop" = ?
+      `, shop);
+      
+      // Then delete all shelf life items
       const result = await prisma.shelfLifeItem.deleteMany({
         where: { shop }
       });
       
+      console.log(`Deleted ${result.count} shelf life items while preserving price change history`);
+      
       return json<ActionData>({
         status: "success",
-        message: `${result.count} items deleted successfully`
+        message: `${result.count} items deleted successfully (price change history preserved)`
       });
     } catch (error) {
       console.error("Error deleting all items:", error);

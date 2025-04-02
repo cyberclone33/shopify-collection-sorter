@@ -405,7 +405,8 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
     let savedCount = 0;
     
     for (const item of data) {
-      await prisma.shelfLifeItem.upsert({
+      // 1. First upsert the ShelfLifeItem
+      const savedItem = await prisma.shelfLifeItem.upsert({
         where: {
           productId_batchId: {
             productId: item.productId,
@@ -429,6 +430,10 @@ export async function saveShelfLifeData(data: ShelfLifeData[], shop: string): Pr
           location: item.location || "default",
         },
       });
+      
+      // 2. After sync with Shopify, we'll later have shopifyVariantId populated 
+      // for items that match Shopify products
+      
       savedCount++;
     }
     
@@ -718,6 +723,9 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
     // Group shelf life items by variant ID for metafield updates
     const variantExpirationMap = new Map();
     
+    // Keep track of which variant IDs are associated with which item IDs for reconnecting price history
+    const variantToItemMap = new Map();
+    
     for (const item of shelfLifeItems) {
       const variantDetails = skuToVariantMap.get(item.productId);
       
@@ -739,6 +747,9 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
             syncMessage: "Successfully matched with Shopify variant"
           }
         });
+        
+        // Track which variant ID is associated with which item ID
+        variantToItemMap.set(variantDetails.variantId, item.id);
         
         // Add this item to the variant expiration map
         if (!variantExpirationMap.has(variantDetails.variantId)) {
@@ -832,15 +843,65 @@ export async function syncWithShopify(shop: string, admin: any): Promise<{
       }
     }
     
-    const apiLimitMessage = hasNextPage ? 
-      ` Note: API call limit reached after processing ${productsProcessed} products. Some products may not have been checked.` : '';
-    
-    return {
-      success: true,
-      matchedCount,
-      unmatchedItems,
-      message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products. Updated metafields for ${variantExpirationMap.size} variants.${apiLimitMessage}`
-    };
+    // Reconnect orphaned price history records with new items based on variantId
+    try {
+      // Find price history records with null shelfLifeItemId but with valid shopifyVariantId
+      const orphanedPriceChanges = await prisma.shelfLifeItemPriceChange.findMany({
+        where: {
+          shop,
+          shelfLifeItemId: null,
+          shopifyVariantId: {
+            in: Array.from(variantToItemMap.keys())
+          }
+        }
+      });
+      
+      console.log(`Found ${orphanedPriceChanges.length} orphaned price history records to reconnect`);
+      
+      // Reconnect each orphaned price history record
+      let reconnectedCount = 0;
+      for (const priceChange of orphanedPriceChanges) {
+        const newItemId = variantToItemMap.get(priceChange.shopifyVariantId);
+        if (newItemId) {
+          await prisma.shelfLifeItemPriceChange.update({
+            where: {
+              id: priceChange.id
+            },
+            data: {
+              shelfLifeItemId: newItemId
+            }
+          });
+          reconnectedCount++;
+        }
+      }
+      
+      console.log(`Reconnected ${reconnectedCount} price history records with new items`);
+      
+      const apiLimitMessage = hasNextPage ? 
+        ` Note: API call limit reached after processing ${productsProcessed} products. Some products may not have been checked.` : '';
+      
+      const reconnectionMessage = reconnectedCount > 0 ? 
+        ` Reconnected ${reconnectedCount} price history records with new items.` : '';
+      
+      return {
+        success: true,
+        matchedCount,
+        unmatchedItems,
+        message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products. Updated metafields for ${variantExpirationMap.size} variants.${reconnectionMessage}${apiLimitMessage}`
+      };
+    } catch (error) {
+      console.error("Error reconnecting price history records:", error);
+      
+      const apiLimitMessage = hasNextPage ? 
+        ` Note: API call limit reached after processing ${productsProcessed} products. Some products may not have been checked.` : '';
+      
+      return {
+        success: true,
+        matchedCount,
+        unmatchedItems,
+        message: `Successfully matched ${matchedCount} out of ${shelfLifeItems.length} shelf life items with Shopify products. Updated metafields for ${variantExpirationMap.size} variants. Failed to reconnect price history: ${error instanceof Error ? error.message : String(error)}${apiLimitMessage}`
+      };
+    }
   } catch (error) {
     console.error("Error syncing with Shopify:", error);
     return {

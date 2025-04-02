@@ -112,20 +112,20 @@ model ShelfLifeItem {
 }
 
 model ShelfLifeItemPriceChange {
-  id                String    @id @default(cuid())
+  id                String       @id @default(cuid())
   shop              String
-  shelfLifeItemId   String
-  shelfLifeItem     ShelfLifeItem @relation(fields: [shelfLifeItemId], references: [id], onDelete: Cascade)
+  shelfLifeItemId   String?
+  shelfLifeItem     ShelfLifeItem? @relation(fields: [shelfLifeItemId], references: [id], onDelete: SetNull)
   shopifyVariantId  String
   originalPrice     Float
   originalCompareAtPrice Float?
   newPrice          Float
   newCompareAtPrice Float
   currencyCode      String?
-  appliedAt         DateTime  @default(now())
+  appliedAt         DateTime    @default(now())
   appliedByUserId   String?
   appliedByUserName String?
-  status            String    @default("APPLIED") // APPLIED, REVERTED, etc.
+  status            String      @default("APPLIED") // APPLIED, REVERTED, etc.
   notes             String?
 
   @@index([shelfLifeItemId])
