@@ -1527,7 +1527,7 @@ export default function ShelfLifeManagement() {
       // Show warning that no items are selected
       setToastActive(true);
       setToastContent({
-        message: "Please select items before applying automatic discounts. Use the checkboxes in the table to select individual items.",
+        message: "Please select items before applying automatic discounts.",
         tone: "warning"
       });
       return;
@@ -1853,15 +1853,12 @@ export default function ShelfLifeManagement() {
       const fontWeight = isExpired || isExpiringSoon ? "bold" : "regular";
       
       return [
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <input 
-            type="checkbox" 
-            checked={selectedItems.includes(item.id)} 
-            onChange={(e) => handleSelectItem(item.id, e.target.checked)}
-            disabled={isDeleting}
-            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-          />
-        </div>,
+        <input 
+          type="checkbox" 
+          checked={selectedItems.includes(item.id)} 
+          onChange={(e) => handleSelectItem(item.id, e.target.checked)}
+          disabled={isDeleting}
+        />,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.productId}</Text>,
         <Text as="span" tone={textTone} fontWeight={fontWeight}>{item.batchId}</Text>,
         getExpirationStatus(item.batchId),
@@ -2409,10 +2406,10 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                         <ButtonGroup>
                           <Button 
                             onClick={() => setAutoDiscountModalActive(true)}
-                            disabled={isApplyingDiscounts || isRevertingDiscounts || selectedItems.length === 0}
+                            disabled={isApplyingDiscounts || isRevertingDiscounts}
                             tone="success"
                           >
-                            Apply Automatic Discounts {selectedItems.length > 0 ? `(${selectedItems.length})` : ''}
+                            Apply Automatic Discounts
                           </Button>
                           
                           <Button 
@@ -2452,7 +2449,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                     {/* Filter Controls */}
                     {getCurrentTabId() !== 'upload' && (
                       <Box paddingBlockStart="300" paddingBlockEnd="300">
-                        <InlineStack gap="300" align="center" wrap={false}>
+                        <InlineStack gap="300" align="center">
                           <Button
                             onClick={() => setHideZeroQuantity(!hideZeroQuantity)}
                             variant="tertiary"
@@ -2463,12 +2460,6 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           {hideZeroQuantity && (
                             <Text as="span" tone="info">
                               Filtered out {shelfLifeItems.length - getFilteredItems(shelfLifeItems, getCurrentTabId()).length} items with 0 quantity
-                            </Text>
-                          )}
-                          
-                          {selectedItems.length > 0 && (
-                            <Text as="span" tone="success" fontWeight="bold">
-                              {selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''} selected
                             </Text>
                           )}
                         </InlineStack>
@@ -2593,36 +2584,30 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           'text'
                         ]}
                         headings={[
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={rows.length > 0 && 
-                                getFilteredItems(shelfLifeItems, getCurrentTabId())
-                                  .every(item => selectedItems.includes(item.id))} 
-                              onChange={(e) => {
-                                const currentItems = getFilteredItems(shelfLifeItems, getCurrentTabId());
-                                if (e.target.checked) {
-                                  // Select all visible items in the current tab
-                                  const newSelectedItems = [...selectedItems];
-                                  currentItems.forEach(item => {
-                                    if (!selectedItems.includes(item.id)) {
-                                      newSelectedItems.push(item.id);
-                                    }
-                                  });
-                                  setSelectedItems(newSelectedItems);
-                                } else {
-                                  // Deselect all visible items in the current tab
-                                  const currentItemIds = currentItems.map(item => item.id);
-                                  setSelectedItems(selectedItems.filter(id => !currentItemIds.includes(id)));
-                                }
-                              }}
-                              disabled={isDeleting || rows.length === 0}
-                              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                            />
-                            <Text as="span" variant="bodySm" fontWeight="medium" color="subdued" style={{ marginLeft: '4px' }}>
-                              {selectedItems.length > 0 ? selectedItems.length : ""}
-                            </Text>
-                          </div>,
+                          <input 
+                            type="checkbox" 
+                            checked={rows.length > 0 && 
+                              getFilteredItems(shelfLifeItems, getCurrentTabId())
+                                .every(item => selectedItems.includes(item.id))} 
+                            onChange={(e) => {
+                              const currentItems = getFilteredItems(shelfLifeItems, getCurrentTabId());
+                              if (e.target.checked) {
+                                // Select all visible items in the current tab
+                                const newSelectedItems = [...selectedItems];
+                                currentItems.forEach(item => {
+                                  if (!selectedItems.includes(item.id)) {
+                                    newSelectedItems.push(item.id);
+                                  }
+                                });
+                                setSelectedItems(newSelectedItems);
+                              } else {
+                                // Deselect all visible items in the current tab
+                                const currentItemIds = currentItems.map(item => item.id);
+                                setSelectedItems(selectedItems.filter(id => !currentItemIds.includes(id)));
+                              }
+                            }}
+                            disabled={isDeleting || rows.length === 0}
+                          />,
                           'Product ID',
                           'Batch ID',
                           'Expiration Status',
@@ -2829,7 +2814,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         onClose={() => setAutoDiscountModalActive(false)}
         title="Apply Automatic Discounts"
         primaryAction={{
-          content: `Apply Discounts to ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''}`,
+          content: "Apply Discounts",
           onAction: handleApplyAutomaticDiscounts,
           loading: isApplyingDiscounts
         }}
@@ -2842,15 +2827,8 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       >
         <Modal.Section>
           <BlockStack gap="400">
-            <Banner tone="info">
-              <Text as="p">
-                You have selected <strong>{selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''}</strong> for automatic discounting.
-                Discounts will be applied only to the selected items based on their expiration date.
-              </Text>
-            </Banner>
-            
             <Text as="p">
-              Automatic discounts will be applied to selected products based on their expiration date using the following rules:
+              This will apply automatic discounts to products based on their expiration date using the following rules:
             </Text>
             
             <DataTable
