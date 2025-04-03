@@ -625,6 +625,7 @@ export default function ShelfLifeManagement() {
   }>>({});
   const [selectedPriceHistory, setSelectedPriceHistory] = useState<{ itemId: string, variantId: string } | null>(null);
   const [priceHistoryModalActive, setPriceHistoryModalActive] = useState(false);
+  const [hideZeroQuantity, setHideZeroQuantity] = useState(false);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -1202,17 +1203,30 @@ export default function ShelfLifeManagement() {
   
   // Filter items based on their sync status and expiration status
   const getFilteredItems = (items: ShelfLifeItem[], tabId: string) => {
+    let filteredItems = items;
+    
+    // Apply the zero quantity filter if enabled
+    if (hideZeroQuantity) {
+      filteredItems = filteredItems.filter(item => {
+        // Only filter out items that have been synced and have quantity of 0
+        if (item.syncStatus === "MATCHED" && item.quantity === 0) {
+          return false;
+        }
+        return true;
+      });
+    }
+    
     if (tabId === 'view') {
-      return items; // Return all items for the "All Inventory" tab
+      return filteredItems; // Return all items for the "All Inventory" tab (with zero quantity filter applied if enabled)
     }
     
     // Special case for "Not Synced" tab
     if (tabId === 'not-synced') {
-      return items.filter(item => !item.syncStatus || item.syncStatus === "UNMATCHED");
+      return filteredItems.filter(item => !item.syncStatus || item.syncStatus === "UNMATCHED");
     }
     
     // For expiration-based categories, only include items that ARE synced (have sync status of MATCHED)
-    return items.filter(item => {
+    return filteredItems.filter(item => {
       // First ensure that item is synced before including it in any expiration-based tabs
       if (!item.syncStatus || item.syncStatus !== "MATCHED") {
         return false; // Don't include not synced items in expiration tabs
@@ -1466,13 +1480,28 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       expiring90: 0,
       expiring180: 0,
       good: 0,
-      notSynced: 0
+      notSynced: 0,
+      // Add filtered counts when zero quantity filter is applied
+      filteredExpired: 0,
+      filteredExpiringSoon: 0,
+      filteredExpiring60: 0,
+      filteredExpiring90: 0,
+      filteredExpiring180: 0,
+      filteredGood: 0,
+      filteredNotSynced: 0,
+      totalFiltered: 0
     };
     
     shelfLifeItems.forEach(item => {
+      // Skip items with zero quantity if the filter is applied
+      const isZeroQuantity = item.quantity === 0 && item.syncStatus === "MATCHED";
+      
       // Count not synced items first
       if (!item.syncStatus || item.syncStatus === "UNMATCHED") {
         counts.notSynced++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredNotSynced++;
+        }
         return; // Skip expiration counting for not synced items
       }
       
@@ -1483,16 +1512,39 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
       
       if (daysUntilExpiration < 0) {
         counts.expired++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredExpired++;
+        }
       } else if (daysUntilExpiration <= 30) {
         counts.expiringSoon++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredExpiringSoon++;
+        }
       } else if (daysUntilExpiration <= 60) {
         counts.expiring60++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredExpiring60++;
+        }
       } else if (daysUntilExpiration <= 90) {
         counts.expiring90++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredExpiring90++;
+        }
       } else if (daysUntilExpiration <= 180) {
         counts.expiring180++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredExpiring180++;
+        }
       } else {
         counts.good++;
+        if (!isZeroQuantity || !hideZeroQuantity) {
+          counts.filteredGood++;
+        }
+      }
+      
+      // Count total filtered items
+      if (!isZeroQuantity || !hideZeroQuantity) {
+        counts.totalFiltered++;
       }
     });
     
@@ -1511,49 +1563,65 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
     },
     {
       id: 'view',
-      content: `All Inventory (${shelfLifeItems.length})`,
+      content: hideZeroQuantity 
+        ? `All Inventory (${expirationCounts.totalFiltered}/${shelfLifeItems.length})` 
+        : `All Inventory (${shelfLifeItems.length})`,
       panelID: 'view-panel',
     },
     {
       id: 'not-synced',
-      content: `Not Synced (${expirationCounts.notSynced})`,
+      content: hideZeroQuantity 
+        ? `Not Synced (${expirationCounts.filteredNotSynced}/${expirationCounts.notSynced})` 
+        : `Not Synced (${expirationCounts.notSynced})`,
       panelID: 'not-synced-panel',
     },
     {
       id: 'expired',
-      content: `Expired (${expirationCounts.expired})`,
+      content: hideZeroQuantity 
+        ? `Expired (${expirationCounts.filteredExpired}/${expirationCounts.expired})` 
+        : `Expired (${expirationCounts.expired})`,
       panelID: 'expired-panel',
-      disabled: expirationCounts.expired === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredExpired === 0 : expirationCounts.expired === 0
     },
     {
       id: 'expiring-soon',
-      content: `Expiring Soon (${expirationCounts.expiringSoon})`,
+      content: hideZeroQuantity 
+        ? `Expiring Soon (${expirationCounts.filteredExpiringSoon}/${expirationCounts.expiringSoon})` 
+        : `Expiring Soon (${expirationCounts.expiringSoon})`,
       panelID: 'expiring-soon-panel',
-      disabled: expirationCounts.expiringSoon === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredExpiringSoon === 0 : expirationCounts.expiringSoon === 0
     },
     {
       id: 'expiring-60',
-      content: `60 Days (${expirationCounts.expiring60})`,
+      content: hideZeroQuantity 
+        ? `60 Days (${expirationCounts.filteredExpiring60}/${expirationCounts.expiring60})` 
+        : `60 Days (${expirationCounts.expiring60})`,
       panelID: 'expiring-60-panel',
-      disabled: expirationCounts.expiring60 === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredExpiring60 === 0 : expirationCounts.expiring60 === 0
     },
     {
       id: 'expiring-90',
-      content: `90 Days (${expirationCounts.expiring90})`,
+      content: hideZeroQuantity 
+        ? `90 Days (${expirationCounts.filteredExpiring90}/${expirationCounts.expiring90})` 
+        : `90 Days (${expirationCounts.expiring90})`,
       panelID: 'expiring-90-panel',
-      disabled: expirationCounts.expiring90 === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredExpiring90 === 0 : expirationCounts.expiring90 === 0
     },
     {
       id: 'expiring-180',
-      content: `180 Days (${expirationCounts.expiring180})`,
+      content: hideZeroQuantity 
+        ? `180 Days (${expirationCounts.filteredExpiring180}/${expirationCounts.expiring180})` 
+        : `180 Days (${expirationCounts.expiring180})`,
       panelID: 'expiring-180-panel',
-      disabled: expirationCounts.expiring180 === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredExpiring180 === 0 : expirationCounts.expiring180 === 0
     },
     {
       id: 'good',
-      content: `Good Inventory (>180 days) (${expirationCounts.good})`,
+      content: hideZeroQuantity 
+        ? `Good Inventory (>180 days) (${expirationCounts.filteredGood}/${expirationCounts.good})` 
+        : `Good Inventory (>180 days) (${expirationCounts.good})`,
       panelID: 'good-panel',
-      disabled: expirationCounts.good === 0
+      disabled: hideZeroQuantity ? expirationCounts.filteredGood === 0 : expirationCounts.good === 0
     },
   ];
   
@@ -1783,12 +1851,36 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                       </ButtonGroup>
                     </InlineStack>
                     
+                    {/* Filter Controls */}
+                    {getCurrentTabId() !== 'upload' && (
+                      <Box paddingBlockStart="300" paddingBlockEnd="300">
+                        <InlineStack gap="300" align="center">
+                          <Button
+                            onClick={() => setHideZeroQuantity(!hideZeroQuantity)}
+                            variant="tertiary"
+                            pressed={hideZeroQuantity}
+                          >
+                            {hideZeroQuantity ? "Show Zero Quantity Items" : "Hide Zero Quantity Items"}
+                          </Button>
+                          {hideZeroQuantity && (
+                            <Text as="span" tone="info">
+                              Filtered out {shelfLifeItems.length - getFilteredItems(shelfLifeItems, getCurrentTabId()).length} items with 0 quantity
+                            </Text>
+                          )}
+                        </InlineStack>
+                      </Box>
+                    )}
+                    
                     {/* Display category-specific banner */}
                     {getCurrentTabId() === 'view' && (
                       <Box paddingBlockEnd="300">
                         <Banner tone="info">
                           <Text as="p">
-                            Showing all items regardless of sync status. Use the "Not Synced" tab to view only items that haven't been matched with Shopify products. Expiration tabs only show synced items.
+                            {hideZeroQuantity 
+                              ? `Showing ${rows.length} of ${shelfLifeItems.length} items (filtered to hide zero quantity items). ` 
+                              : `Showing all ${shelfLifeItems.length} items. `
+                            }
+                            Use the "Not Synced" tab to view only items that haven't been matched with Shopify products. Expiration tabs only show synced items.
                           </Text>
                         </Banner>
                       </Box>
@@ -1804,15 +1896,42 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           getCurrentTabId() === 'not-synced' ? 'warning' : 'success'
                         }>
                           <Text as="p">
-                            {getCurrentTabId() === 'expired' && `Showing ${rows.length} expired items. These products have passed their expiration date.`}
-                            {getCurrentTabId() === 'expiring-soon' && `Showing ${rows.length} items expiring within 30 days. These products need immediate attention.`}
-                            {getCurrentTabId() === 'expiring-60' && `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`}
-                            {getCurrentTabId() === 'expiring-90' && `Showing ${rows.length} items expiring within 61-90 days.`}
-                            {getCurrentTabId() === 'expiring-180' && `Showing ${rows.length} items expiring within 91-180 days.`}
-                            {getCurrentTabId() === 'good' && `Showing ${rows.length} items with more than 180 days until expiration.`}
+                            {getCurrentTabId() === 'expired' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.expired} expired items (filtered to hide zero quantity items). These products have passed their expiration date.` 
+                                : `Showing ${rows.length} expired items. These products have passed their expiration date.`
+                            )}
+                            {getCurrentTabId() === 'expiring-soon' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.expiringSoon} items expiring within 30 days (filtered to hide zero quantity items). These products need immediate attention.` 
+                                : `Showing ${rows.length} items expiring within 30 days. These products need immediate attention.`
+                            )}
+                            {getCurrentTabId() === 'expiring-60' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.expiring60} items expiring within 31-60 days (filtered to hide zero quantity items). Consider planning for these items.` 
+                                : `Showing ${rows.length} items expiring within 31-60 days. Consider planning for these items.`
+                            )}
+                            {getCurrentTabId() === 'expiring-90' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.expiring90} items expiring within 61-90 days (filtered to hide zero quantity items).` 
+                                : `Showing ${rows.length} items expiring within 61-90 days.`
+                            )}
+                            {getCurrentTabId() === 'expiring-180' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.expiring180} items expiring within 91-180 days (filtered to hide zero quantity items).` 
+                                : `Showing ${rows.length} items expiring within 91-180 days.`
+                            )}
+                            {getCurrentTabId() === 'good' && (
+                              hideZeroQuantity 
+                                ? `Showing ${rows.length} of ${expirationCounts.good} items with more than 180 days until expiration (filtered to hide zero quantity items).` 
+                                : `Showing ${rows.length} items with more than 180 days until expiration.`
+                            )}
                             {getCurrentTabId() === 'not-synced' && (
                               <>
-                                Showing {rows.length} items that have not been successfully matched with Shopify products. 
+                                {hideZeroQuantity 
+                                  ? `Showing ${rows.length} of ${expirationCounts.notSynced} items that have not been successfully matched with Shopify products (filtered to hide zero quantity items).` 
+                                  : `Showing ${rows.length} items that have not been successfully matched with Shopify products.`
+                                } 
                                 Click "Sync with Shopify" to attempt matching these items with your products again.
                                 <Box paddingBlockStart="300">
                                   <Text fontWeight="medium" as="p">Common reasons for failed matching:</Text>
