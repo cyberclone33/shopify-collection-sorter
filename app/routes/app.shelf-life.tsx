@@ -148,6 +148,16 @@ interface ActionData {
     }>;
   };
   deletedCount?: number;
+  discountResult?: {
+    success: boolean;
+    itemsDiscounted: number;
+    totalItems: number;
+    message: string;
+    errors?: Array<{
+      productId: string;
+      reason: string;
+    }>;
+  };
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -546,6 +556,217 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
   
+  // Handle automatic discounts based on expiration date
+  if (action === "applyAutomaticDiscounts") {
+    try {
+      console.log("Applying automatic discounts based on expiration date");
+      
+      // Get all shelf life items that are synced with Shopify
+      const items = await prisma.shelfLifeItem.findMany({
+        where: { 
+          shop,
+          syncStatus: "MATCHED",
+          shopifyVariantId: { not: null },
+          shopifyProductId: { not: null },
+          variantPrice: { not: null },
+          variantCost: { not: null }
+        }
+      });
+      
+      console.log(`Found ${items.length} valid items for potential discounting`);
+      
+      // Track successful and failed updates
+      let discountedItems = 0;
+      const errors: Array<{ productId: string; reason: string }> = [];
+      
+      // Process each item
+      for (const item of items) {
+        try {
+          if (!item.shopifyProductId || !item.shopifyVariantId || 
+              item.variantPrice === null || item.variantCost === null) {
+            errors.push({
+              productId: item.productId,
+              reason: "Missing required data (product ID, variant ID, price, or cost)"
+            });
+            continue;
+          }
+          
+          // Calculate days until expiration
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const expirationDate = new Date(item.expirationDate);
+          expirationDate.setHours(0, 0, 0, 0);
+          
+          const diffTime = expirationDate.getTime() - today.getTime();
+          const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          console.log(`Item ${item.productId} has ${daysLeft} days until expiration`);
+          
+          // Skip items that aren't expiring soon
+          if (daysLeft > 180) {
+            continue;
+          }
+          
+          // Calculate margin and discount percentage
+          const margin = item.variantPrice - item.variantCost;
+          let marginPercentToKeep = 0.8; // Default: keep 80% (180+ days)
+          let discountReason = "180_DAYS_LEFT";
+          
+          if (daysLeft <= 30) {
+            marginPercentToKeep = 0.1; // Keep 10% (30 days or less)
+            discountReason = "30_DAYS_LEFT";
+          } else if (daysLeft <= 60) {
+            marginPercentToKeep = 0.35; // Keep 35% (60 days or less)
+            discountReason = "60_DAYS_LEFT";
+          } else if (daysLeft <= 90) {
+            marginPercentToKeep = 0.6; // Keep 60% (90 days or less)
+            discountReason = "90_DAYS_LEFT";
+          } else if (daysLeft <= 180) {
+            marginPercentToKeep = 0.8; // Keep 80% (180 days or less)
+            discountReason = "180_DAYS_LEFT";
+          }
+          
+          // Calculate new price
+          const newPrice = item.variantCost + (margin * marginPercentToKeep);
+          const roundedNewPrice = Math.ceil(newPrice); // Round up to whole number
+          
+          console.log(`
+            Item: ${item.productId}
+            Original Price: ${item.variantPrice}
+            Cost: ${item.variantCost}
+            Margin: ${margin}
+            Days Left: ${daysLeft}
+            Keep: ${marginPercentToKeep * 100}%
+            New Price: ${roundedNewPrice}
+          `);
+          
+          // Skip if the discounted price is the same as current price
+          if (roundedNewPrice === item.variantPrice) {
+            console.log(`Skipping item ${item.productId} as new price equals current price`);
+            continue;
+          }
+          
+          // Update price in Shopify
+          const variantInput = {
+            id: item.shopifyVariantId,
+            price: roundedNewPrice.toFixed(2),
+            compareAtPrice: item.variantPrice.toFixed(2) // Set original price as compareAt
+          };
+          
+          // Use the productVariantsBulkUpdate with the correct productId parameter
+          const response = await admin.graphql(
+            `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants {
+                  id
+                  title
+                  price
+                  compareAtPrice
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`,
+            {
+              variables: {
+                productId: item.shopifyProductId,
+                variants: [variantInput]
+              }
+            }
+          );
+          
+          const responseJson = await response.json();
+          
+          if (responseJson.errors || responseJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+            const errorMessage = responseJson.errors?.[0]?.message || 
+                               responseJson.data?.productVariantsBulkUpdate?.userErrors?.[0]?.message || 
+                               "Unknown GraphQL error";
+                               
+            errors.push({
+              productId: item.productId,
+              reason: `GraphQL error: ${errorMessage}`
+            });
+            continue;
+          }
+          
+          // Record the price change in the database
+          const priceChangeId = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+          
+          await prisma.$executeRaw`
+            INSERT INTO "ShelfLifeItemPriceChange" (
+              "id", 
+              "shop", 
+              "shelfLifeItemId", 
+              "shopifyVariantId", 
+              "originalPrice", 
+              "originalCompareAtPrice", 
+              "newPrice", 
+              "newCompareAtPrice", 
+              "currencyCode", 
+              "appliedAt", 
+              "status",
+              "notes"
+            ) VALUES (
+              ${priceChangeId},
+              ${shop},
+              ${item.id},
+              ${item.shopifyVariantId},
+              ${item.variantPrice},
+              ${null},
+              ${roundedNewPrice},
+              ${item.variantPrice},
+              ${item.currencyCode || "TWD"},
+              ${new Date().toISOString()},
+              'APPLIED',
+              ${`Automatic discount: ${discountReason}, ${Math.round((1 - marginPercentToKeep) * 100)}% margin discount`}
+            )
+          `;
+          
+          discountedItems++;
+          
+        } catch (itemError) {
+          console.error(`Error processing item ${item.productId}:`, itemError);
+          errors.push({
+            productId: item.productId,
+            reason: itemError instanceof Error ? itemError.message : String(itemError)
+          });
+        }
+      }
+      
+      const message = discountedItems > 0 
+        ? `Successfully applied automatic discounts to ${discountedItems} items based on expiration date.` 
+        : "No items were discounted. Items may not meet discount criteria or already have discounts applied.";
+      
+      return json<ActionData>({
+        status: errors.length > 0 ? "warning" : "success",
+        message,
+        discountResult: {
+          success: true,
+          itemsDiscounted: discountedItems,
+          totalItems: items.length,
+          message,
+          errors: errors.length > 0 ? errors : undefined
+        }
+      });
+      
+    } catch (error) {
+      console.error("Error applying automatic discounts:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error applying automatic discounts: ${error instanceof Error ? error.message : String(error)}`,
+        discountResult: {
+          success: false,
+          itemsDiscounted: 0,
+          totalItems: 0,
+          message: `Error applying automatic discounts: ${error instanceof Error ? error.message : String(error)}`
+        }
+      });
+    }
+  }
+  
   // Handle CSV upload
   const file = formData.get("file");
   
@@ -626,6 +847,14 @@ export default function ShelfLifeManagement() {
   const [selectedPriceHistory, setSelectedPriceHistory] = useState<{ itemId: string, variantId: string } | null>(null);
   const [priceHistoryModalActive, setPriceHistoryModalActive] = useState(false);
   const [hideZeroQuantity, setHideZeroQuantity] = useState(false);
+  const [isApplyingDiscounts, setIsApplyingDiscounts] = useState(false);
+  const [autoDiscountModalActive, setAutoDiscountModalActive] = useState(false);
+  const [discountResults, setDiscountResults] = useState<{ 
+    success: boolean, 
+    message: string, 
+    itemsDiscounted: number,
+    totalItems: number
+  } | null>(null);
   
   const actionData = useActionData<ActionData>();
   const { shelfLifeItems } = useLoaderData<typeof loader>();
@@ -658,6 +887,12 @@ export default function ShelfLifeManagement() {
           // Clear the updated variants tracker since we've synced
           setUpdatedVariants({});
         }, 500);
+      }
+      
+      // Handle discount results
+      if (actionData.discountResult) {
+        setIsApplyingDiscounts(false);
+        setDiscountResults(actionData.discountResult);
       }
       
       // Handle file upload completion
@@ -1011,6 +1246,17 @@ export default function ShelfLifeManagement() {
     submit(formData, { method: "post" });
   };
   
+  // Handle applying automatic discounts
+  const handleApplyAutomaticDiscounts = () => {
+    setIsApplyingDiscounts(true);
+    setAutoDiscountModalActive(false);
+    
+    const formData = new FormData();
+    formData.append("action", "applyAutomaticDiscounts");
+    
+    submit(formData, { method: "post" });
+  };
+  
   // Handle toggling item selection for bulk actions
   const handleSelectItem = (id: string, checked: boolean) => {
     if (checked) {
@@ -1338,9 +1584,24 @@ export default function ShelfLifeManagement() {
               </span>
             </Text>
           ) : ((item as any).latestPriceChange && (item as any).latestPriceChange.newPrice) ? (
-            <Text as="span" tone="success" fontWeight={fontWeight}>
-              {formatCurrency((item as any).latestPriceChange.newPrice, item.currencyCode)}
-            </Text>
+            <InlineStack gap="100" align="center">
+              <Text as="span" tone="success" fontWeight={fontWeight}>
+                {formatCurrency((item as any).latestPriceChange.newPrice, item.currencyCode)}
+              </Text>
+              {/* Show discount badge if notes contains "Automatic discount" */}
+              {(item as any).latestPriceChange.notes?.includes("Automatic discount") && (
+                <span style={{ 
+                  backgroundColor: '#d1f0e0', 
+                  color: '#006633', 
+                  padding: '2px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '0.7em',
+                  fontWeight: 'bold' 
+                }}>
+                  AUTO DISCOUNT
+                </span>
+              )}
+            </InlineStack>
           ) : (
             <Text as="span" tone={textTone} fontWeight={fontWeight}>
               {item.variantPrice !== null 
@@ -1390,13 +1651,32 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
               </span>
             </Text>
           ) : (
-            <Text as="span" tone={textTone} fontWeight={fontWeight}>
-              {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
-                ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
-                : item.variantPrice 
-                  ? formatCurrency(item.variantPrice, item.currencyCode)
-                  : "N/A"}
-            </Text>
+            <InlineStack gap="100" align="center">
+              <Text as="span" tone={textTone} fontWeight={fontWeight}>
+                {(item as any).latestPriceChange && (item as any).latestPriceChange.newCompareAtPrice 
+                  ? formatCurrency((item as any).latestPriceChange.newCompareAtPrice, item.currencyCode)
+                  : item.variantPrice 
+                    ? formatCurrency(item.variantPrice, item.currencyCode)
+                    : "N/A"}
+              </Text>
+              
+              {/* Display discount percentage if this is an auto-discounted item */}
+              {(item as any).latestPriceChange?.notes?.includes("Automatic discount") && 
+               (item as any).latestPriceChange?.originalPrice && 
+               (item as any).latestPriceChange?.newPrice && (
+                <span style={{ 
+                  backgroundColor: '#f2f2f2', 
+                  padding: '2px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '0.7em' 
+                }}>
+                  {Math.round(
+                    ((item as any).latestPriceChange.originalPrice - (item as any).latestPriceChange.newPrice) / 
+                    (item as any).latestPriceChange.originalPrice * 100
+                  )}% OFF
+                </span>
+              )}
+            </InlineStack>
           )}
         </InlineStack>,
         <InlineStack gap="100" align="center">
@@ -1826,6 +2106,14 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           }
                         </Button>
                         
+                        <Button 
+                          onClick={() => setAutoDiscountModalActive(true)}
+                          disabled={isApplyingDiscounts}
+                          tone="success"
+                        >
+                          Apply Automatic Discounts
+                        </Button>
+                        
                         <Popover
                           active={actionsPopoverActive}
                           activator={actionsPopoverButton}
@@ -2187,14 +2475,23 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                 
                 return (
                   <DataTable
-                    columnContentTypes={['text', 'numeric', 'numeric', 'numeric', 'text']}
-                    headings={['Date', 'Original Price', 'New Price', 'Compare At', 'Status']}
+                    columnContentTypes={['text', 'numeric', 'numeric', 'numeric', 'text', 'text']}
+                    headings={['Date', 'Original Price', 'New Price', 'Compare At', 'Status', 'Notes']}
                     rows={filteredChanges.map(change => [
                       new Date(change.appliedAt).toLocaleString(),
                       formatCurrency(change.originalPrice, change.currencyCode),
                       formatCurrency(change.newPrice, change.currencyCode),
                       formatCurrency(change.newCompareAtPrice, change.currencyCode),
-                      <Text tone={change.status === 'APPLIED' ? 'success' : 'info'}>{change.status}</Text>
+                      <Text tone={change.status === 'APPLIED' ? 'success' : 'info'}>{change.status}</Text>,
+                      change.notes ? (
+                        change.notes.includes("Automatic discount") ? (
+                          <Text tone="success" fontWeight="bold">
+                            {change.notes}
+                          </Text>
+                        ) : (
+                          <Text>{change.notes}</Text>
+                        )
+                      ) : null
                     ])}
                   />
                 );
@@ -2203,6 +2500,102 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
           )}
         </Modal.Section>
       </Modal>
+      
+      {/* Automatic Discount Confirmation Modal */}
+      <Modal
+        open={autoDiscountModalActive}
+        onClose={() => setAutoDiscountModalActive(false)}
+        title="Apply Automatic Discounts"
+        primaryAction={{
+          content: "Apply Discounts",
+          onAction: handleApplyAutomaticDiscounts,
+          loading: isApplyingDiscounts
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: () => setAutoDiscountModalActive(false)
+          }
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p">
+              This will apply automatic discounts to products based on their expiration date using the following rules:
+            </Text>
+            
+            <DataTable
+              columnContentTypes={['text', 'text', 'text', 'text']}
+              headings={['Days Left', 'Margin % to Keep', 'Margin % to Discount', 'Calculation']}
+              rows={[
+                ["180 days", "80%", "20%", "Cost + (Margin × 80%)"],
+                ["90 days", "60%", "40%", "Cost + (Margin × 60%)"],
+                ["60 days", "35%", "65%", "Cost + (Margin × 35%)"],
+                ["30 days", "10%", "90%", "Cost + (Margin × 10%)"]
+              ]}
+            />
+            
+            <Text as="p" fontWeight="medium">
+              Original prices will be shown as "Compare At" prices in your Shopify store.
+            </Text>
+            
+            <Text as="p" tone="warning">
+              This operation will update product prices in your Shopify store. Are you sure you want to continue?
+            </Text>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Discount Results Modal */}
+      {discountResults && (
+        <Modal
+          open={!!discountResults}
+          onClose={() => setDiscountResults(null)}
+          title="Automatic Discount Results"
+          primaryAction={{
+            content: "Close",
+            onAction: () => setDiscountResults(null)
+          }}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Banner tone={discountResults.success ? "success" : "critical"}>
+                <Text as="p">
+                  {discountResults.message}
+                </Text>
+              </Banner>
+              
+              <BlockStack gap="200">
+                <Text as="p" fontWeight="medium">Summary:</Text>
+                <Text as="p">• Items processed: {discountResults.totalItems}</Text>
+                <Text as="p">• Items discounted: {discountResults.itemsDiscounted}</Text>
+                {discountResults.errors && discountResults.errors.length > 0 && (
+                  <Text as="p">• Items with errors: {discountResults.errors.length}</Text>
+                )}
+              </BlockStack>
+              
+              {discountResults.errors && discountResults.errors.length > 0 && (
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingMd">Items with errors:</Text>
+                  <List type="bullet">
+                    {discountResults.errors.map((error, index) => (
+                      <List.Item key={index}>
+                        <Text as="span" tone="critical">
+                          {error.productId}: {error.reason}
+                        </Text>
+                      </List.Item>
+                    ))}
+                  </List>
+                </BlockStack>
+              )}
+              
+              <Text as="p">
+                You can view detailed price change history for each product by clicking the "History" button in the product row.
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
     </Frame>
   );
 }
