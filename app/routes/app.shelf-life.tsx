@@ -783,15 +783,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.log("Reverting automatic discounts");
       
       // Get all price changes that were applied as automatic discounts
-      const priceChanges = await prisma.$queryRaw`
-        SELECT pc.*, si.shopifyProductId, si.productId
+      // Use $queryRawUnsafe with parameterized query to safely handle special characters
+      const priceChanges = await prisma.$queryRawUnsafe(`
+        SELECT pc.*, si."shopifyProductId", si."productId"
         FROM "ShelfLifeItemPriceChange" pc
         JOIN "ShelfLifeItem" si ON pc."shelfLifeItemId" = si.id
-        WHERE pc.shop = ${shop}
+        WHERE pc.shop = ?
         AND pc.notes LIKE '%Automatic discount%'
         AND pc.status = 'APPLIED'
         ORDER BY pc."appliedAt" DESC
-      `;
+      `, shop);
       
       // Get unique variant IDs (most recent first to prioritize newer discounts)
       const variantMap = new Map();
@@ -878,7 +879,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           // Record the price reversion in the database
           const priceChangeId = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
           
-          await prisma.$executeRaw`
+          // Use $executeRawUnsafe with parameterized query to safely handle special characters
+          await prisma.$executeRawUnsafe(`
             INSERT INTO "ShelfLifeItemPriceChange" (
               "id", 
               "shop", 
@@ -892,31 +894,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               "appliedAt", 
               "status",
               "notes"
-            ) VALUES (
-              ${priceChangeId},
-              ${shop},
-              ${change.shelfLifeItemId},
-              ${variantId},
-              ${change.newPrice},
-              ${change.newCompareAtPrice},
-              ${change.originalPrice},
-              ${0}, // Using 0 instead of null since newCompareAtPrice is non-nullable
-              ${change.currencyCode || "TWD"},
-              ${new Date().toISOString()},
-              'APPLIED',
-              ${'Reverted automatic discount'}
-            )
-          `;
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, 
+            priceChangeId,
+            shop,
+            change.shelfLifeItemId,
+            variantId,
+            change.newPrice,
+            change.newCompareAtPrice,
+            change.originalPrice,
+            0, // Using 0 instead of null since newCompareAtPrice is non-nullable
+            change.currencyCode || "TWD",
+            new Date().toISOString(),
+            'APPLIED',
+            'Reverted automatic discount'
+          );
           
           // Update status of all previous discounts for this variant to show they've been reverted
-          await prisma.$executeRaw`
+          // Use $executeRawUnsafe with parameterized query to safely handle special characters in variantId
+          await prisma.$executeRawUnsafe(`
             UPDATE "ShelfLifeItemPriceChange"
             SET status = 'REVERTED'
-            WHERE shop = ${shop}
-            AND shopifyVariantId = ${variantId}
+            WHERE shop = ?
+            AND "shopifyVariantId" = ?
             AND notes LIKE '%Automatic discount%'
-            AND id != ${priceChangeId}
-          `;
+            AND id != ?
+          `, shop, variantId, priceChangeId);
           
           revertedItems++;
           
