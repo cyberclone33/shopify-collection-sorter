@@ -645,14 +645,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           let marginPercentToKeep = 0.8; // Default: keep 80% of margin
           let discountReason = "180_DAYS_LEFT";
           
+          // Skip already expired products
+          if (daysLeft < 0) {
+            console.log(`Skipping expired item ${item.productId} (${daysLeft} days)`);
+            continue;
+          }
+          
           // Apply discount tiers based on days until expiration
           // using the same thresholds as the table view
-          if (daysLeft < 0) {
-            // Most aggressive discount for expired products
-            marginPercentToKeep = 0.05; // Keep just 5% of margin
-            discountReason = "EXPIRED";
-            console.log(`Applied EXPIRED discount tier to item ${item.productId}`);
-          } else if (daysLeft <= 30) {
+          if (daysLeft <= 30) {
             // Very aggressive discount for products expiring soon (30 days or less)
             marginPercentToKeep = 0.1; // Keep 10% of margin
             discountReason = "30_DAYS_LEFT";
