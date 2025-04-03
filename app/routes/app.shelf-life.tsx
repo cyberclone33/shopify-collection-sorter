@@ -601,32 +601,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             continue;
           }
           
-          // Calculate days until expiration
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          // Calculate days until expiration using the same function as the table view
+          const daysLeft = getDaysUntilExpiration(item.batchId);
           
-          const expirationDate = new Date(item.expirationDate);
-          expirationDate.setHours(0, 0, 0, 0);
-          
-          const diffTime = expirationDate.getTime() - today.getTime();
-          const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          
-          console.log(`Item ${item.productId} has ${daysLeft} days until expiration. Setting discount tier accordingly...`);
-          
-          // Skip items that aren't expiring soon
-          if (daysLeft > 180) {
+          if (daysLeft === null) {
+            errors.push({
+              productId: item.productId,
+              reason: "Invalid batch ID format or cannot determine expiration date"
+            });
             continue;
           }
           
+          console.log(`Item ${item.productId} has ${daysLeft} days until expiration. Setting discount tier accordingly...`);
+          
           // Calculate margin and discount percentage
           const margin = item.variantPrice - item.variantCost;
-          // Initialize with the default values (for 91-180 days)
+          // Initialize with default values
           let marginPercentToKeep = 0.8; // Default: keep 80% of margin
           let discountReason = "180_DAYS_LEFT";
           
           // Apply discount tiers based on days until expiration
-          if (daysLeft <= 30) {
-            // Most aggressive discount for products expiring soon (30 days or less)
+          // using the same thresholds as the table view
+          if (daysLeft < 0) {
+            // Most aggressive discount for expired products
+            marginPercentToKeep = 0.05; // Keep just 5% of margin
+            discountReason = "EXPIRED";
+            console.log(`Applied EXPIRED discount tier to item ${item.productId}`);
+          } else if (daysLeft <= 30) {
+            // Very aggressive discount for products expiring soon (30 days or less)
             marginPercentToKeep = 0.1; // Keep 10% of margin
             discountReason = "30_DAYS_LEFT";
             console.log(`Applied 30-day discount tier to item ${item.productId}`);
@@ -646,8 +648,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             discountReason = "180_DAYS_LEFT";
             console.log(`Applied 180-day discount tier to item ${item.productId}`);
           } else {
-            // No discount for products with more than 180 days (should be skipped by earlier check)
-            console.log(`No discount applied to item ${item.productId} (more than 180 days left)`);
+            // Skip items that aren't expiring soon
+            console.log(`No discount applied to item ${item.productId} (${daysLeft} days left)`);
+            continue;
           }
           
           // Calculate new price
