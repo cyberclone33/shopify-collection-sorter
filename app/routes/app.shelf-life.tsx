@@ -158,6 +158,16 @@ interface ActionData {
       reason: string;
     }>;
   };
+  revertDiscountResult?: {
+    success: boolean;
+    itemsReverted: number;
+    totalItems: number;
+    message: string;
+    errors?: Array<{
+      productId: string;
+      reason: string;
+    }>;
+  };
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -767,6 +777,189 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
   
+  // Handle reverting automatic discounts
+  if (action === "revertAutomaticDiscounts") {
+    try {
+      console.log("Reverting automatic discounts");
+      
+      // Get all price changes that were applied as automatic discounts
+      const priceChanges = await prisma.$queryRaw`
+        SELECT pc.*, si.shopifyProductId, si.productId
+        FROM "ShelfLifeItemPriceChange" pc
+        JOIN "ShelfLifeItem" si ON pc."shelfLifeItemId" = si.id
+        WHERE pc.shop = ${shop}
+        AND pc.notes LIKE '%Automatic discount%'
+        AND pc.status = 'APPLIED'
+        ORDER BY pc."appliedAt" DESC
+      `;
+      
+      // Get unique variant IDs (most recent first to prioritize newer discounts)
+      const variantMap = new Map();
+      
+      if (Array.isArray(priceChanges)) {
+        priceChanges.forEach(change => {
+          // Only add variant if not already in map (so we only get the most recent)
+          if (!variantMap.has(change.shopifyVariantId)) {
+            variantMap.set(change.shopifyVariantId, change);
+          }
+        });
+      }
+      
+      console.log(`Found ${variantMap.size} automatically discounted variants to revert`);
+      
+      // Track successful and failed updates
+      let revertedItems = 0;
+      const errors: Array<{ productId: string; reason: string }> = [];
+      
+      // Process each variant
+      for (const [variantId, change] of variantMap.entries()) {
+        try {
+          if (!change.shopifyProductId) {
+            errors.push({
+              productId: change.productId || variantId,
+              reason: "Missing Shopify product ID"
+            });
+            continue;
+          }
+          
+          console.log(`
+            Reverting discount for:
+            Product ID: ${change.productId}
+            Variant ID: ${variantId}
+            Current Price: ${change.newPrice}
+            Original Price: ${change.originalPrice}
+          `);
+          
+          // Revert price to original (pre-discount) price
+          const variantInput = {
+            id: variantId,
+            price: change.originalPrice.toFixed(2),
+            compareAtPrice: null // Remove Compare At price
+          };
+          
+          // Use the productVariantsBulkUpdate with the correct productId parameter
+          const response = await admin.graphql(
+            `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants {
+                  id
+                  title
+                  price
+                  compareAtPrice
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`,
+            {
+              variables: {
+                productId: change.shopifyProductId,
+                variants: [variantInput]
+              }
+            }
+          );
+          
+          const responseJson = await response.json();
+          
+          if (responseJson.errors || responseJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+            const errorMessage = responseJson.errors?.[0]?.message || 
+                               responseJson.data?.productVariantsBulkUpdate?.userErrors?.[0]?.message || 
+                               "Unknown GraphQL error";
+                               
+            errors.push({
+              productId: change.productId || variantId,
+              reason: `GraphQL error: ${errorMessage}`
+            });
+            continue;
+          }
+          
+          // Record the price reversion in the database
+          const priceChangeId = `cuid-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+          
+          await prisma.$executeRaw`
+            INSERT INTO "ShelfLifeItemPriceChange" (
+              "id", 
+              "shop", 
+              "shelfLifeItemId", 
+              "shopifyVariantId", 
+              "originalPrice", 
+              "originalCompareAtPrice", 
+              "newPrice", 
+              "newCompareAtPrice", 
+              "currencyCode", 
+              "appliedAt", 
+              "status",
+              "notes"
+            ) VALUES (
+              ${priceChangeId},
+              ${shop},
+              ${change.shelfLifeItemId},
+              ${variantId},
+              ${change.newPrice},
+              ${change.newCompareAtPrice},
+              ${change.originalPrice},
+              ${null},
+              ${change.currencyCode || "TWD"},
+              ${new Date().toISOString()},
+              'APPLIED',
+              ${'Reverted automatic discount'}
+            )
+          `;
+          
+          // Update status of all previous discounts for this variant to show they've been reverted
+          await prisma.$executeRaw`
+            UPDATE "ShelfLifeItemPriceChange"
+            SET status = 'REVERTED'
+            WHERE shop = ${shop}
+            AND shopifyVariantId = ${variantId}
+            AND notes LIKE '%Automatic discount%'
+            AND id != ${priceChangeId}
+          `;
+          
+          revertedItems++;
+          
+        } catch (itemError) {
+          console.error(`Error reverting discount for ${change.productId || variantId}:`, itemError);
+          errors.push({
+            productId: change.productId || variantId,
+            reason: itemError instanceof Error ? itemError.message : String(itemError)
+          });
+        }
+      }
+      
+      const message = revertedItems > 0 
+        ? `Successfully reverted automatic discounts for ${revertedItems} items.` 
+        : "No automatic discounts were found to revert.";
+      
+      return json<ActionData>({
+        status: errors.length > 0 ? "warning" : "success",
+        message,
+        revertDiscountResult: {
+          success: true,
+          itemsReverted: revertedItems,
+          totalItems: variantMap.size,
+          message,
+          errors: errors.length > 0 ? errors : undefined
+        }
+      });
+      
+    } catch (error) {
+      console.error("Error reverting automatic discounts:", error);
+      return json<ActionData>({
+        status: "error",
+        message: `Error reverting automatic discounts: ${error instanceof Error ? error.message : String(error)}`,
+        revertDiscountResult: {
+          success: false,
+          itemsReverted: 0,
+          totalItems: 0,
+          message: `Error reverting automatic discounts: ${error instanceof Error ? error.message : String(error)}`
+        }
+      });
+    }
+  }
+  
   // Handle CSV upload
   const file = formData.get("file");
   
@@ -848,11 +1041,19 @@ export default function ShelfLifeManagement() {
   const [priceHistoryModalActive, setPriceHistoryModalActive] = useState(false);
   const [hideZeroQuantity, setHideZeroQuantity] = useState(false);
   const [isApplyingDiscounts, setIsApplyingDiscounts] = useState(false);
+  const [isRevertingDiscounts, setIsRevertingDiscounts] = useState(false);
   const [autoDiscountModalActive, setAutoDiscountModalActive] = useState(false);
+  const [revertDiscountModalActive, setRevertDiscountModalActive] = useState(false);
   const [discountResults, setDiscountResults] = useState<{ 
     success: boolean, 
     message: string, 
     itemsDiscounted: number,
+    totalItems: number
+  } | null>(null);
+  const [revertDiscountResults, setRevertDiscountResults] = useState<{ 
+    success: boolean, 
+    message: string, 
+    itemsReverted: number,
     totalItems: number
   } | null>(null);
   
@@ -893,6 +1094,12 @@ export default function ShelfLifeManagement() {
       if (actionData.discountResult) {
         setIsApplyingDiscounts(false);
         setDiscountResults(actionData.discountResult);
+      }
+      
+      // Handle revert discount results
+      if (actionData.revertDiscountResult) {
+        setIsRevertingDiscounts(false);
+        setRevertDiscountResults(actionData.revertDiscountResult);
       }
       
       // Handle file upload completion
@@ -1253,6 +1460,17 @@ export default function ShelfLifeManagement() {
     
     const formData = new FormData();
     formData.append("action", "applyAutomaticDiscounts");
+    
+    submit(formData, { method: "post" });
+  };
+  
+  // Handle reverting automatic discounts
+  const handleRevertAutomaticDiscounts = () => {
+    setIsRevertingDiscounts(true);
+    setRevertDiscountModalActive(false);
+    
+    const formData = new FormData();
+    formData.append("action", "revertAutomaticDiscounts");
     
     submit(formData, { method: "post" });
   };
@@ -2106,13 +2324,23 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           }
                         </Button>
                         
-                        <Button 
-                          onClick={() => setAutoDiscountModalActive(true)}
-                          disabled={isApplyingDiscounts}
-                          tone="success"
-                        >
-                          Apply Automatic Discounts
-                        </Button>
+                        <ButtonGroup>
+                          <Button 
+                            onClick={() => setAutoDiscountModalActive(true)}
+                            disabled={isApplyingDiscounts || isRevertingDiscounts}
+                            tone="success"
+                          >
+                            Apply Automatic Discounts
+                          </Button>
+                          
+                          <Button 
+                            onClick={() => setRevertDiscountModalActive(true)}
+                            disabled={isApplyingDiscounts || isRevertingDiscounts}
+                            tone="caution"
+                          >
+                            Revert Automatic Discounts
+                          </Button>
+                        </ButtonGroup>
                         
                         <Popover
                           active={actionsPopoverActive}
@@ -2579,6 +2807,99 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                   <Text as="h3" variant="headingMd">Items with errors:</Text>
                   <List type="bullet">
                     {discountResults.errors.map((error, index) => (
+                      <List.Item key={index}>
+                        <Text as="span" tone="critical">
+                          {error.productId}: {error.reason}
+                        </Text>
+                      </List.Item>
+                    ))}
+                  </List>
+                </BlockStack>
+              )}
+              
+              <Text as="p">
+                You can view detailed price change history for each product by clicking the "History" button in the product row.
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
+      
+      {/* Revert Discount Confirmation Modal */}
+      <Modal
+        open={revertDiscountModalActive}
+        onClose={() => setRevertDiscountModalActive(false)}
+        title="Revert Automatic Discounts"
+        primaryAction={{
+          content: "Revert Discounts",
+          onAction: handleRevertAutomaticDiscounts,
+          loading: isRevertingDiscounts,
+          destructive: true
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: () => setRevertDiscountModalActive(false)
+          }
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p">
+              This will revert all automatic discounts applied to products and restore them to their original prices.
+            </Text>
+            
+            <Banner tone="caution">
+              <Text as="p">
+                This will:
+              </Text>
+              <ul>
+                <li>Restore all products with automatic discounts to their original prices</li>
+                <li>Remove the "Compare At" prices set during discounting</li>
+                <li>Record the price changes in the price history</li>
+              </ul>
+            </Banner>
+            
+            <Text as="p" tone="warning" fontWeight="medium">
+              Are you sure you want to revert all automatic discounts?
+            </Text>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Revert Discount Results Modal */}
+      {revertDiscountResults && (
+        <Modal
+          open={!!revertDiscountResults}
+          onClose={() => setRevertDiscountResults(null)}
+          title="Revert Discount Results"
+          primaryAction={{
+            content: "Close",
+            onAction: () => setRevertDiscountResults(null)
+          }}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Banner tone={revertDiscountResults.success ? "success" : "critical"}>
+                <Text as="p">
+                  {revertDiscountResults.message}
+                </Text>
+              </Banner>
+              
+              <BlockStack gap="200">
+                <Text as="p" fontWeight="medium">Summary:</Text>
+                <Text as="p">• Items processed: {revertDiscountResults.totalItems}</Text>
+                <Text as="p">• Items reverted: {revertDiscountResults.itemsReverted}</Text>
+                {revertDiscountResults.errors && revertDiscountResults.errors.length > 0 && (
+                  <Text as="p">• Items with errors: {revertDiscountResults.errors.length}</Text>
+                )}
+              </BlockStack>
+              
+              {revertDiscountResults.errors && revertDiscountResults.errors.length > 0 && (
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingMd">Items with errors:</Text>
+                  <List type="bullet">
+                    {revertDiscountResults.errors.map((error, index) => (
                       <List.Item key={index}>
                         <Text as="span" tone="critical">
                           {error.productId}: {error.reason}
