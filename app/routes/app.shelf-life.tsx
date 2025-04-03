@@ -847,7 +847,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       console.log("Reverting automatic discounts");
       
-      // Get all price changes that were applied as automatic discounts
+      // Get selected item IDs from form data (if provided)
+      const selectedItemIdsString = formData.get("selectedItemIds");
+      
+      if (!selectedItemIdsString) {
+        return json<ActionData>({
+          status: "warning",
+          message: "No items selected for reverting discounts",
+          revertDiscountResult: {
+            success: false,
+            itemsReverted: 0,
+            totalItems: 0,
+            message: "No items selected for reverting discounts"
+          }
+        });
+      }
+      
+      const selectedItemIds = selectedItemIdsString.toString().split(",");
+      console.log(`Reverting automatic discounts for ${selectedItemIds.length} selected items`);
+      
+      // Get all price changes that were applied as automatic discounts, for selected items only
       // Use $queryRawUnsafe with parameterized query to safely handle special characters
       const priceChanges = await prisma.$queryRawUnsafe(`
         SELECT pc.*, si."shopifyProductId", si."productId"
@@ -856,8 +875,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         WHERE pc.shop = ?
         AND pc.notes LIKE '%Automatic discount%'
         AND pc.status = 'APPLIED'
+        AND si.id IN (${selectedItemIds.map(() => '?').join(',')})
         ORDER BY pc."appliedAt" DESC
-      `, shop);
+      `, shop, ...selectedItemIds);
       
       // Get unique variant IDs (most recent first to prioritize newer discounts)
       const variantMap = new Map();
@@ -1545,11 +1565,22 @@ export default function ShelfLifeManagement() {
   
   // Handle reverting automatic discounts
   const handleRevertAutomaticDiscounts = () => {
+    if (selectedItems.length === 0) {
+      // Show warning that no items are selected
+      setToastActive(true);
+      setToastContent({
+        message: "Please select items before reverting automatic discounts. Use the checkboxes in the table to select individual items.",
+        tone: "warning"
+      });
+      return;
+    }
+    
     setIsRevertingDiscounts(true);
     setRevertDiscountModalActive(false);
     
     const formData = new FormData();
     formData.append("action", "revertAutomaticDiscounts");
+    formData.append("selectedItemIds", selectedItems.join(","));
     
     submit(formData, { method: "post" });
   };
@@ -2417,10 +2448,10 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                           
                           <Button 
                             onClick={() => setRevertDiscountModalActive(true)}
-                            disabled={isApplyingDiscounts || isRevertingDiscounts}
+                            disabled={isApplyingDiscounts || isRevertingDiscounts || selectedItems.length === 0}
                             tone="caution"
                           >
-                            Revert Automatic Discounts
+                            Revert Automatic Discounts {selectedItems.length > 0 ? `(${selectedItems.length})` : ''}
                           </Button>
                         </ButtonGroup>
                         
@@ -2947,7 +2978,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
         <Modal.Section>
           <BlockStack gap="400">
             <Text as="p">
-              This will revert all automatic discounts applied to products and restore them to their original prices.
+              This will revert automatic discounts applied to the {selectedItems.length} selected product(s) and restore them to their original prices.
             </Text>
             
             <Banner tone="caution">
@@ -2955,14 +2986,14 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                 This will:
               </Text>
               <ul>
-                <li>Restore all products with automatic discounts to their original prices</li>
-                <li>Remove the "Compare At" prices set during discounting</li>
-                <li>Record the price changes in the price history</li>
+                <li>Restore selected products with automatic discounts to their original prices</li>
+                <li>Remove the "Compare At" prices set during discounting for selected items</li>
+                <li>Record the price changes in the price history for selected items</li>
               </ul>
             </Banner>
             
             <Text as="p" tone="warning" fontWeight="medium">
-              Are you sure you want to revert all automatic discounts?
+              Are you sure you want to revert automatic discounts for the {selectedItems.length} selected item(s)?
             </Text>
           </BlockStack>
         </Modal.Section>
