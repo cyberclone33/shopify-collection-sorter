@@ -725,7 +725,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               ${item.id},
               ${item.shopifyVariantId},
               ${item.variantPrice},
-              ${null},
+              ${0},
               ${roundedNewPrice},
               ${item.variantPrice},
               ${item.currencyCode || "TWD"},
@@ -834,7 +834,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           const variantInput = {
             id: variantId,
             price: change.originalPrice.toFixed(2),
-            compareAtPrice: null // Remove Compare At price
+            compareAtPrice: "0" // Set compareAtPrice to 0 instead of null for consistency
           };
           
           // Use the productVariantsBulkUpdate with the correct productId parameter
@@ -900,7 +900,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               ${change.newPrice},
               ${change.newCompareAtPrice},
               ${change.originalPrice},
-              ${null},
+              ${0}, // Using 0 instead of null since newCompareAtPrice is non-nullable
               ${change.currencyCode || "TWD"},
               ${new Date().toISOString()},
               'APPLIED',
@@ -2709,7 +2709,7 @@ Date: ${new Date((item as any).latestPriceChange.appliedAt).toLocaleString()}`}>
                       new Date(change.appliedAt).toLocaleString(),
                       formatCurrency(change.originalPrice, change.currencyCode),
                       formatCurrency(change.newPrice, change.currencyCode),
-                      formatCurrency(change.newCompareAtPrice, change.currencyCode),
+                      change.newCompareAtPrice === 0 ? "None" : formatCurrency(change.newCompareAtPrice, change.currencyCode),
                       <Text tone={change.status === 'APPLIED' ? 'success' : 'info'}>{change.status}</Text>,
                       change.notes ? (
                         change.notes.includes("Automatic discount") ? (
