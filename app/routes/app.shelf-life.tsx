@@ -170,6 +170,31 @@ interface ActionData {
   };
 }
 
+// Move getDaysUntilExpiration outside of the component to make it available to the server-side action
+const getDaysUntilExpiration = (batchId: string) => {
+  if (!batchId || batchId.length !== 8) return null;
+  
+  try {
+    const year = parseInt(batchId.substring(0, 4));
+    const month = parseInt(batchId.substring(4, 6)) - 1; // JS months are 0-indexed
+    const day = parseInt(batchId.substring(6, 8));
+    
+    const expirationDate = new Date(year, month, day);
+    const today = new Date();
+    
+    // Reset time part to compare just the dates
+    today.setHours(0, 0, 0, 0);
+    expirationDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = expirationDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  } catch (error) {
+    return null;
+  }
+};
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
