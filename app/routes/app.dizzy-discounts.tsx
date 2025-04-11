@@ -79,9 +79,9 @@ export async function action({ request }) {
       const originalPrice = parseFloat(variant.price);
       const discountedPrice = (originalPrice * (100 - discountPercent) / 100).toFixed(2);
       
-      // Update the product with the discounted price
+      // Update the product with the discounted price using the correct mutation
       const updateResponse = await admin.graphql(`
-        mutation productVariantUpdate($input: ProductVariantInput!) {
+        mutation variantUpdate($input: ProductVariantInput!) {
           productVariantUpdate(input: $input) {
             productVariant {
               id
