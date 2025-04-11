@@ -33,7 +33,7 @@ import {
   Link,
 } from "@shopify/polaris";
 import { 
-  RefreshMinor, 
+  RefreshIcon, 
   UndoIcon, 
   CheckIcon,
   XIcon,
@@ -941,7 +941,7 @@ export default function DizzyDiscounts() {
                                     variant="primary" 
                                     onClick={handleRedoDiscount} 
                                     disabled={isLoading}
-                                    icon={RefreshMinor}
+                                    icon={RefreshIcon}
                                   >
                                     <span style={{ marginLeft: "8px" }}>New Discount</span>
                                   </Button>
