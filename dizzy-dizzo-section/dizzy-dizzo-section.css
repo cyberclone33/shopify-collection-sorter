@@ -1,0 +1,346 @@
+/* 
+ * Dizzy Dizzo Section - Additional CSS
+ * This file contains extra styling options that can be added to your theme's assets folder
+ */
+
+/* Enhanced background patterns and decorations */
+.dizzy-dizzo-container.with-pattern {
+  background-image: 
+    radial-gradient(circle at 25% 10%, rgba(255, 105, 180, 0.1) 0%, transparent 60%),
+    radial-gradient(circle at 75% 75%, rgba(255, 105, 180, 0.1) 0%, transparent 60%);
+  position: relative;
+}
+
+.dizzy-dizzo-container.with-pattern:before,
+.dizzy-dizzo-container.with-pattern:after {
+  content: '';
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.1;
+  z-index: 1;
+}
+
+.dizzy-dizzo-container.with-pattern:before {
+  top: -50px;
+  left: -50px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='%23e31c79' d='M50 0 L100 50 L50 100 L0 50z'/%3E%3C/svg%3E");
+  transform: rotate(15deg);
+}
+
+.dizzy-dizzo-container.with-pattern:after {
+  bottom: -50px;
+  right: -50px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23e31c79'/%3E%3C/svg%3E");
+  animation: floatAnimation 10s infinite ease-in-out;
+}
+
+@keyframes floatAnimation {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(10px, -10px) rotate(5deg); }
+  50% { transform: translate(0, 15px) rotate(0); }
+  75% { transform: translate(-10px, -5px) rotate(-5deg); }
+}
+
+/* Enhanced mobile experience */
+@media screen and (max-width: 749px) {
+  .dizzy-dizzo-product-card {
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .dizzy-dizzo-discount-badge {
+    margin-bottom: 20px;
+    padding: 8px 15px;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90%;
+  }
+}
+
+/* Fun ribbon style for the discount badge */
+.dizzy-dizzo-discount-badge.ribbon {
+  position: relative;
+  padding: 10px 30px;
+  background: #e31c79;
+  border-radius: 0;
+  transform: rotate(0);
+  animation: none;
+}
+
+.dizzy-dizzo-discount-badge.ribbon:before,
+.dizzy-dizzo-discount-badge.ribbon:after {
+  content: '';
+  position: absolute;
+  display: block;
+  bottom: -10px;
+  border: 15px solid #b5155f; /* Darker shade for the ribbon fold */
+  z-index: -1;
+}
+
+.dizzy-dizzo-discount-badge.ribbon:before {
+  left: -20px;
+  border-right-width: 15px;
+  border-left-color: transparent;
+}
+
+.dizzy-dizzo-discount-badge.ribbon:after {
+  right: -20px;
+  border-left-width: 15px;
+  border-right-color: transparent;
+}
+
+.dizzy-dizzo-discount-badge.ribbon .ribbon-content:before,
+.dizzy-dizzo-discount-badge.ribbon .ribbon-content:after {
+  content: '';
+  position: absolute;
+  display: block;
+  border-style: solid;
+  border-color: #8c1147 transparent transparent transparent; /* Even darker for the corner */
+  bottom: -10px;
+}
+
+.dizzy-dizzo-discount-badge.ribbon .ribbon-content:before {
+  left: 0;
+  border-width: 10px 0 0 10px;
+}
+
+.dizzy-dizzo-discount-badge.ribbon .ribbon-content:after {
+  right: 0;
+  border-width: 10px 10px 0 0;
+}
+
+/* Neon effect for featured products */
+.dizzy-dizzo-product-card.neon-effect {
+  box-shadow: 0 0 5px rgba(227, 28, 121, 0.2),
+              0 0 10px rgba(227, 28, 121, 0.2),
+              0 0 15px rgba(227, 28, 121, 0.2),
+              0 0 20px rgba(227, 28, 121, 0.2);
+  transition: all 0.3s ease;
+}
+
+.dizzy-dizzo-product-card.neon-effect:hover {
+  box-shadow: 0 0 5px rgba(227, 28, 121, 0.5),
+              0 0 10px rgba(227, 28, 121, 0.5),
+              0 0 15px rgba(227, 28, 121, 0.5),
+              0 0 20px rgba(227, 28, 121, 0.5);
+}
+
+/* Confetti animation for the section */
+.dizzy-dizzo-confetti {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: #e31c79;
+  opacity: 0.8;
+  top: 0;
+  animation: confetti-fall 5s linear infinite;
+}
+
+@keyframes confetti-fall {
+  0% {
+    top: -10px;
+    transform: translateX(0) rotateZ(0);
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    transform: translateX(100px) rotateZ(360deg);
+    opacity: 0;
+  }
+}
+
+/* Card flip effect for product images */
+.dizzy-dizzo-product-card.flip-effect .dizzy-dizzo-product-image-wrapper {
+  perspective: 1000px;
+}
+
+.dizzy-dizzo-product-card.flip-effect .dizzy-dizzo-product-image-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.dizzy-dizzo-product-card.flip-effect:hover .dizzy-dizzo-product-image-inner {
+  transform: rotateY(180deg);
+}
+
+.dizzy-dizzo-product-card.flip-effect .dizzy-dizzo-product-image-front,
+.dizzy-dizzo-product-card.flip-effect .dizzy-dizzo-product-image-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+}
+
+.dizzy-dizzo-product-card.flip-effect .dizzy-dizzo-product-image-back {
+  transform: rotateY(180deg);
+}
+
+/* Glitch effect for product titles */
+.dizzy-dizzo-product-title.glitch {
+  position: relative;
+}
+
+.dizzy-dizzo-product-title.glitch::before,
+.dizzy-dizzo-product-title.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dizzy-dizzo-product-title.glitch::before {
+  left: 2px;
+  text-shadow: -1px 0 #e31c79;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim-1 5s infinite linear alternate-reverse;
+}
+
+.dizzy-dizzo-product-title.glitch::after {
+  left: -2px;
+  text-shadow: -1px 0 #00ffff;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim-2 5s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim-1 {
+  0% { clip: rect(25px, 9999px, 39px, 0); }
+  20% { clip: rect(19px, 9999px, 28px, 0); }
+  40% { clip: rect(47px, 9999px, 78px, 0); }
+  60% { clip: rect(94px, 9999px, 98px, 0); }
+  80% { clip: rect(12px, 9999px, 18px, 0); }
+  100% { clip: rect(59px, 9999px, 67px, 0); }
+}
+
+@keyframes glitch-anim-2 {
+  0% { clip: rect(65px, 9999px, 78px, 0); }
+  20% { clip: rect(32px, 9999px, 49px, 0); }
+  40% { clip: rect(15px, 9999px, 29px, 0); }
+  60% { clip: rect(57px, 9999px, 70px, 0); }
+  80% { clip: rect(89px, 9999px, 98px, 0); }
+  100% { clip: rect(19px, 9999px, 30px, 0); }
+}
+
+/* Staggered appearance for products */
+.dizzy-dizzo-products-grid.staggered .dizzy-dizzo-product-item {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.dizzy-dizzo-products-grid.staggered.active .dizzy-dizzo-product-item {
+  animation: staggered-fade-in 0.5s forwards;
+}
+
+@keyframes staggered-fade-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Party mode - more dynamic animations */
+.dizzy-dizzo-container.party-mode {
+  overflow: hidden;
+  position: relative;
+}
+
+.dizzy-dizzo-container.party-mode:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, 
+    rgba(227, 28, 121, 0) 0%, 
+    rgba(227, 28, 121, 0.1) 50%, 
+    rgba(227, 28, 121, 0) 100%);
+  animation: rainbow-background 8s linear infinite;
+  z-index: 0;
+}
+
+@keyframes rainbow-background {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.dizzy-dizzo-container.party-mode .dizzy-dizzo-discount-badge {
+  animation: wiggle 2.5s infinite;
+}
+
+@keyframes wiggle {
+  0%, 7% { transform: rotate(-2deg); }
+  15% { transform: rotate(4deg); }
+  20% { transform: rotate(-4deg); }
+  25% { transform: rotate(2deg); }
+  30% { transform: rotate(-2deg); }
+  35%, 100% { transform: rotate(0deg); }
+}
+
+/* Sale tag styles */
+.dizzy-dizzo-sale-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: #e31c79;
+  color: white;
+  padding: 5px 10px;
+  font-weight: bold;
+  font-size: 14px;
+  z-index: 2;
+  transform: rotate(-15deg) translateX(-5px) translateY(-5px);
+}
+
+.dizzy-dizzo-sale-tag:after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 0;
+  border-style: solid;
+  border-width: 16px 8px 0 0;
+  border-color: #e31c79 transparent transparent transparent;
+}
+
+/* Countdown timer */
+.dizzy-dizzo-countdown {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+  gap: 10px;
+}
+
+.dizzy-dizzo-countdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dizzy-dizzo-countdown-number {
+  background-color: #e31c79;
+  color: white;
+  font-weight: bold;
+  font-size: 24px;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  margin-bottom: 5px;
+}
+
+.dizzy-dizzo-countdown-label {
+  font-size: 12px;
+  text-transform: uppercase;
+}

@@ -86,6 +86,22 @@ model FacebookUser {
   @@unique([shop, facebookId], name: "shop_facebookId")
 }
 
+model DiscountedProduct {
+  id              String    @id @default(cuid())
+  shop            String
+  productId       String
+  variantId       String
+  productTitle    String
+  sku             String?
+  originalPrice   Float
+  discountedPrice Float
+  discountPercent Int
+  discountedAt    DateTime  @default(now())
+  active          Boolean   @default(true)
+
+  @@unique([shop, variantId], name: "shop_variantId")
+}
+
 model ShelfLifeItem {
   id                  String                   @id @default(cuid())
   shop                String
@@ -130,4 +146,20 @@ model ShelfLifeItemPriceChange {
 
   @@index([shelfLifeItemId])
   @@index([shopifyVariantId])
+}
+
+model ActivityLog {
+  id              String    @id @default(cuid())
+  shop            String
+  productId       String
+  productTitle    String
+  sku             String?
+  originalPrice   Float
+  discountedPrice Float
+  discountPercent Int
+  wasDiscounted   Boolean   @default(false)
+  timestamp       DateTime  @default(now())
+  note            String?
+
+  @@index([shop])
 }

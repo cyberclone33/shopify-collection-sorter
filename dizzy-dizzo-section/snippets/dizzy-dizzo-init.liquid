@@ -1,0 +1,42 @@
+{% comment %}
+  Dizzy Dizzo Initialization Snippet
+  - Include this snippet in your theme.liquid file to set up Dizzy Dizzo functionality
+  - Usage: {% render 'dizzy-dizzo-init' %}
+{% endcomment %}
+
+{% if content_for_header contains 'shopify-section-bundle' %}
+  {%- render 'dizzy-dizzo-register' -%}
+{% else %}
+  <link rel="stylesheet" href="{{ 'dizzy-dizzo-section.css' | asset_url }}" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{{ 'dizzy-dizzo-section.css' | asset_url }}"></noscript>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize any global Dizzy Dizzo functionality here
+      console.log('Dizzy Dizzo components initialized');
+      
+      // Setup cart refresh functionality
+      window.refreshCart = function() {
+        // If the theme has a cart drawer or mini cart, trigger its refresh here
+        if (typeof window.refreshCartDrawer === 'function') {
+          window.refreshCartDrawer();
+        } else {
+          // Fallback refresh method - you may need to customize this for specific themes
+          fetch('/cart.js')
+            .then(response => response.json())
+            .then(cart => {
+              // Update cart count elements
+              const cartCountElements = document.querySelectorAll('.cart-count-bubble');
+              if (cartCountElements.length > 0) {
+                cartCountElements.forEach(el => {
+                  el.textContent = cart.item_count;
+                  el.style.display = cart.item_count > 0 ? 'flex' : 'none';
+                });
+              }
+            })
+            .catch(error => console.error('Error refreshing cart:', error));
+        }
+      };
+    });
+  </script>
+{% endif %}
