@@ -75,20 +75,17 @@ export async function action({ request }) {
       const originalPrice = parseFloat(variant.price);
       const discountedPrice = (originalPrice * (100 - discountPercent) / 100).toFixed(2);
       
-      // Update the product with the discounted price using the correct GraphQL mutation
+      // Extract product ID from the GraphQL ID
+      const productId = selectedProduct.id;
+      const variantId = variant.id;
+      
+      // Update the product with the discounted price using the correct mutation
       const updateResponse = await admin.graphql(`
-        mutation {
-          productVariantUpdate(
-            input: {
-              id: "${variant.id}",
-              price: "${discountedPrice}",
-              compareAtPrice: "${variant.compareAtPrice || originalPrice.toString()}"
-            }
-          ) {
-            productVariant {
+        mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+            product {
               id
-              price
-              compareAtPrice
+              title
             }
             userErrors {
               field
@@ -96,15 +93,26 @@ export async function action({ request }) {
             }
           }
         }
-      `);
+      `, {
+        variables: {
+          productId: productId,
+          variants: [
+            {
+              id: variantId,
+              price: discountedPrice,
+              compareAtPrice: variant.compareAtPrice || originalPrice.toString()
+            }
+          ]
+        }
+      });
 
       const updateResult = await updateResponse.json();
       
-      if (updateResult.data?.productVariantUpdate?.userErrors?.length > 0) {
+      if (updateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
         return json({
           status: "error",
           message: "Failed to update product variant: " + 
-            updateResult.data.productVariantUpdate.userErrors.map(err => err.message).join(", ")
+            updateResult.data.productVariantsBulkUpdate.userErrors.map(err => err.message).join(", ")
         });
       }
 
