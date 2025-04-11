@@ -36,9 +36,9 @@ import {
   RefreshMinor, 
   UndoIcon, 
   CheckIcon,
-  CancelIcon,
-  CircleDisableIcon,
-  CircleTickIcon,
+  XIcon,
+  DisabledIcon,
+  CheckCircleIcon,
   ImageIcon,
   ClockIcon,
   DiscountIcon
@@ -920,7 +920,7 @@ export default function DizzyDiscounts() {
                                     variant="primary" 
                                     onClick={handleRandomDiscount} 
                                     disabled={isLoading}
-                                    icon={CircleTickIcon}
+                                    icon={CheckCircleIcon}
                                   >
                                     <span style={{ marginLeft: "8px" }}>Apply Discount</span>
                                   </Button>
@@ -929,7 +929,7 @@ export default function DizzyDiscounts() {
                                     variant="tertiary"
                                     onClick={handleSkipProduct} 
                                     disabled={isLoading}
-                                    icon={CancelIcon}
+                                    icon={XIcon}
                                   >
                                     <span style={{ marginLeft: "8px" }}>Skip Product</span>
                                   </Button>
