@@ -1,0 +1,248 @@
+/* 
+ * Dizzy Dizzo Embed Block - Additional CSS
+ * This file contains specific styling for the embed block component
+ */
+
+/* Base container styling */
+.dizzy-dizzo-embed-container {
+  position: relative;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.dizzy-dizzo-embed-container:hover {
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+
+/* Micro-interactions */
+.dizzy-dizzo-embed-container .dizzy-dizzo-title:after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 3px;
+  background-color: var(--dd-accent-color, #e31c79);
+  margin: 15px auto 0;
+  transition: width 0.3s ease;
+}
+
+.dizzy-dizzo-embed-container:hover .dizzy-dizzo-title:after {
+  width: 80px;
+}
+
+/* Promotional banner effects */
+.dizzy-dizzo-promo-banner {
+  position: relative;
+  overflow: hidden;
+}
+
+.dizzy-dizzo-promo-banner.with-animation:before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+  animation: pulse-glow 4s infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse-glow {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Enhanced countdown styles */
+.dizzy-dizzo-countdown {
+  perspective: 600px;
+}
+
+.dizzy-dizzo-countdown-number {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+
+.dizzy-dizzo-countdown-number:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: rgba(255,255,255,0.1);
+  z-index: 1;
+}
+
+.dizzy-dizzo-countdown-item:hover .dizzy-dizzo-countdown-number {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+}
+
+/* Custom content styling */
+.dizzy-dizzo-custom-content {
+  position: relative;
+}
+
+.dizzy-dizzo-custom-content img {
+  border-radius: 8px;
+  transition: transform 0.3s ease;
+}
+
+.dizzy-dizzo-custom-content img:hover {
+  transform: scale(1.02);
+}
+
+.dizzy-dizzo-custom-content ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.dizzy-dizzo-custom-content ul li {
+  position: relative;
+  padding-left: 25px;
+  margin-bottom: 10px;
+}
+
+.dizzy-dizzo-custom-content ul li:before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--dd-accent-color, #e31c79);
+  font-weight: bold;
+}
+
+/* Button hover effects */
+.dizzy-dizzo-button, 
+.dizzy-dizzo-promo-button, 
+.dizzy-dizzo-view-all-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.dizzy-dizzo-button:after, 
+.dizzy-dizzo-promo-button:after, 
+.dizzy-dizzo-view-all-button:after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: width 0.6s ease, height 0.6s ease, opacity 0.6s ease;
+}
+
+.dizzy-dizzo-button:hover:after, 
+.dizzy-dizzo-promo-button:hover:after, 
+.dizzy-dizzo-view-all-button:hover:after {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+}
+
+/* Mobile enhancements */
+@media screen and (max-width: 749px) {
+  .dizzy-dizzo-embed-container {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+  
+  .dizzy-dizzo-countdown {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .dizzy-dizzo-countdown-item {
+    margin: 5px;
+  }
+  
+  .dizzy-dizzo-countdown-number {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+}
+
+/* Product grid loading animation */
+.dizzy-dizzo-products-grid {
+  position: relative;
+}
+
+.dizzy-dizzo-products-grid.loading:after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255,255,255,0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.dizzy-dizzo-products-grid.loading:before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid var(--dd-accent-color, #e31c79);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  z-index: 11;
+}
+
+@keyframes spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Accessibility improvements */
+.dizzy-dizzo-product-link:focus-visible,
+.dizzy-dizzo-button:focus-visible,
+.dizzy-dizzo-promo-button:focus-visible,
+.dizzy-dizzo-view-all-button:focus-visible,
+.dizzy-dizzo-add-to-cart-button:focus-visible {
+  outline: 2px solid var(--dd-accent-color, #e31c79);
+  outline-offset: 2px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .dizzy-dizzo-product-card {
+    background: #2a2a2a;
+  }
+  
+  .dizzy-dizzo-product-title,
+  .dizzy-dizzo-product-price-regular {
+    color: #f1f1f1;
+  }
+  
+  .dizzy-dizzo-product-price-original {
+    color: #aaa;
+  }
+  
+  .dizzy-dizzo-custom-content {
+    color: #f1f1f1;
+  }
+}
