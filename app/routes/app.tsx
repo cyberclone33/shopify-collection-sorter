@@ -27,6 +27,7 @@ export default function App() {
         <Link to="/app/collections">Collection Sorter</Link>
         <Link to="/app/social-login">Social Login</Link>
         <Link to="/app/shelf-life">Shelf Life Management</Link>
+        <Link to="/app/dizzy-dizzo">Dizzy Dizzo</Link>
         <Link to="/app/admin">Admin</Link>
       </NavMenu>
       <Outlet />

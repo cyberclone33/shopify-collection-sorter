@@ -27,8 +27,58 @@ import {
   HomeIcon,
   CollectionIcon,
   PersonIcon,
-  SearchIcon
+  SearchIcon,
+  ImageIcon,
 } from "@shopify/polaris-icons";
+
+// CSS for Dizzy Dizzo effects
+const dizzyDizzoStyles = `
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+}
+
+@keyframes sparkle {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 100% 100%;
+  }
+}
+
+.dizzy-dizzo-pulse {
+  animation: pulse 2s ease-in-out;
+  animation-iteration-count: 1;
+}
+
+.dizzy-dizzo-sparkle {
+  position: relative;
+}
+
+.dizzy-dizzo-sparkle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at center, transparent 30%, rgba(255,255,255,0.3) 70%, transparent 100%);
+  animation: pulse 2s;
+  animation-iteration-count: 1;
+  pointer-events: none;
+}
+`;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -38,6 +88,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function Index() {
   const navigate = useNavigate();
   const appBridge = useAppBridge();
+  
+  // Add the styles to the document
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = dizzyDizzoStyles;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   return (
     <Page>
@@ -154,6 +215,215 @@ export default function Index() {
             </BlockStack>
           </Card>
         </InlineGrid>
+
+        {/* Dizzy Dizzo Feature Card */}
+        <Card>
+          <BlockStack gap="400">
+            <Box paddingBlock="500" paddingInline="500" background="bg-surface-secondary-selected" borderRadius="300">
+              <BlockStack gap="400">
+                <InlineStack gap="400" align="center">
+                  <div style={{ 
+                    background: "linear-gradient(135deg, #FF6B6B 0%, #FFD166 50%, #06D6A0 100%)", 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+                  }}>
+                    <Text as="span" variant="heading2xl" fontWeight="bold" color="text-inverse">D</Text>
+                  </div>
+                  <InlineStack gap="200" align="center">
+                    <Text as="h2" variant="headingXl">Dizzy Dizzo</Text>
+                    <Badge tone="attention">NEW</Badge>
+                  </InlineStack>
+                </InlineStack>
+                
+                <Text as="p" variant="bodyLg">
+                  Create eye-catching visual effects for your product images. The Dizzy Dizzo feature allows you to add
+                  animations, sparkles, and attention-grabbing effects to make your products stand out in your store and
+                  on social media.
+                </Text>
+                
+                <InlineGrid columns={["oneHalf", "oneHalf"]} gap="400">
+                  <BlockStack gap="300">
+                    <Text as="h3" variant="headingMd">Key Benefits:</Text>
+                    <ul style={{ paddingLeft: "20px", margin: 0 }}>
+                      <li>
+                        <Text as="p" variant="bodyMd">Increase engagement with animated product images</Text>
+                      </li>
+                      <li>
+                        <Text as="p" variant="bodyMd">Choose from multiple effect styles</Text>
+                      </li>
+                      <li>
+                        <Text as="p" variant="bodyMd">Customize animation intensity to match your brand</Text>
+                      </li>
+                      <li>
+                        <Text as="p" variant="bodyMd">Apply effects to any product photo with one click</Text>
+                      </li>
+                    </ul>
+                  </BlockStack>
+                  <Box background="bg-surface" padding="400" borderRadius="200" borderWidth="025" borderColor="border">
+                    <div id="dizzyDizzoDemo" className="dizzy-dizzo-demo" 
+                      style={{ 
+                        position: "relative", 
+                        height: "160px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        borderRadius: "8px",
+                        backgroundColor: "#f5f5f5"
+                      }}>
+                      <img 
+                        id="dizzoDizzoImage"
+                        src="https://cdn.shopify.com/s/assets/no-image-2048-5e88c1b20e087fb7bbe9a3771824e743c244f437e4f8ba93bbf7b11b53f7824c.gif" 
+                        alt="Dizzy Dizzo effect preview"
+                        className="dizzy-dizzo-sparkle"
+                        style={{ 
+                          maxWidth: "100%", 
+                          maxHeight: "160px", 
+                          objectFit: "contain",
+                          filter: "drop-shadow(0 0 8px rgba(255,255,255,0.8))"
+                        }} 
+                      />
+                      <div id="dizzyDizzoOverlay1" style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: "radial-gradient(circle at center, transparent 30%, rgba(255,255,255,0.3) 70%, transparent 100%)",
+                        pointerEvents: "none",
+                        opacity: 0
+                      }}></div>
+                      <div id="dizzyDizzoOverlay2" style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        background: "linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.4) 100%)",
+                        transform: "rotate(45deg)",
+                        pointerEvents: "none",
+                        opacity: 0
+                      }}></div>
+                    </div>
+                    <BlockStack gap="200" alignment="center">
+                      <Button
+                        onClick={() => {
+                          // Get elements
+                          const img = document.getElementById('dizzoDizzoImage');
+                          const overlay1 = document.getElementById('dizzyDizzoOverlay1');
+                          const overlay2 = document.getElementById('dizzyDizzoOverlay2');
+                          
+                          // Reset styles
+                          img.style.transform = 'scale(1)';
+                          overlay1.style.opacity = '0';
+                          overlay2.style.opacity = '0';
+                          overlay2.style.backgroundPosition = '0% 0%';
+                          
+                          // Trigger animations
+                          setTimeout(() => {
+                            // Pulse animation
+                            img.style.transition = 'transform 2s ease-in-out';
+                            img.style.transform = 'scale(1.05)';
+                            
+                            // Fade in overlays
+                            overlay1.style.transition = 'opacity 0.5s ease-in-out';
+                            overlay1.style.opacity = '1';
+                            
+                            overlay2.style.transition = 'opacity 0.5s ease-in-out, background-position 5s linear';
+                            overlay2.style.opacity = '1';
+                            overlay2.style.backgroundPosition = '100% 100%';
+                            
+                            // Reset after animation completes
+                            setTimeout(() => {
+                              img.style.transform = 'scale(1)';
+                              
+                              setTimeout(() => {
+                                overlay1.style.opacity = '0';
+                                overlay2.style.opacity = '0';
+                              }, 1000);
+                            }, 2000);
+                          }, 100);
+                        }}
+                        size="slim"
+                      >
+                        Preview Effect
+                      </Button>
+                      <Text as="p" variant="bodySm" alignment="center" tone="subdued">
+                        (Click to see the effect)
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                </InlineGrid>
+                
+                <BlockStack gap="300">
+                  <Banner tone="success">
+                    <Text as="p">
+                      <Text as="span" fontWeight="bold">Dizzy Dizzo</Text> has been successfully added to your Alpha Dog app! Click "Preview Effect" above to see it in action.
+                    </Text>
+                  </Banner>
+                  
+                  <InlineStack gap="300" wrap={false}>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        // Get elements
+                        const img = document.getElementById('dizzoDizzoImage');
+                        const overlay1 = document.getElementById('dizzyDizzoOverlay1');
+                        const overlay2 = document.getElementById('dizzyDizzoOverlay2');
+                        
+                        // Reset styles
+                        img.style.transform = 'scale(1)';
+                        overlay1.style.opacity = '0';
+                        overlay2.style.opacity = '0';
+                        overlay2.style.backgroundPosition = '0% 0%';
+                        
+                        // Trigger animations
+                        setTimeout(() => {
+                          // Pulse animation
+                          img.style.transition = 'transform 2s ease-in-out';
+                          img.style.transform = 'scale(1.05)';
+                          
+                          // Fade in overlays
+                          overlay1.style.transition = 'opacity 0.5s ease-in-out';
+                          overlay1.style.opacity = '1';
+                          
+                          overlay2.style.transition = 'opacity 0.5s ease-in-out, background-position 5s linear';
+                          overlay2.style.opacity = '1';
+                          overlay2.style.backgroundPosition = '100% 100%';
+                          
+                          // Reset after animation completes
+                          setTimeout(() => {
+                            img.style.transform = 'scale(1)';
+                            
+                            setTimeout(() => {
+                              overlay1.style.opacity = '0';
+                              overlay2.style.opacity = '0';
+                            }, 1000);
+                          }, 2000);
+                        }, 100);
+                      }}
+                    >
+                      Try Dizzy Dizzo
+                    </Button>
+                    <Button
+                      variant="plain"
+                      onClick={() => {
+                        window.open("https://shopify.dev/apps", "_blank");
+                      }}
+                    >
+                      Learn More
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </BlockStack>
+            </Box>
+          </BlockStack>
+        </Card>
 
         {/* Featured Sections */}
         <Layout>
