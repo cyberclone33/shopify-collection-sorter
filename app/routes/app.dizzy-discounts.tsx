@@ -14,6 +14,7 @@ import {
   SkeletonDisplayText,
   Card,
   InlineGrid,
+  ButtonGroup,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
@@ -28,7 +29,7 @@ export async function action({ request }) {
   const action = formData.get("action");
 
   try {
-    if (action === "randomDiscount") {
+    if (action === "randomDiscount" || action === "pickAnotherProduct") {
       // Get a random product
       const response = await admin.graphql(`
         query {
@@ -68,7 +69,30 @@ export async function action({ request }) {
       const randomIndex = Math.floor(Math.random() * products.length);
       const selectedProduct = products[randomIndex].node;
       
-      // Calculate a random discount (10-40%)
+      // For "pickAnotherProduct" action, we just return the selected product without applying a discount
+      if (action === "pickAnotherProduct") {
+        const variant = selectedProduct.variants.edges[0].node;
+        
+        return json({
+          status: "success",
+          product: {
+            id: selectedProduct.id,
+            title: selectedProduct.title,
+            variant: {
+              id: variant.id,
+              sku: variant.sku,
+              originalPrice: parseFloat(variant.price),
+              discountedPrice: variant.price,
+              compareAtPrice: variant.compareAtPrice,
+              inventoryQuantity: variant.inventoryQuantity,
+              discountPercent: 0
+            }
+          },
+          skipDiscount: true
+        });
+      }
+      
+      // For "randomDiscount" action, calculate and apply a discount
       const discountPercent = Math.floor(Math.random() * 31) + 10;
       const variant = selectedProduct.variants.edges[0].node;
       
@@ -132,6 +156,72 @@ export async function action({ request }) {
           }
         }
       });
+    } else if (action === "redoDiscount") {
+      // Redo the discount for the same product
+      const productId = formData.get("productId");
+      const variantId = formData.get("variantId");
+      const originalPrice = parseFloat(formData.get("originalPrice"));
+      const sku = formData.get("sku");
+      const inventoryQuantity = formData.get("inventoryQuantity");
+      const title = formData.get("title");
+      
+      // Calculate a new random discount (10-40%)
+      const discountPercent = Math.floor(Math.random() * 31) + 10;
+      const discountedPrice = (originalPrice * (100 - discountPercent) / 100).toFixed(2);
+      
+      // Update the product with the new discounted price
+      const updateResponse = await admin.graphql(`
+        mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+            product {
+              id
+              title
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `, {
+        variables: {
+          productId: productId,
+          variants: [
+            {
+              id: variantId,
+              price: discountedPrice,
+              compareAtPrice: originalPrice.toString()
+            }
+          ]
+        }
+      });
+
+      const updateResult = await updateResponse.json();
+      
+      if (updateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+        return json({
+          status: "error",
+          message: "Failed to update product variant: " + 
+            updateResult.data.productVariantsBulkUpdate.userErrors.map(err => err.message).join(", ")
+        });
+      }
+
+      return json({
+        status: "success",
+        product: {
+          id: productId,
+          title: title,
+          variant: {
+            id: variantId,
+            sku: sku,
+            originalPrice: originalPrice,
+            discountedPrice: discountedPrice,
+            compareAtPrice: originalPrice.toString(),
+            inventoryQuantity: inventoryQuantity,
+            discountPercent
+          }
+        }
+      });
     }
     
     return json({ status: "error", message: "Unknown action" });
@@ -159,6 +249,25 @@ export default function DizzyDiscounts() {
 
   const handleRandomDiscount = useCallback(() => {
     submit({ action: "randomDiscount" }, { method: "post" });
+  }, [submit]);
+  
+  const handleRedoDiscount = useCallback(() => {
+    if (!lastDiscount) return;
+    
+    const formData = new FormData();
+    formData.append("action", "redoDiscount");
+    formData.append("productId", lastDiscount.id);
+    formData.append("variantId", lastDiscount.variant.id);
+    formData.append("originalPrice", lastDiscount.variant.originalPrice);
+    formData.append("sku", lastDiscount.variant.sku || "");
+    formData.append("inventoryQuantity", lastDiscount.variant.inventoryQuantity || "0");
+    formData.append("title", lastDiscount.title);
+    
+    submit(formData, { method: "post" });
+  }, [lastDiscount, submit]);
+  
+  const handlePickAnotherProduct = useCallback(() => {
+    submit({ action: "pickAnotherProduct" }, { method: "post" });
   }, [submit]);
 
   return (
@@ -210,7 +319,7 @@ export default function DizzyDiscounts() {
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
-                    Last Generated Discount
+                    {actionData?.skipDiscount ? "Selected Product" : "Last Generated Discount"}
                   </Text>
                   
                   <BlockStack gap="200">
@@ -226,23 +335,55 @@ export default function DizzyDiscounts() {
                         <Text as="span" variant="bodyMd">Original Price:</Text>
                         <Text as="span" variant="bodyMd">${lastDiscount.variant.originalPrice}</Text>
                         
-                        <Text as="span" variant="bodyMd">Discounted Price:</Text>
-                        <Text as="span" variant="bodyMd" fontWeight="bold" color="success">
-                          ${lastDiscount.variant.discountedPrice}
-                        </Text>
-                        
-                        <Text as="span" variant="bodyMd">Compare At Price:</Text>
-                        <Text as="span" variant="bodyMd">${lastDiscount.variant.compareAtPrice || "N/A"}</Text>
+                        {lastDiscount.variant.discountPercent > 0 && (
+                          <>
+                            <Text as="span" variant="bodyMd">Discounted Price:</Text>
+                            <Text as="span" variant="bodyMd" fontWeight="bold" color="success">
+                              ${lastDiscount.variant.discountedPrice}
+                            </Text>
+                            
+                            <Text as="span" variant="bodyMd">Compare At Price:</Text>
+                            <Text as="span" variant="bodyMd">${lastDiscount.variant.compareAtPrice || "N/A"}</Text>
+                            
+                            <Text as="span" variant="bodyMd">Discount Applied:</Text>
+                            <Text as="span" variant="bodyMd" fontWeight="bold">
+                              {lastDiscount.variant.discountPercent}%
+                            </Text>
+                          </>
+                        )}
                         
                         <Text as="span" variant="bodyMd">Inventory Quantity:</Text>
                         <Text as="span" variant="bodyMd">{lastDiscount.variant.inventoryQuantity || "N/A"}</Text>
-                        
-                        <Text as="span" variant="bodyMd">Discount Applied:</Text>
-                        <Text as="span" variant="bodyMd" fontWeight="bold">
-                          {lastDiscount.variant.discountPercent}%
-                        </Text>
                       </InlineGrid>
                     </Box>
+                    
+                    <BlockStack gap="200">
+                      <ButtonGroup>
+                        {actionData?.skipDiscount ? (
+                          <Button 
+                            variant="primary" 
+                            onClick={handleRandomDiscount} 
+                            disabled={isLoading}
+                          >
+                            Apply Random Discount
+                          </Button>
+                        ) : (
+                          <Button 
+                            onClick={handleRedoDiscount} 
+                            disabled={isLoading}
+                          >
+                            Generate New Discount
+                          </Button>
+                        )}
+                        
+                        <Button 
+                          onClick={handlePickAnotherProduct} 
+                          disabled={isLoading}
+                        >
+                          Pick Another Product
+                        </Button>
+                      </ButtonGroup>
+                    </BlockStack>
                   </BlockStack>
                 </BlockStack>
               </Card>
