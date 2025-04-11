@@ -147,3 +147,19 @@ model ShelfLifeItemPriceChange {
   @@index([shelfLifeItemId])
   @@index([shopifyVariantId])
 }
+
+model ActivityLog {
+  id              String    @id @default(cuid())
+  shop            String
+  productId       String
+  productTitle    String
+  sku             String?
+  originalPrice   Float
+  discountedPrice Float
+  discountPercent Int
+  wasDiscounted   Boolean   @default(false)
+  timestamp       DateTime  @default(now())
+  note            String?
+
+  @@index([shop])
+}
