@@ -21,7 +21,7 @@ import {
   Icon,
   Tooltip,
 } from "@shopify/polaris";
-import { RefreshMinor, UndoMinor } from "@shopify/polaris-icons";
+import { RefreshMinor, UndoIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
@@ -541,7 +541,7 @@ export default function DizzyDiscounts() {
     `${product.discountPercent}%`,
     new Date(product.discountedAt).toLocaleString(),
     <Button size="micro" onClick={() => handleRevertDiscount(product.id)}>
-      <Icon source={UndoMinor} />
+      <Icon source={UndoIcon} />
       <span>Revert</span>
     </Button>
   ]) || [];
