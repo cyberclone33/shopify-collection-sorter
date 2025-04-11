@@ -9,15 +9,11 @@ import {
   Text,
   BlockStack,
   Box,
-  InlineStack,
   Banner,
-  Spinner,
-  Divider,
   SkeletonBodyText,
   SkeletonDisplayText,
   Card,
   InlineGrid,
-  TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
@@ -79,10 +75,16 @@ export async function action({ request }) {
       const originalPrice = parseFloat(variant.price);
       const discountedPrice = (originalPrice * (100 - discountPercent) / 100).toFixed(2);
       
-      // Update the product with the discounted price using the correct mutation
+      // Update the product with the discounted price using the correct GraphQL mutation
       const updateResponse = await admin.graphql(`
-        mutation variantUpdate($input: ProductVariantInput!) {
-          productVariantUpdate(input: $input) {
+        mutation {
+          productVariantUpdate(
+            input: {
+              id: "${variant.id}",
+              price: "${discountedPrice}",
+              compareAtPrice: "${variant.compareAtPrice || originalPrice.toString()}"
+            }
+          ) {
             productVariant {
               id
               price
@@ -94,15 +96,7 @@ export async function action({ request }) {
             }
           }
         }
-      `, {
-        variables: {
-          input: {
-            id: variant.id,
-            price: discountedPrice,
-            compareAtPrice: variant.compareAtPrice || originalPrice.toString(),
-          },
-        },
-      });
+      `);
 
       const updateResult = await updateResponse.json();
       
