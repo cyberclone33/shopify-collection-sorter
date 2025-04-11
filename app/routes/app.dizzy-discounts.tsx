@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { json } from "@remix-run/node";
 import { useActionData, useNavigation, useSubmit, useLoaderData } from "@remix-run/react";
 import {
@@ -20,29 +20,47 @@ import {
   EmptyState,
   Icon,
   Tooltip,
+  Badge,
+  Tabs,
+  Divider,
+  Avatar,
+  Thumbnail,
+  Grid,
+  Frame,
+  MediaCard,
+  Stack,
+  FooterHelp,
+  Link,
 } from "@shopify/polaris";
-import { RefreshMinor, UndoMinor } from "@shopify/polaris-icons";
+import { 
+  RefreshIcon, 
+  UndoIcon, 
+  CheckIcon,
+  XIcon,
+  DisabledIcon,
+  CheckCircleIcon,
+  ImageIcon,
+  ClockIcon,
+  DiscountIcon
+} from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
 
 const prisma = new PrismaClient();
 
-// Define a new model for tracking discounted products
-// This would normally be added to the prisma/schema.prisma file
-// But for simplicity we'll define the type here
+// Add activity log type to track both discounted and skipped products
 /**
- * @typedef {Object} DiscountedProduct
- * @property {string} id - Unique ID for this discount record
- * @property {string} shop - The Shopify shop domain
+ * @typedef {Object} ActivityLog
+ * @property {string} id - Unique ID for this activity record
  * @property {string} productId - The Shopify product ID
- * @property {string} variantId - The Shopify variant ID
  * @property {string} productTitle - The product title
  * @property {string} sku - The variant SKU
- * @property {number} originalPrice - The original price before discount
- * @property {number} discountedPrice - The price after discount
- * @property {number} discountPercent - The discount percentage applied
- * @property {Date} discountedAt - When the discount was applied
+ * @property {number} originalPrice - The original price
+ * @property {number} discountedPrice - The discounted price (if discounted, same as original if skipped)
+ * @property {number} discountPercent - The discount percentage (0 if skipped)
+ * @property {boolean} wasDiscounted - Whether the product was discounted or skipped
+ * @property {Date} timestamp - When the action was taken
  */
 
 export const loader = async ({ request }) => {
@@ -59,8 +77,20 @@ export const loader = async ({ request }) => {
     }
   });
   
+  // Fetch activity log for this shop
+  const activityLog = await prisma.activityLog.findMany({
+    where: {
+      shop: session.shop
+    },
+    orderBy: {
+      timestamp: 'desc'
+    },
+    take: 100 // Limit to last 100 activities
+  });
+  
   return json({ 
-    discountedProducts
+    discountedProducts,
+    activityLog
   });
 };
 
@@ -79,6 +109,9 @@ export async function action({ request }) {
               node {
                 id
                 title
+                featuredImage {
+                  url
+                }
                 variants(first: 1) {
                   edges {
                     node {
@@ -87,6 +120,9 @@ export async function action({ request }) {
                       compareAtPrice
                       inventoryQuantity
                       sku
+                      image {
+                        url
+                      }
                     }
                   }
                 }
@@ -109,20 +145,22 @@ export async function action({ request }) {
       // Select a random product
       const randomIndex = Math.floor(Math.random() * products.length);
       const selectedProduct = products[randomIndex].node;
+      const variant = selectedProduct.variants.edges[0].node;
+      const originalPrice = parseFloat(variant.price);
+      const imageUrl = variant.image?.url || selectedProduct.featuredImage?.url || null;
       
       // For "pickAnotherProduct" action, we just return the selected product without applying a discount
       if (action === "pickAnotherProduct") {
-        const variant = selectedProduct.variants.edges[0].node;
-        
         return json({
           status: "success",
           product: {
             id: selectedProduct.id,
             title: selectedProduct.title,
+            imageUrl: imageUrl,
             variant: {
               id: variant.id,
               sku: variant.sku,
-              originalPrice: parseFloat(variant.price),
+              originalPrice: originalPrice,
               discountedPrice: variant.price,
               compareAtPrice: variant.compareAtPrice,
               inventoryQuantity: variant.inventoryQuantity,
@@ -135,9 +173,6 @@ export async function action({ request }) {
       
       // For "randomDiscount" action, calculate and apply a discount
       const discountPercent = Math.floor(Math.random() * 31) + 10;
-      const variant = selectedProduct.variants.edges[0].node;
-      
-      const originalPrice = parseFloat(variant.price);
       const discountedPrice = (originalPrice * (100 - discountPercent) / 100).toFixed(2);
       
       // Extract product ID from the GraphQL ID
@@ -197,12 +232,29 @@ export async function action({ request }) {
           active: true
         }
       });
+      
+      // Add to activity log
+      await prisma.activityLog.create({
+        data: {
+          id: uuidv4(),
+          shop: session.shop,
+          productId: selectedProduct.id,
+          productTitle: selectedProduct.title,
+          sku: variant.sku || "",
+          originalPrice: originalPrice,
+          discountedPrice: parseFloat(discountedPrice),
+          discountPercent: discountPercent,
+          wasDiscounted: true,
+          timestamp: new Date()
+        }
+      });
 
       return json({
         status: "success",
         product: {
           id: selectedProduct.id,
           title: selectedProduct.title,
+          imageUrl: imageUrl,
           variant: {
             id: variant.id,
             sku: variant.sku,
@@ -214,6 +266,39 @@ export async function action({ request }) {
           }
         }
       });
+    } else if (action === "skipProduct") {
+      // Log the skipped product without applying a discount
+      const productId = formData.get("productId");
+      const title = formData.get("title");
+      const sku = formData.get("sku") || "";
+      const originalPrice = parseFloat(formData.get("originalPrice"));
+      
+      // Add to activity log as skipped
+      await prisma.activityLog.create({
+        data: {
+          id: uuidv4(),
+          shop: session.shop,
+          productId: productId,
+          productTitle: title,
+          sku: sku,
+          originalPrice: originalPrice,
+          discountedPrice: originalPrice,
+          discountPercent: 0,
+          wasDiscounted: false,
+          timestamp: new Date()
+        }
+      });
+      
+      // Get next random product
+      return await action({
+        request: new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: new URLSearchParams({
+            action: 'pickAnotherProduct'
+          })
+        })
+      });
     } else if (action === "redoDiscount") {
       // Redo the discount for the same product
       const productId = formData.get("productId");
@@ -222,6 +307,7 @@ export async function action({ request }) {
       const sku = formData.get("sku");
       const inventoryQuantity = formData.get("inventoryQuantity");
       const title = formData.get("title");
+      const imageUrl = formData.get("imageUrl");
       
       // Calculate a new random discount (10-40%)
       const discountPercent = Math.floor(Math.random() * 31) + 10;
@@ -292,12 +378,29 @@ export async function action({ request }) {
           active: true
         }
       });
+      
+      // Add to activity log
+      await prisma.activityLog.create({
+        data: {
+          id: uuidv4(),
+          shop: session.shop,
+          productId: productId,
+          productTitle: title,
+          sku: sku || "",
+          originalPrice: originalPrice,
+          discountedPrice: parseFloat(discountedPrice),
+          discountPercent: discountPercent,
+          wasDiscounted: true,
+          timestamp: new Date()
+        }
+      });
 
       return json({
         status: "success",
         product: {
           id: productId,
           title: title,
+          imageUrl: imageUrl,
           variant: {
             id: variantId,
             sku: sku,
@@ -367,6 +470,23 @@ export async function action({ request }) {
         data: { active: false }
       });
       
+      // Add to activity log
+      await prisma.activityLog.create({
+        data: {
+          id: uuidv4(),
+          shop: session.shop,
+          productId: discount.productId,
+          productTitle: discount.productTitle,
+          sku: discount.sku || "",
+          originalPrice: discount.originalPrice,
+          discountedPrice: discount.originalPrice,
+          discountPercent: 0,
+          wasDiscounted: false,
+          timestamp: new Date(),
+          note: "Discount reverted"
+        }
+      });
+      
       return json({
         status: "success",
         message: `Successfully reverted discount for ${discount.productTitle}`
@@ -433,6 +553,23 @@ export async function action({ request }) {
               data: { active: false }
             });
             
+            // Add to activity log
+            await prisma.activityLog.create({
+              data: {
+                id: uuidv4(),
+                shop: session.shop,
+                productId: discount.productId,
+                productTitle: discount.productTitle,
+                sku: discount.sku || "",
+                originalPrice: discount.originalPrice,
+                discountedPrice: discount.originalPrice,
+                discountPercent: 0,
+                wasDiscounted: false,
+                timestamp: new Date(),
+                note: "Discount reverted (bulk action)"
+              }
+            });
+            
             results.push({
               product: discount.productTitle,
               success: true
@@ -466,7 +603,7 @@ export async function action({ request }) {
 }
 
 export default function DizzyDiscounts() {
-  const { discountedProducts } = useLoaderData();
+  const { discountedProducts, activityLog = [] } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -474,7 +611,15 @@ export default function DizzyDiscounts() {
   const [lastDiscount, setLastDiscount] = useState(null);
   const [showRevertModal, setShowRevertModal] = useState(false);
   const [revertResults, setRevertResults] = useState(null);
+  const [selectedTab, setSelectedTab] = useState(0);
   const isLoading = navigation.state === "submitting";
+
+  // Stats
+  const discountedCount = activityLog.filter(item => item.wasDiscounted).length;
+  const skippedCount = activityLog.filter(item => !item.wasDiscounted).length;
+  const totalSavings = activityLog
+    .filter(item => item.wasDiscounted)
+    .reduce((sum, item) => sum + (item.originalPrice - item.discountedPrice), 0);
 
   useEffect(() => {
     if (actionData?.status === "success") {
@@ -503,6 +648,7 @@ export default function DizzyDiscounts() {
     formData.append("sku", lastDiscount.variant.sku || "");
     formData.append("inventoryQuantity", lastDiscount.variant.inventoryQuantity || "0");
     formData.append("title", lastDiscount.title);
+    formData.append("imageUrl", lastDiscount.imageUrl || "");
     
     submit(formData, { method: "post" });
   }, [lastDiscount, submit]);
@@ -510,6 +656,19 @@ export default function DizzyDiscounts() {
   const handlePickAnotherProduct = useCallback(() => {
     submit({ action: "pickAnotherProduct" }, { method: "post" });
   }, [submit]);
+  
+  const handleSkipProduct = useCallback(() => {
+    if (!lastDiscount) return;
+    
+    const formData = new FormData();
+    formData.append("action", "skipProduct");
+    formData.append("productId", lastDiscount.id);
+    formData.append("sku", lastDiscount.variant.sku || "");
+    formData.append("originalPrice", lastDiscount.variant.originalPrice);
+    formData.append("title", lastDiscount.title);
+    
+    submit(formData, { method: "post" });
+  }, [lastDiscount, submit]);
   
   const handleRevertDiscount = useCallback((discountId) => {
     const formData = new FormData();
@@ -533,7 +692,7 @@ export default function DizzyDiscounts() {
   }, [submit]);
   
   // Prepare the discount history table rows
-  const rows = discountedProducts?.map(product => [
+  const activeDiscountsRows = discountedProducts?.map(product => [
     product.productTitle,
     product.sku || "N/A",
     `$${product.originalPrice.toFixed(2)}`,
@@ -541,14 +700,52 @@ export default function DizzyDiscounts() {
     `${product.discountPercent}%`,
     new Date(product.discountedAt).toLocaleString(),
     <Button size="micro" onClick={() => handleRevertDiscount(product.id)}>
-      <Icon source={UndoMinor} />
+      <Icon source={UndoIcon} />
       <span>Revert</span>
     </Button>
   ]) || [];
+  
+  // Activity log rows
+  const activityLogRows = activityLog.map(log => [
+    log.productTitle,
+    log.sku || "N/A",
+    `$${log.originalPrice.toFixed(2)}`,
+    log.wasDiscounted ? `$${log.discountedPrice.toFixed(2)}` : "N/A",
+    log.wasDiscounted ? `${log.discountPercent}%` : "N/A",
+    new Date(log.timestamp).toLocaleString(),
+    <Badge status={log.wasDiscounted ? "success" : "attention"}>
+      {log.wasDiscounted ? "Discounted" : "Skipped"}
+    </Badge>
+  ]);
+  
+  // Tabs for the history view
+  const tabs = [
+    {
+      id: 'active-discounts',
+      content: (
+        <span>
+          Active Discounts <Badge status="success">{discountedProducts?.length || 0}</Badge>
+        </span>
+      ),
+    },
+    {
+      id: 'activity-log',
+      content: (
+        <span>
+          Activity Log <Badge>{activityLog.length}</Badge>
+        </span>
+      ),
+    },
+  ];
 
   return (
     <Page
-      title="Dizzy Discounts"
+      title={
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Icon source={DiscountIcon} color="success" />
+          <span style={{ marginLeft: '8px' }}>Dizzy Discounts</span>
+        </div>
+      }
       primaryAction={
         <Button 
           variant="primary" 
@@ -567,23 +764,41 @@ export default function DizzyDiscounts() {
       ]}
     >
       <BlockStack gap="500">
+        {/* Stats Summary Card */}
         <Layout>
           <Layout.Section>
-            <LegacyCard>
-              <LegacyCard.Section>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    About Dizzy Discounts
-                  </Text>
-                  <Text as="p" variant="bodyMd">
-                    This tool helps you generate random discounts on your products.
-                    Click the button above to select a random product and apply a discount between 10-40%.
-                  </Text>
-                </BlockStack>
-              </LegacyCard.Section>
-            </LegacyCard>
+            <Card>
+              <Grid>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 4, md: 4, lg: 4 }}>
+                  <Box padding="400" borderColor="border" borderBlockEndWidth="1">
+                    <BlockStack gap="200">
+                      <Text as="h3" variant="headingMd">Products Discounted</Text>
+                      <Text as="p" variant="heading2xl" color="success">{discountedCount}</Text>
+                    </BlockStack>
+                  </Box>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 4, md: 4, lg: 4 }}>
+                  <Box padding="400" borderColor="border" borderBlockEndWidth="1">
+                    <BlockStack gap="200">
+                      <Text as="h3" variant="headingMd">Products Skipped</Text>
+                      <Text as="p" variant="heading2xl" color="critical">{skippedCount}</Text>
+                    </BlockStack>
+                  </Box>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 12, sm: 4, md: 4, lg: 4 }}>
+                  <Box padding="400" borderColor="border" borderBlockEndWidth="1">
+                    <BlockStack gap="200">
+                      <Text as="h3" variant="headingMd">Total Savings Generated</Text>
+                      <Text as="p" variant="heading2xl" color="success">${totalSavings.toFixed(2)}</Text>
+                    </BlockStack>
+                  </Box>
+                </Grid.Cell>
+              </Grid>
+            </Card>
           </Layout.Section>
-
+        </Layout>
+        
+        <Layout>
           <Layout.Section>
             {actionData?.status === "error" && (
               <Banner title="Error" tone="critical">
@@ -597,130 +812,260 @@ export default function DizzyDiscounts() {
               </Banner>
             )}
 
+            {/* Product Display Card */}
             {isLoading ? (
               <Card>
                 <BlockStack gap="400">
-                  <SkeletonDisplayText size="small" />
-                  <SkeletonBodyText lines={4} />
+                  <SkeletonDisplayText size="medium" />
+                  <Box paddingBlock="400">
+                    <Grid>
+                      <Grid.Cell columnSpan={{ xs: 12, sm: 4, md: 4, lg: 4 }}>
+                        <Box height="200px" background="bg-surface-secondary" />
+                      </Grid.Cell>
+                      <Grid.Cell columnSpan={{ xs: 12, sm: 8, md: 8, lg: 8 }}>
+                        <SkeletonBodyText lines={4} />
+                      </Grid.Cell>
+                    </Grid>
+                  </Box>
+                  <SkeletonBodyText lines={1} />
                 </BlockStack>
               </Card>
             ) : lastDiscount ? (
               <Card>
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    {actionData?.skipDiscount ? "Selected Product" : "Last Generated Discount"}
-                  </Text>
-                  
-                  <BlockStack gap="200">
-                    <Text as="h3" variant="headingLg" fontWeight="bold">
-                      {lastDiscount.title}
+                  <Box padding="400" borderColor="border" borderBlockEndWidth="1">
+                    <Text as="h2" variant="headingLg" alignment="center">
+                      Product Decision Center
                     </Text>
-                    
-                    <Box paddingBlock="400">
-                      <InlineGrid columns="2" gap="400">
-                        <Text as="span" variant="bodyMd">SKU:</Text>
-                        <Text as="span" variant="bodyMd">{lastDiscount.variant.sku || "N/A"}</Text>
-                        
-                        <Text as="span" variant="bodyMd">Original Price:</Text>
-                        <Text as="span" variant="bodyMd">${lastDiscount.variant.originalPrice}</Text>
-                        
-                        {lastDiscount.variant.discountPercent > 0 && (
-                          <>
-                            <Text as="span" variant="bodyMd">Discounted Price:</Text>
-                            <Text as="span" variant="bodyMd" fontWeight="bold" color="success">
-                              ${lastDiscount.variant.discountedPrice}
+                  </Box>
+                  
+                  <Box padding="400">
+                    <BlockStack gap="500">
+                      <Grid>
+                        <Grid.Cell columnSpan={{ xs: 12, sm: 4, md: 4, lg: 4 }}>
+                          <Box padding="200" background="bg-surface-secondary" borderRadius="2" shadow="md" borderWidth="1" borderColor="border">
+                            {lastDiscount.imageUrl ? (
+                              <Thumbnail 
+                                source={lastDiscount.imageUrl} 
+                                alt={lastDiscount.title}
+                                size="large"
+                              />
+                            ) : (
+                              <Box height="200px" alignment="center" background="bg-surface-secondary">
+                                <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center" }}>
+                                  <Icon source={ImageIcon} color="base" />
+                                </div>
+                              </Box>
+                            )}
+                          </Box>
+                        </Grid.Cell>
+                        <Grid.Cell columnSpan={{ xs: 12, sm: 8, md: 8, lg: 8 }}>
+                          <BlockStack gap="400">
+                            <Text as="h3" variant="headingXl" fontWeight="bold">
+                              {lastDiscount.title}
                             </Text>
                             
-                            <Text as="span" variant="bodyMd">Compare At Price:</Text>
-                            <Text as="span" variant="bodyMd">${lastDiscount.variant.compareAtPrice || "N/A"}</Text>
-                            
-                            <Text as="span" variant="bodyMd">Discount Applied:</Text>
-                            <Text as="span" variant="bodyMd" fontWeight="bold">
-                              {lastDiscount.variant.discountPercent}%
-                            </Text>
-                          </>
-                        )}
-                        
-                        <Text as="span" variant="bodyMd">Inventory Quantity:</Text>
-                        <Text as="span" variant="bodyMd">{lastDiscount.variant.inventoryQuantity || "N/A"}</Text>
-                      </InlineGrid>
-                    </Box>
-                    
-                    <BlockStack gap="200">
-                      <ButtonGroup>
-                        {actionData?.skipDiscount ? (
-                          <Button 
-                            variant="primary" 
-                            onClick={handleRandomDiscount} 
-                            disabled={isLoading}
-                          >
-                            Apply Random Discount
-                          </Button>
-                        ) : (
-                          <Button 
-                            onClick={handleRedoDiscount} 
-                            disabled={isLoading}
-                          >
-                            Generate New Discount
-                          </Button>
-                        )}
-                        
-                        <Button 
-                          onClick={handlePickAnotherProduct} 
-                          disabled={isLoading}
-                        >
-                          Pick Another Product
-                        </Button>
-                      </ButtonGroup>
+                            <Box paddingBlock="400">
+                              <Grid>
+                                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6 }}>
+                                  <Box padding="200">
+                                    <Text as="span" variant="bodyMd" color="subdued">SKU:</Text>
+                                    <Text as="p" variant="bodyLg">{lastDiscount.variant.sku || "N/A"}</Text>
+                                  </Box>
+                                </Grid.Cell>
+                                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6 }}>
+                                  <Box padding="200">
+                                    <Text as="span" variant="bodyMd" color="subdued">Inventory:</Text>
+                                    <Text as="p" variant="bodyLg">{lastDiscount.variant.inventoryQuantity || "N/A"}</Text>
+                                  </Box>
+                                </Grid.Cell>
+                                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6 }}>
+                                  <Box padding="200">
+                                    <Text as="span" variant="bodyMd" color="subdued">Original Price:</Text>
+                                    <Text as="p" variant="headingLg">${lastDiscount.variant.originalPrice}</Text>
+                                  </Box>
+                                </Grid.Cell>
+                                
+                                {lastDiscount.variant.discountPercent > 0 && (
+                                  <>
+                                    <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6 }}>
+                                      <Box padding="200">
+                                        <Text as="span" variant="bodyMd" color="subdued">Discounted Price:</Text>
+                                        <Text as="p" variant="headingLg" color="success">${lastDiscount.variant.discountedPrice}</Text>
+                                      </Box>
+                                    </Grid.Cell>
+                                    <Grid.Cell columnSpan={{ xs: 12, sm: 12, md: 12, lg: 12 }}>
+                                      <Box padding="200" background="bg-surface-success" borderRadius="2">
+                                        <Text as="p" variant="headingMd" color="success">
+                                          Discount Applied: {lastDiscount.variant.discountPercent}% off
+                                        </Text>
+                                      </Box>
+                                    </Grid.Cell>
+                                  </>
+                                )}
+                              </Grid>
+                            </Box>
+                          </BlockStack>
+                        </Grid.Cell>
+                      </Grid>
+                      
+                      <Box paddingBlockStart="400">
+                        <Grid>
+                          <Grid.Cell columnSpan={{ xs: 12, sm: 12, md: 12, lg: 12 }}>
+                            <div style={{ display: "flex", justifyContent: "center", gap: "16px" }}>
+                              {actionData?.skipDiscount ? (
+                                <>
+                                  <Button 
+                                    size="large"
+                                    variant="primary" 
+                                    onClick={handleRandomDiscount} 
+                                    disabled={isLoading}
+                                    icon={CheckCircleIcon}
+                                  >
+                                    <span style={{ marginLeft: "8px" }}>Apply Discount</span>
+                                  </Button>
+                                  <Button 
+                                    size="large"
+                                    variant="tertiary"
+                                    onClick={handleSkipProduct} 
+                                    disabled={isLoading}
+                                    icon={XIcon}
+                                  >
+                                    <span style={{ marginLeft: "8px" }}>Skip Product</span>
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button 
+                                    size="large"
+                                    variant="primary" 
+                                    onClick={handleRedoDiscount} 
+                                    disabled={isLoading}
+                                    icon={RefreshIcon}
+                                  >
+                                    <span style={{ marginLeft: "8px" }}>New Discount</span>
+                                  </Button>
+                                  <Button 
+                                    size="large"
+                                    variant="tertiary"
+                                    onClick={handlePickAnotherProduct} 
+                                    disabled={isLoading}
+                                  >
+                                    Next Product
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </Grid.Cell>
+                        </Grid>
+                      </Box>
                     </BlockStack>
-                  </BlockStack>
+                  </Box>
                 </BlockStack>
               </Card>
-            ) : null}
+            ) : (
+              <Card>
+                <EmptyState
+                  heading="Start generating random discounts"
+                  image=""
+                  action={{
+                    content: "Generate Random Discount",
+                    onAction: handleRandomDiscount
+                  }}
+                >
+                  <p>Click the button to select a random product and apply a discount between 10-40%.</p>
+                </EmptyState>
+              </Card>
+            )}
           </Layout.Section>
 
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Discount History
-                </Text>
+                <Tabs
+                  tabs={tabs}
+                  selected={selectedTab}
+                  onSelect={setSelectedTab}
+                />
                 
-                {rows.length > 0 ? (
-                  <DataTable
-                    columnContentTypes={[
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                    ]}
-                    headings={[
-                      'Product',
-                      'SKU',
-                      'Original Price',
-                      'Discounted Price',
-                      'Discount',
-                      'Applied At',
-                      'Actions',
-                    ]}
-                    rows={rows}
-                  />
-                ) : (
-                  <EmptyState
-                    heading="No discounts applied yet"
-                    image=""
-                  >
-                    <p>Use the 'Generate Random Discount' button to start applying discounts to products.</p>
-                  </EmptyState>
-                )}
+                <div style={{ display: selectedTab === 0 ? "block" : "none" }}>
+                  {activeDiscountsRows.length > 0 ? (
+                    <DataTable
+                      columnContentTypes={[
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                      ]}
+                      headings={[
+                        'Product',
+                        'SKU',
+                        'Original Price',
+                        'Discounted Price',
+                        'Discount',
+                        'Applied At',
+                        'Actions',
+                      ]}
+                      rows={activeDiscountsRows}
+                    />
+                  ) : (
+                    <Box padding="400">
+                      <EmptyState
+                        heading="No active discounts"
+                        image=""
+                      >
+                        <p>Apply discounts to products to see them listed here.</p>
+                      </EmptyState>
+                    </Box>
+                  )}
+                </div>
+                
+                <div style={{ display: selectedTab === 1 ? "block" : "none" }}>
+                  {activityLogRows.length > 0 ? (
+                    <DataTable
+                      columnContentTypes={[
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                        'text',
+                      ]}
+                      headings={[
+                        'Product',
+                        'SKU',
+                        'Original Price',
+                        'Discounted Price',
+                        'Discount',
+                        'Timestamp',
+                        'Action',
+                      ]}
+                      rows={activityLogRows}
+                    />
+                  ) : (
+                    <Box padding="400">
+                      <EmptyState
+                        heading="No activity recorded yet"
+                        image=""
+                      >
+                        <p>Activity will be logged as you interact with products.</p>
+                      </EmptyState>
+                    </Box>
+                  )}
+                </div>
               </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>
       </BlockStack>
+
+      <FooterHelp>
+        Need help with discounts? <Link url="https://help.shopify.com/manual/promoting-marketing/create-marketing/discounts">Learn more</Link>
+      </FooterHelp>
 
       <Modal
         open={showRevertModal}
