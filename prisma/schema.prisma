@@ -86,6 +86,22 @@ model FacebookUser {
   @@unique([shop, facebookId], name: "shop_facebookId")
 }
 
+model DiscountedProduct {
+  id              String    @id @default(cuid())
+  shop            String
+  productId       String
+  variantId       String
+  productTitle    String
+  sku             String?
+  originalPrice   Float
+  discountedPrice Float
+  discountPercent Int
+  discountedAt    DateTime  @default(now())
+  active          Boolean   @default(true)
+
+  @@unique([shop, variantId], name: "shop_variantId")
+}
+
 model ShelfLifeItem {
   id                  String                   @id @default(cuid())
   shop                String
