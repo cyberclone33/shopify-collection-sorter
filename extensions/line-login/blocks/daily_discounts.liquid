@@ -172,13 +172,16 @@
         </div>
       `;
       
+      // Get the custom tag from settings (with fallback)
+      const customTag = '{{ block.settings.product_tag }}' || 'DailyDiscount_每日優惠';
+      
       // Construct API URL with shop parameter and tag filter
       const apiUrl = '/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + 
                     '&sort=' + sortBy + 
                     '&shop=' + encodeURIComponent(shopDomain) +
-                    '&tag=DailyDiscount_每日優惠';
+                    '&tag=' + encodeURIComponent(customTag);
       
-      console.log('Fetching products with tag DailyDiscount_每日優惠 from:', apiUrl);
+      console.log('Fetching products with tag "' + customTag + '" from:', apiUrl);
       
       // Fetch the discounted products
       fetch(apiUrl)
@@ -198,7 +201,7 @@
             console.log('No products found in API response, trying direct collection fetch');
             
             // Attempt to fetch directly from Shopify collections
-            fetch('/collections/all/products.json?filter.p.tag=DailyDiscount_每日優惠&limit=' + maxProducts)
+            fetch('/collections/all/products.json?filter.p.tag=' + encodeURIComponent(customTag) + '&limit=' + maxProducts)
               .then(response => response.json())
               .then(data => {
                 if (data.products && data.products.length > 0) {
@@ -311,6 +314,13 @@
   "name": "Daily Discounts",
   "target": "section",
   "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Product Tag",
+      "default": "DailyDiscount_每日優惠",
+      "info": "Enter the tag used to identify products to display in this section"
+    },
     {
       "type": "number",
       "id": "max_products",

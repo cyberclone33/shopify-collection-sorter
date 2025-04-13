@@ -66,6 +66,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     take: 5
   });
   
+  // Fetch products with the DailyDiscount tag
+  const TAG_NAME = "DailyDiscount_每日優惠";
+  
   // If a specific variant ID is provided for debugging
   if (debugVariantId) {
     try {
@@ -161,153 +164,160 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
   
-  // Regular product fetch logic
+  // Fetch products with the DailyDiscount tag
   try {
-    // We'll fetch all products by using pagination
-    let allProductEdges = [];
-    let hasNextPage = true;
-    let cursor = null;
+    console.log(`Fetching products with tag "${TAG_NAME}"...`);
     
-    // Function to build the query with the appropriate cursor
-    const buildQuery = (cursor) => {
-      return `
-        query GetProductsWithInventory {
-          products(first: 250${cursor ? `, after: "${cursor}"` : ''}) {
-            edges {
-              node {
-                id
-                title
-                featuredImage {
-                  url
-                  altText
-                }
-                variants(first: 1) {
-                  edges {
-                    node {
-                      id
-                      title
-                      price
-                      compareAtPrice
-                      inventoryQuantity
-                      inventoryItem {
-                        unitCost {
-                          amount
-                          currencyCode
-                        }
+    // Fetch products with the tag using the Shopify GraphQL API
+    const response = await admin.graphql(`
+      query GetTaggedProducts($tag: String!) {
+        products(first: 20, query: $tag) {
+          edges {
+            node {
+              id
+              title
+              tags
+              featuredImage {
+                url
+                altText
+              }
+              variants(first: 1) {
+                edges {
+                  node {
+                    id
+                    title
+                    price
+                    compareAtPrice
+                    inventoryQuantity
+                    inventoryItem {
+                      unitCost {
+                        amount
+                        currencyCode
                       }
                     }
                   }
                 }
               }
-              cursor
-            }
-            pageInfo {
-              hasNextPage
             }
           }
         }
-      `;
-    };
+      }
+    `, {
+      variables: {
+        tag: `tag:${TAG_NAME}`
+      }
+    });
     
-    // Loop to fetch all pages of products
-    while (hasNextPage) {
-      console.log(`Fetching products${cursor ? ' after cursor: ' + cursor : ''}`);
-      
-      const response = await admin.graphql(buildQuery(cursor));
-      const responseJson = await response.json();
-      
-      if (responseJson.errors) {
-        console.error("GraphQL errors:", responseJson.errors);
-        break;
-      }
-      
-      const products = responseJson.data?.products;
-      
-      if (!products || !products.edges || products.edges.length === 0) {
-        break;
-      }
-      
-      // Add the current page of edges to our collection
-      allProductEdges = [...allProductEdges, ...products.edges];
-      
-      // Check if there are more pages
-      hasNextPage = products.pageInfo.hasNextPage;
-      
-      // If there are more pages, get the cursor of the last item
-      if (hasNextPage && products.edges.length > 0) {
-        cursor = products.edges[products.edges.length - 1].cursor;
-      } else {
-        break;
-      }
-      
-      // Log progress for large stores
-      if (allProductEdges.length % 500 === 0) {
-        console.log(`Fetched ${allProductEdges.length} products so far...`);
-      }
-    }
+    const responseJson = await response.json();
     
-    console.log(`Fetched a total of ${allProductEdges.length} products`);
-    
-    // Create a response object structure that matches the original format
-    const responseJson = {
-      data: {
-        products: {
-          edges: allProductEdges
-        }
-      }
-    };
-    
-    // First, check if we received any products at all
-    if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {
+    if (responseJson.errors) {
+      console.error("GraphQL errors:", responseJson.errors);
       return json({
         status: "error",
-        message: "No products found in your store. Please add some products first.",
-        randomProduct: null
+        message: `Error fetching tagged products: ${responseJson.errors[0].message}`,
+        taggedProducts: [],
+        recentDiscountLogs
       });
     }
-
-    // Count products that meet each criterion to provide better diagnostics
-    const diagnostics = {
-      totalProducts: responseJson.data.products.edges.length,
-      withImages: 0,
-      withVariants: 0,
-      withPositiveInventory: 0,
-      withCost: 0
-    };
-
-    // Filter products to include those with images and variants
-    // Make cost optional - we'll estimate it if not available
-    const productsWithData = responseJson.data.products.edges
-      .filter((edge: any) => {
+    
+    const products = responseJson.data?.products?.edges || [];
+    console.log(`Found ${products.length} products with tag "${TAG_NAME}"`);
+    
+    // Transform the data for easier display
+    const taggedProducts = products.map((edge: any) => {
+      const product = edge.node;
+      const variant = product.variants.edges[0]?.node;
+      
+      if (!variant) return null; // Skip products without variants
+      
+      const price = parseFloat(variant.price);
+      
+      // If cost is missing, estimate it as 50% of the selling price
+      const hasCost = variant.inventoryItem?.unitCost?.amount;
+      const cost = hasCost 
+        ? parseFloat(variant.inventoryItem.unitCost.amount)
+        : price * 0.5; // Assume 50% cost if not available
+      
+      // Use the same currency code for cost and price if cost data is missing
+      const currencyCode = variant.inventoryItem?.unitCost?.currencyCode || 'USD';
+      
+      return {
+        id: product.id,
+        title: product.title,
+        tags: product.tags,
+        imageUrl: product.featuredImage?.url || null,
+        imageAlt: product.featuredImage?.altText || product.title,
+        cost: cost,
+        sellingPrice: price,
+        compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
+        inventoryQuantity: variant.inventoryQuantity || 0,
+        variantId: variant.id,
+        variantTitle: variant.title !== "Default Title" ? variant.title : null,
+        currencyCode: currencyCode,
+        hasCostData: !!hasCost, // Flag to indicate if cost was provided or estimated
+        hasDiscount: variant.compareAtPrice && parseFloat(variant.compareAtPrice) > price
+      };
+    }).filter(Boolean); // Remove null entries
+    
+    // Now, also fetch a random product that doesn't have the tag yet - for suggesting new discounts
+    const randomProductResponse = await admin.graphql(`
+      query GetRandomProduct($excludeTag: String!, $first: Int!) {
+        products(first: $first, query: "NOT ${TAG_NAME}") {
+          edges {
+            node {
+              id
+              title
+              featuredImage {
+                url
+                altText
+              }
+              variants(first: 1) {
+                edges {
+                  node {
+                    id
+                    title
+                    price
+                    compareAtPrice
+                    inventoryQuantity
+                    inventoryItem {
+                      unitCost {
+                        amount
+                        currencyCode
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `, {
+      variables: {
+        excludeTag: TAG_NAME,
+        first: 50
+      }
+    });
+    
+    const randomJson = await randomProductResponse.json();
+    const randomProducts = randomJson.data?.products?.edges || [];
+    
+    // Filter to products with images and inventory
+    const eligibleRandomProducts = randomProducts
+      .map((edge: any) => {
         const product = edge.node;
         const variant = product.variants.edges[0]?.node;
         
-        // Count for diagnostics
-        if (product.featuredImage) diagnostics.withImages++;
-        if (variant) diagnostics.withVariants++;
-        if (variant && variant.inventoryQuantity > 0) diagnostics.withPositiveInventory++;
-        if (variant && variant.inventoryItem?.unitCost?.amount) diagnostics.withCost++;
+        if (!product.featuredImage || !variant || variant.inventoryQuantity <= 0) {
+          return null;
+        }
         
-        // Require image, variant, and positive inventory but make cost optional
-        return (
-          product.featuredImage && 
-          variant &&
-          variant.inventoryQuantity > 0
-        );
-      })
-      .map((edge: any) => {
-        const product = edge.node;
-        const variant = product.variants.edges[0].node;
         const price = parseFloat(variant.price);
-        
-        // If cost is missing, estimate it as 50% of the selling price
-        // This is just a fallback for demonstration purposes
         const hasCost = variant.inventoryItem?.unitCost?.amount;
         const cost = hasCost 
           ? parseFloat(variant.inventoryItem.unitCost.amount)
-          : price * 0.5; // Assume 50% cost if not available
+          : price * 0.5;
         
-        // Use the same currency code for cost and price if cost data is missing
         const currencyCode = variant.inventoryItem?.unitCost?.currencyCode || 'USD';
         
         return {
@@ -320,58 +330,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
           inventoryQuantity: variant.inventoryQuantity,
           variantId: variant.id,
-          variantTitle: variant.title,
+          variantTitle: variant.title !== "Default Title" ? variant.title : null,
           currencyCode: currencyCode,
-          hasCostData: !!hasCost // Flag to indicate if cost was provided or estimated
+          hasCostData: !!hasCost
         };
-      });
-    
-    // Check if we have any valid products
-    if (productsWithData.length === 0) {
-      // Provide detailed diagnostics about what criteria products failed to meet
-      return json({
-        status: "error",
-        message: `No products found meeting minimum requirements (image and positive inventory).
-        
-Found ${diagnostics.totalProducts} products:
-• ${diagnostics.withImages} have images
-• ${diagnostics.withVariants} have variants
-• ${diagnostics.withPositiveInventory} have positive inventory
-• ${diagnostics.withCost} have cost data
-
-Please ensure some products have images and inventory quantity > 0.`,
-        diagnostics,
-        randomProduct: null
-      });
-    }
-    
-    // Get array of recently discounted product IDs to avoid repeating
-    const recentlyDiscountedProductIds = recentDiscountLogs
-      .map(log => log.productId)
+      })
       .filter(Boolean);
-      
-    // Filter out recently discounted products if possible
-    let eligibleProducts = productsWithData;
-    if (recentlyDiscountedProductIds.length > 0 && productsWithData.length > recentlyDiscountedProductIds.length) {
-      eligibleProducts = productsWithData.filter(product => 
-        !recentlyDiscountedProductIds.includes(product.id)
-      );
-      
-      // If we filtered out all products, fall back to the full list
-      if (eligibleProducts.length === 0) {
-        eligibleProducts = productsWithData;
-        console.log("All available products have been recently discounted. Using full product list.");
-      }
-    }
     
-    // Select a random product from eligible products
-    const randomIndex = Math.floor(Math.random() * eligibleProducts.length);
-    const randomProduct = eligibleProducts[randomIndex];
+    // Select a random product to suggest
+    let randomProduct = null;
+    if (eligibleRandomProducts.length > 0) {
+      const randomIndex = Math.floor(Math.random() * eligibleRandomProducts.length);
+      randomProduct = eligibleRandomProducts[randomIndex];
+    }
     
     return json({
       status: "success",
+      taggedProducts,
       randomProduct,
-      recentDiscountLogs
+      recentDiscountLogs,
+      tagName: TAG_NAME
     });
     
   } catch (error) {

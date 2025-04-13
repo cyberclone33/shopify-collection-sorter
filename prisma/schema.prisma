@@ -159,3 +159,22 @@ model DailyDiscountLog {
   @@index([variantId])
   @@index([appliedAt])
 }
+
+model SelectedDailyDiscount {
+  id            String   @id @default(cuid())
+  shop          String
+  productId     String
+  productTitle  String
+  variantId     String
+  variantTitle  String?
+  displayOrder  Int      @default(0)
+  imageUrl      String?
+  price         Float
+  compareAtPrice Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shop, productId, variantId])
+  @@index([shop])
+  @@index([displayOrder])
+}
