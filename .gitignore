@@ -25,3 +25,10 @@ database.sqlite
 
 # macOS system files
 .DS_Store
+
+# Backup files
+*.backup
+*.bak
+*.backup[0-9]*
+*.swp
+*~
