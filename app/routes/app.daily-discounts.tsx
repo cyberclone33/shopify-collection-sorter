@@ -326,8 +326,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   
   try {
     // Update the product variant with the new price
+    // Use the variant update mutation for Shopify API 2025-01
     const response = await admin.graphql(`
-      mutation productVariantUpdate($input: ProductVariantInput!) {
+      mutation updateVariant($input: ProductVariantInput!) {
         productVariantUpdate(input: $input) {
           productVariant {
             id
