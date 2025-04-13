@@ -29,3 +29,8 @@ embedded = false
 
 [build]
 include_config_on_deploy = true
+
+[app_proxy]
+url = "https://shopify-collection-sorter.onrender.com"
+subpath = "api"
+prefix = "apps"

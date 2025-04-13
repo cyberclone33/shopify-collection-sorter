@@ -159,11 +159,11 @@
       const showSavings = {{ block.settings.show_savings }};
       const shopDomain = '{{ shop.permanent_domain }}';
       
-      // Fetch the discounted products
-      fetch('/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + '&sort=' + sortBy)
+      // Fetch the discounted products - add shop parameter for fallback authentication
+      fetch('/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + '&sort=' + sortBy + '&shop=' + shopDomain)
         .then(response => {
           if (!response.ok) {
-            throw new Error('Network response was not ok');
+            throw new Error('Network response was not ok: ' + response.status);
           }
           return response.json();
         })
@@ -176,7 +176,9 @@
         })
         .catch(error => {
           console.error('Error fetching discounted products:', error);
-          showError('Unable to load discounted products. Please try again later.');
+          // Add more detailed error message for debugging
+          const errorDetails = error.message || 'Unknown error';
+          showError(`Unable to load discounted products (${errorDetails}). Please try again later.`);
         });
       
       function renderProducts(products) {
