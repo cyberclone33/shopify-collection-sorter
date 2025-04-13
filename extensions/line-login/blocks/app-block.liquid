@@ -39,7 +39,8 @@
           <div class="product-card">
             <a href="{{ product.url }}">
               {% if product.featured_image %}
-                <img src="{{ product.featured_image | img_url: '300x300', crop: 'center' }}" 
+                {% assign img_src = product.featured_image | image_url: width: 300 %}
+                <img src="{{ img_src }}" 
                      alt="{{ product.title }}"
                      width="300" 
                      height="300"

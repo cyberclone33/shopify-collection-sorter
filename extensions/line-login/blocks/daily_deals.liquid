@@ -1,0 +1,71 @@
+{% comment %}
+  Daily Deals - Simple App Block
+{% endcomment %}
+
+{% schema %}
+{
+  "name": "Daily Deals",
+  "target": "section",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "This block displays products tagged with 'DailyDiscount_每日優惠'"
+    },
+    {
+      "type": "range",
+      "id": "products_to_show",
+      "min": 2,
+      "max": 8,
+      "step": 1,
+      "default": 4,
+      "label": "Products to show"
+    }
+  ]
+}
+{% endschema %}
+
+<div style="margin: 20px 0;">
+  <h2 style="text-align: center; margin-bottom: 20px;">Today's Special Deals</h2>
+  
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px;">
+    {% assign tagged_products = collections.all.products | where: "tags", "DailyDiscount_每日優惠" %}
+    {% assign count = 0 %}
+    {% assign max_count = block.settings.products_to_show | default: 4 %}
+    
+    {% for product in tagged_products %}
+      {% if count < max_count %}
+        {% assign current_variant = product.selected_or_first_available_variant %}
+        {% if current_variant.compare_at_price > current_variant.price %}
+          <div style="border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
+            <a href="{{ product.url }}">
+              {% if product.featured_image %}
+                <div style="position: relative; padding-top: 100%;">
+                  {% assign img_src = product.featured_image | image_url: width: 300 %}
+                  <img src="{{ img_src }}" 
+                       alt="{{ product.title }}" 
+                       width="300" 
+                       height="300" 
+                       loading="lazy"
+                       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;">
+                </div>
+              {% endif %}
+              
+              <div style="padding: 15px;">
+                <h3 style="margin: 0 0 10px; font-size: 16px;">{{ product.title }}</h3>
+                <div>
+                  <span style="font-weight: bold; color: #f00; margin-right: 10px;">{{ current_variant.price | money }}</span>
+                  <span style="text-decoration: line-through; color: #999; font-size: 14px;">{{ current_variant.compare_at_price | money }}</span>
+                </div>
+              </div>
+            </a>
+          </div>
+          {% assign count = count | plus: 1 %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    
+    {% if count == 0 %}
+      <p style="grid-column: 1 / -1; text-align: center;">No discounted products available at this time.</p>
+    {% endif %}
+  </div>
+</div>
