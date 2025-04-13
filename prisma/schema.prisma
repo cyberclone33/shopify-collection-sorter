@@ -131,3 +131,31 @@ model ShelfLifeItemPriceChange {
   @@index([shelfLifeItemId])
   @@index([shopifyVariantId])
 }
+
+model DailyDiscountLog {
+  id                String       @id @default(cuid())
+  shop              String
+  productId         String       // Shopify product ID
+  productTitle      String       // Product title for easier reference
+  variantId         String       // Shopify variant ID
+  variantTitle      String?      // Variant title (if applicable)
+  originalPrice     Float        // Original price before discount
+  discountedPrice   Float        // Price after discount
+  compareAtPrice    Float?       // Compare-at price (if set)
+  costPrice         Float?       // Cost price (if available)
+  profitMargin      Float?       // Original profit margin percentage
+  discountPercentage Float       // Discount percentage applied
+  savingsAmount     Float        // Amount saved by customer
+  savingsPercentage Float        // Percentage saved by customer
+  currencyCode      String       @default("USD")
+  appliedAt         DateTime     @default(now())
+  appliedByUserId   String?      // User ID who applied the discount (if applicable)
+  imageUrl          String?      // Product image URL
+  inventoryQuantity Int?         // Inventory quantity at time of discount
+  isRandomDiscount  Boolean      @default(true) // Whether it was randomly generated or manually set
+  notes             String?      // Any additional notes
+
+  @@index([shop])
+  @@index([variantId])
+  @@index([appliedAt])
+}
