@@ -620,7 +620,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const { randomProduct, status, message, recentDiscountLogs } = loaderData;
+  const { randomProduct, status, message, recentDiscountLogs, taggedProducts, tagName } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -632,6 +632,69 @@ export default function DailyDiscounts() {
   });
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
   const submit = useSubmit();
+  
+  // Store authentication info in localStorage when the component loads
+  useEffect(() => {
+    // If we have session data from the loader, store it for API calls
+    if (loaderData && "session" in loaderData && loaderData.session) {
+      const { shop, accessToken, expires } = loaderData.session;
+      
+      try {
+        // Store in localStorage for use by API calls
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('shopify:shop', shop);
+          
+          // Only store token if it's available and not expired
+          if (accessToken && (!expires || new Date(expires) > new Date())) {
+            localStorage.setItem('shopify:token', accessToken);
+            localStorage.setItem('shopify:token_expires', expires?.toString() || '');
+          }
+        }
+      } catch (e) {
+        console.error("Error storing authentication data:", e);
+      }
+    }
+    
+    // Check if we need to refresh authentication
+    const checkAuth = async () => {
+      try {
+        // Check if token exists but might be expired
+        const storedExpires = localStorage.getItem('shopify:token_expires');
+        if (storedExpires) {
+          const expiryDate = new Date(storedExpires);
+          const now = new Date();
+          
+          // If token expires soon (within 5 minutes) or has expired, refresh it
+          if (expiryDate <= new Date(now.getTime() + 5 * 60 * 1000)) {
+            const response = await fetch('/api/auth-check');
+            if (response.ok) {
+              const data = await response.json();
+              if (data.status === "success") {
+                localStorage.setItem('shopify:shop', data.shop);
+                localStorage.setItem('shopify:token', data.accessToken);
+                localStorage.setItem('shopify:token_expires', data.expiresAt || '');
+              }
+            }
+          }
+        } else {
+          // No token stored, try to get one
+          const response = await fetch('/api/auth-check');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.status === "success") {
+              localStorage.setItem('shopify:shop', data.shop);
+              localStorage.setItem('shopify:token', data.accessToken);
+              localStorage.setItem('shopify:token_expires', data.expiresAt || '');
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error checking authentication:", e);
+      }
+    };
+    
+    checkAuth();
+  }, []);
   
   // Function to generate a random discount
   const generateRandomDiscount = () => {
