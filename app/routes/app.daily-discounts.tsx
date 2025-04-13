@@ -172,7 +172,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const buildQuery = (cursor) => {
       return `
         query GetProductsWithInventory {
-          products(first: 500${cursor ? `, after: "${cursor}"` : ''}) {
+          products(first: 250${cursor ? `, after: "${cursor}"` : ''}) {
             edges {
               node {
                 id
