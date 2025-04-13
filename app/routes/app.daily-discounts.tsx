@@ -16,13 +16,12 @@ import {
   Badge,
   SkeletonBodyText,
   SkeletonDisplayText,
-  Icon,
   TextField,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { useState, useEffect } from "react";
-// No icon imports - we'll use alternative UI elements
+import prisma from "../db.server";
 
 // Interface for our product data
 interface ProductData {
@@ -35,6 +34,7 @@ interface ProductData {
   inventoryQuantity: number;
   variantId: string;
   currencyCode: string;
+  variantTitle?: string;
 }
 
 // Interface for discount data
@@ -166,6 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 edges {
                   node {
                     id
+                    title
                     price
                     compareAtPrice
                     inventoryQuantity
@@ -249,6 +250,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
           inventoryQuantity: variant.inventoryQuantity,
           variantId: variant.id,
+          variantTitle: variant.title,
           currencyCode: currencyCode,
           hasCostData: !!hasCost // Flag to indicate if cost was provided or estimated
         };
@@ -293,12 +295,27 @@ Please ensure some products have images and inventory quantity > 0.`,
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   
   const variantId = formData.get("variantId")?.toString();
   const newPrice = formData.get("newPrice")?.toString();
   const compareAtPrice = formData.get("compareAtPrice")?.toString();
+  
+  // Additional fields for logging
+  const productId = formData.get("productId")?.toString();
+  const productTitle = formData.get("productTitle")?.toString();
+  const variantTitle = formData.get("variantTitle")?.toString();
+  const originalPrice = formData.get("originalPrice")?.toString();
+  const costPrice = formData.get("costPrice")?.toString();
+  const profitMargin = formData.get("profitMargin")?.toString();
+  const discountPercentage = formData.get("discountPercentage")?.toString();
+  const savingsAmount = formData.get("savingsAmount")?.toString();
+  const savingsPercentage = formData.get("savingsPercentage")?.toString();
+  const currencyCode = formData.get("currencyCode")?.toString();
+  const imageUrl = formData.get("imageUrl")?.toString();
+  const inventoryQuantity = formData.get("inventoryQuantity")?.toString();
+  const notes = formData.get("notes")?.toString();
   
   if (!variantId || !newPrice) {
     return json({
@@ -341,6 +358,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         status: "error",
         message: `Error updating product: ${errors}`
       });
+    }
+
+    // Log the discount to the database
+    try {
+      await prisma.dailyDiscountLog.create({
+        data: {
+          shop: session.shop,
+          productId: productId || '',
+          productTitle: productTitle || 'Unknown Product',
+          variantId: variantId,
+          variantTitle: variantTitle || null,
+          originalPrice: parseFloat(originalPrice || '0'),
+          discountedPrice: parseFloat(newPrice),
+          compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+          costPrice: costPrice ? parseFloat(costPrice) : null,
+          profitMargin: profitMargin ? parseFloat(profitMargin) : null,
+          discountPercentage: parseFloat(discountPercentage || '0'),
+          savingsAmount: parseFloat(savingsAmount || '0'),
+          savingsPercentage: parseFloat(savingsPercentage || '0'),
+          currencyCode: currencyCode || 'USD',
+          imageUrl: imageUrl || null,
+          inventoryQuantity: inventoryQuantity ? parseInt(inventoryQuantity) : null,
+          isRandomDiscount: true,
+          notes: notes || null
+        }
+      });
+      console.log(`Discount logged for product ${productTitle} (${variantId})`);
+    } catch (logError) {
+      console.error("Error logging discount:", logError);
+      // Continue anyway even if logging fails
     }
     
     return json({
@@ -417,6 +464,23 @@ export default function DailyDiscounts() {
     if (!randomProduct.compareAtPrice) {
       formData.append("compareAtPrice", randomProduct.sellingPrice.toString());
     }
+    
+    // Add all the fields needed for logging to the database
+    formData.append("productId", randomProduct.id);
+    formData.append("productTitle", randomProduct.title);
+    if (randomProduct.variantTitle) {
+      formData.append("variantTitle", randomProduct.variantTitle);
+    }
+    formData.append("originalPrice", randomProduct.sellingPrice.toString());
+    formData.append("costPrice", randomProduct.cost.toString());
+    formData.append("profitMargin", discount.profitMargin.toString());
+    formData.append("discountPercentage", discount.discountPercentage.toString());
+    formData.append("savingsAmount", discount.savingsAmount.toString());
+    formData.append("savingsPercentage", discount.savingsPercentage.toString());
+    formData.append("currencyCode", randomProduct.currencyCode);
+    formData.append("imageUrl", randomProduct.imageUrl);
+    formData.append("inventoryQuantity", randomProduct.inventoryQuantity.toString());
+    formData.append("notes", randomProduct.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
     
     submit(formData, { method: "post" });
     setIsPriceUpdated(true);
