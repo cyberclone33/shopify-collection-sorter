@@ -87,49 +87,96 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const responseJson = await response.json();
     
-    // Filter products to only include those with images, cost data, and positive inventory
-    const productsWithFullData = responseJson.data.products.edges
+    // First, check if we received any products at all
+    if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {
+      return json({
+        status: "error",
+        message: "No products found in your store. Please add some products first.",
+        randomProduct: null
+      });
+    }
+
+    // Count products that meet each criterion to provide better diagnostics
+    const diagnostics = {
+      totalProducts: responseJson.data.products.edges.length,
+      withImages: 0,
+      withVariants: 0,
+      withPositiveInventory: 0,
+      withCost: 0
+    };
+
+    // Filter products to include those with images and variants
+    // Make cost optional - we'll estimate it if not available
+    const productsWithData = responseJson.data.products.edges
       .filter((edge: any) => {
         const product = edge.node;
         const variant = product.variants.edges[0]?.node;
         
+        // Count for diagnostics
+        if (product.featuredImage) diagnostics.withImages++;
+        if (variant) diagnostics.withVariants++;
+        if (variant && variant.inventoryQuantity > 0) diagnostics.withPositiveInventory++;
+        if (variant && variant.inventoryItem?.unitCost?.amount) diagnostics.withCost++;
+        
+        // Require image, variant, and positive inventory but make cost optional
         return (
           product.featuredImage && 
           variant &&
-          variant.inventoryQuantity > 0 &&
-          variant.inventoryItem?.unitCost?.amount
+          variant.inventoryQuantity > 0
         );
       })
       .map((edge: any) => {
         const product = edge.node;
         const variant = product.variants.edges[0].node;
+        const price = parseFloat(variant.price);
+        
+        // If cost is missing, estimate it as 50% of the selling price
+        // This is just a fallback for demonstration purposes
+        const hasCost = variant.inventoryItem?.unitCost?.amount;
+        const cost = hasCost 
+          ? parseFloat(variant.inventoryItem.unitCost.amount)
+          : price * 0.5; // Assume 50% cost if not available
+        
+        // Use the same currency code for cost and price if cost data is missing
+        const currencyCode = variant.inventoryItem?.unitCost?.currencyCode || 'USD';
         
         return {
           id: product.id,
           title: product.title,
           imageUrl: product.featuredImage.url,
           imageAlt: product.featuredImage.altText || product.title,
-          cost: parseFloat(variant.inventoryItem.unitCost.amount),
-          sellingPrice: parseFloat(variant.price),
+          cost: cost,
+          sellingPrice: price,
           compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
           inventoryQuantity: variant.inventoryQuantity,
           variantId: variant.id,
-          currencyCode: variant.inventoryItem.unitCost.currencyCode
+          currencyCode: currencyCode,
+          hasCostData: !!hasCost // Flag to indicate if cost was provided or estimated
         };
       });
     
     // Check if we have any valid products
-    if (productsWithFullData.length === 0) {
+    if (productsWithData.length === 0) {
+      // Provide detailed diagnostics about what criteria products failed to meet
       return json({
         status: "error",
-        message: "No products found with all required data (image, cost, and inventory).",
+        message: `No products found meeting minimum requirements (image and positive inventory).
+        
+Found ${diagnostics.totalProducts} products:
+• ${diagnostics.withImages} have images
+• ${diagnostics.withVariants} have variants
+• ${diagnostics.withPositiveInventory} have positive inventory
+• ${diagnostics.withCost} have cost data
+
+Please ensure some products have images and inventory quantity > 0.`,
+        diagnostics,
         randomProduct: null
       });
     }
     
     // Select a random product
-    const randomIndex = Math.floor(Math.random() * productsWithFullData.length);
-    const randomProduct = productsWithFullData[randomIndex];
+    const randomIndex = Math.floor(Math.random() * productsWithData.length);
+    const randomProduct = productsWithData[randomIndex];
     
     return json({
       status: "success",
@@ -360,7 +407,9 @@ export default function DailyDiscounts() {
                     <InlineStack gap="600" align="center" blockAlign="center" wrap={false}>
                       <Box style={{ flex: 1 }}>
                         <BlockStack gap="100">
-                          <Text variant="bodyMd" as="span">Cost</Text>
+                          <Text variant="bodyMd" as="span">
+                            Cost {!randomProduct.hasCostData && <span style={{ color: '#bf0711', fontSize: '0.8em' }}>(Estimated)</span>}
+                          </Text>
                           <Text variant="headingMd" as="span" fontWeight="bold">
                             {formatCurrency(randomProduct.cost, randomProduct.currencyCode)}
                           </Text>
@@ -504,6 +553,14 @@ export default function DailyDiscounts() {
                 <p>
                   The tool will set the original price as the "Compare at price" (if not already set)
                   and apply the discounted price as the regular price, making the discount visible to customers.
+                </p>
+              </Banner>
+              
+              <Banner tone="warning">
+                <p>
+                  <strong>Note:</strong> For best results, set cost information for your products in Shopify 
+                  (Inventory → Edit inventory → Unit cost). If cost data is missing, the tool will estimate it as 
+                  50% of the selling price.
                 </p>
               </Banner>
             </BlockStack>
