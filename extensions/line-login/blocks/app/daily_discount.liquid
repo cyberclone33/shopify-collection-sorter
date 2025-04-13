@@ -123,38 +123,44 @@
       {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
       {% assign max_products = block.settings.max_products | default: 4 %}
       
-      {% assign tagged_products = collections.all.products | where: "tags", custom_tag | limit: max_products %}
+      {% assign tagged_products = collections.all.products | where: "tags", custom_tag %}
+      {% assign counter = 0 %}
       
       {% if tagged_products.size > 0 %}
         {% for product in tagged_products %}
-          {% assign current_variant = product.selected_or_first_available_variant %}
-          {% if current_variant.compare_at_price > current_variant.price %}
-            {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
-            {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
-            
-            <div class="product-card">
-              <a href="{{ product.url }}">
-                <div class="product-image">
-                  {% if product.featured_image %}
-                    {% assign img_src = product.featured_image | image_url: width: 300 %}
-                    <img src="{{ img_src }}" alt="{{ product.title }}">
-                  {% endif %}
-                </div>
-                <div class="product-info">
-                  <div class="product-title">{{ product.title }}</div>
-                  <div class="price-container">
-                    <div class="current-price">{{ current_variant.price | money }}</div>
-                    <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+          {% if counter < max_products %}
+            {% assign current_variant = product.selected_or_first_available_variant %}
+            {% if current_variant.compare_at_price > current_variant.price %}
+              {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
+              {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
+              
+              <div class="product-card">
+                <a href="{{ product.url }}">
+                  <div class="product-image">
+                    {% if product.featured_image %}
+                      {% assign img_src = product.featured_image | image_url: width: 300 %}
+                      <img src="{{ img_src }}" alt="{{ product.title }}" width="300" height="300" loading="lazy">
+                    {% endif %}
                   </div>
-                  {% if block.settings.show_savings %}
-                    <div class="savings-badge">Save {{ savings_percentage }}%</div>
-                  {% endif %}
-                </div>
-              </a>
-            </div>
+                  <div class="product-info">
+                    <div class="product-title">{{ product.title }}</div>
+                    <div class="price-container">
+                      <div class="current-price">{{ current_variant.price | money }}</div>
+                      <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+                    </div>
+                    {% if block.settings.show_savings %}
+                      <div class="savings-badge">Save {{ savings_percentage }}%</div>
+                    {% endif %}
+                  </div>
+                </a>
+              </div>
+              {% assign counter = counter | plus: 1 %}
+            {% endif %}
           {% endif %}
         {% endfor %}
-      {% else %}
+      {% endif %}
+      
+      {% if counter == 0 %}
         <p>No discounted products available at the moment.</p>
       {% endif %}
     </div>
