@@ -1,5 +1,5 @@
 import { json, ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, useSubmit } from "@remix-run/react";
+import { useLoaderData, useSubmit, useActionData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -337,12 +337,62 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   
   try {
+    // First, we need to ensure we have the parent product ID
+    // If product ID is not directly provided, we may need to fetch it
+    let parentProductId = productId;
+    
+    if (!parentProductId) {
+      // If we don't have the product ID, try to extract it from the variant ID
+      // This assumes variant ID is in the format "gid://shopify/ProductVariant/123456789"
+      // Extract the numeric part and query the product
+      const variantMatch = variantId.match(/gid:\/\/shopify\/ProductVariant\/(\d+)/);
+      if (variantMatch && variantMatch[1]) {
+        // Fetch the product ID using the variant
+        try {
+          const variantResponse = await admin.graphql(`
+            query GetProductIdFromVariant($variantId: ID!) {
+              productVariant(id: $variantId) {
+                product {
+                  id
+                }
+              }
+            }
+          `, {
+            variables: {
+              variantId
+            }
+          });
+          
+          const variantData = await variantResponse.json();
+          parentProductId = variantData.data?.productVariant?.product?.id;
+          
+          if (!parentProductId) {
+            return json({
+              status: "error",
+              message: "Could not determine product ID for this variant"
+            });
+          }
+        } catch (variantError) {
+          console.error("Error fetching product ID from variant:", variantError);
+          return json({
+            status: "error",
+            message: "Could not fetch product information"
+          });
+        }
+      } else {
+        return json({
+          status: "error",
+          message: "Invalid variant ID format"
+        });
+      }
+    }
+    
     // Update the product variant with the new price
-    // Use the variant update mutation for Shopify API 2025-01
+    // Using productVariantsBulkUpdate mutation for Shopify API 2025-01
     const response = await admin.graphql(`
-      mutation updateVariant($input: ProductVariantInput!) {
-        productVariantUpdate(input: $input) {
-          productVariant {
+      mutation updateProductVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants {
             id
             price
             compareAtPrice
@@ -355,18 +405,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     `, {
       variables: {
-        input: {
+        productId: parentProductId, // We need the parent product ID for this mutation
+        variants: [{
           id: variantId,
           price: newPrice,
           compareAtPrice: compareAtPrice || null
-        }
+        }]
       }
     });
     
     const responseJson = await response.json();
     
-    if (responseJson.data?.productVariantUpdate?.userErrors?.length > 0) {
-      const errors = responseJson.data.productVariantUpdate.userErrors.map((err: any) => err.message).join(", ");
+    if (responseJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+      const errors = responseJson.data.productVariantsBulkUpdate.userErrors.map((err: any) => err.message).join(", ");
       return json({
         status: "error",
         message: `Error updating product: ${errors}`
@@ -406,24 +457,57 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({
       status: "success",
       message: "Product price updated successfully",
-      variant: responseJson.data?.productVariantUpdate?.productVariant
+      variant: responseJson.data?.productVariantsBulkUpdate?.productVariants?.[0] || null
     });
     
   } catch (error) {
     console.error("Error updating product price:", error);
+    
+    // Log additional details about the error to help with debugging
+    if (error.response) {
+      console.error("Response data:", error.response.data);
+      console.error("Response status:", error.response.status);
+      console.error("Response headers:", error.response.headers);
+    } else if (error.request) {
+      console.error("No response received, request was:", error.request);
+    } else if (error.networkData) {
+      console.error("Network data:", error.networkData);
+    }
+    
+    // If it's a GraphQL error, it might have additional details
+    if (error.graphQLErrors) {
+      console.error("GraphQL errors:", error.graphQLErrors);
+    }
+    
+    let errorMessage = "An unknown error occurred";
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // Add context for common error types
+      if (errorMessage.includes("productVariantsBulkUpdate")) {
+        errorMessage += " - This could be due to missing product ID or incorrect mutation format";
+      } else if (errorMessage.includes("permission")) {
+        errorMessage += " - This could be due to missing permissions for editing products";
+      }
+    }
+    
     return json({
       status: "error",
-      message: error instanceof Error ? error.message : "An unknown error occurred"
+      message: errorMessage,
+      details: error.stack || "No stack trace available"
     });
   }
 };
 
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const { randomProduct, status, message, recentDiscountLogs } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
+  const [discountError, setDiscountError] = useState<string | null>(null);
   const submit = useSubmit();
   
   // Function to generate a random discount
@@ -473,11 +557,24 @@ export default function DailyDiscounts() {
     formData.append("variantId", randomProduct.variantId);
     formData.append("newPrice", discount.discountedPrice.toString());
     
+    // Get product ID from the product's full ID
+    // Product ID should be in the format "gid://shopify/Product/123456789"
+    let productId = randomProduct.id;
+    
+    // If for some reason we need to fix the format of the product ID
+    if (!productId.includes("gid://shopify/Product/")) {
+      // If the ID is just a number or has a different format, try to fix it
+      if (/^\d+$/.test(productId)) {
+        productId = `gid://shopify/Product/${productId}`;
+      }
+    }
+    
+    formData.append("productId", productId);
+    
     // Always set compareAtPrice to original price to ensure it appears as a sale
     formData.append("compareAtPrice", randomProduct.sellingPrice.toString());
     
     // Add all the fields needed for logging to the database
-    formData.append("productId", randomProduct.id);
     formData.append("productTitle", randomProduct.title);
     if (randomProduct.variantTitle) {
       formData.append("variantTitle", randomProduct.variantTitle);
@@ -495,6 +592,14 @@ export default function DailyDiscounts() {
     
     submit(formData, { method: "post" });
     setIsPriceUpdated(true);
+    
+    // Log the form data being sent
+    console.log("Submitting discount with data:", {
+      variantId: randomProduct.variantId,
+      productId: productId,
+      newPrice: discount.discountedPrice.toString(),
+      compareAtPrice: randomProduct.sellingPrice.toString()
+    });
   };
   
   // Format currency
@@ -506,6 +611,15 @@ export default function DailyDiscounts() {
     }).format(amount);
   };
   
+  // Check for action data updates
+  useEffect(() => {
+    // Check for errors from the action
+    if (actionData && actionData.status === "error") {
+      setDiscountError(actionData.message || "Error applying discount");
+      setIsPriceUpdated(false);
+    }
+  }, [actionData]);
+
   // Generate a discount when the component loads
   useEffect(() => {
     if (randomProduct) {
@@ -842,29 +956,38 @@ export default function DailyDiscounts() {
                               </BlockStack>
                             </InlineStack>
                             
-                            <InlineStack gap="300" align="end">
-                              <Button 
-                                onClick={getNewRandomProduct}
-                                tone="critical"
-                              >
-                                New Random Product
-                              </Button>
+                            <BlockStack gap="300">
+                              {/* Error message */}
+                              {discountError && (
+                                <Banner tone="critical" onDismiss={() => setDiscountError(null)}>
+                                  <p>{discountError}</p>
+                                </Banner>
+                              )}
                               
-                              <Button 
-                                onClick={applyDiscount} 
-                                variant="primary"
-                                disabled={isPriceUpdated}
-                              >
-                                {isPriceUpdated ? (
-                                  <InlineStack gap="200" blockAlign="center">
-                                    <span style={{ color: 'var(--p-color-text-success)', marginRight: '4px' }}>✓</span>
-                                    <span>Price Updated!</span>
-                                  </InlineStack>
-                                ) : (
-                                  "Apply Discount"
-                                )}
-                              </Button>
-                            </InlineStack>
+                              <InlineStack gap="300" align="end">
+                                <Button 
+                                  onClick={getNewRandomProduct}
+                                  tone="critical"
+                                >
+                                  New Random Product
+                                </Button>
+                                
+                                <Button 
+                                  onClick={applyDiscount} 
+                                  variant="primary"
+                                  disabled={isPriceUpdated}
+                                >
+                                  {isPriceUpdated ? (
+                                    <InlineStack gap="200" blockAlign="center">
+                                      <span style={{ color: 'var(--p-color-text-success)', marginRight: '4px' }}>✓</span>
+                                      <span>Price Updated!</span>
+                                    </InlineStack>
+                                  ) : (
+                                    "Apply Discount"
+                                  )}
+                                </Button>
+                              </InlineStack>
+                            </BlockStack>
                           </BlockStack>
                         )}
                       </BlockStack>
