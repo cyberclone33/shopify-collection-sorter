@@ -972,7 +972,10 @@ export default function DailyDiscounts() {
     compareAtPrice
     inventoryItem {
       id
-      cost
+      unitCost {
+        amount
+        currencyCode
+      }
     }
   }
 }`}

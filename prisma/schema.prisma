@@ -87,7 +87,7 @@ model FacebookUser {
 }
 
 model ShelfLifeItem {
-  id                  String                   @id @default(cuid())
+  id                  String                     @id @default(cuid())
   shop                String
   productId           String
   batchId             String
@@ -101,8 +101,8 @@ model ShelfLifeItem {
   shopifyVariantTitle String?
   syncStatus          String?
   syncMessage         String?
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
   currencyCode        String?
   variantCost         Float?
   variantPrice        Float?
@@ -112,48 +112,48 @@ model ShelfLifeItem {
 }
 
 model ShelfLifeItemPriceChange {
-  id                String       @id @default(cuid())
-  shop              String
-  shelfLifeItemId   String?
-  shelfLifeItem     ShelfLifeItem? @relation(fields: [shelfLifeItemId], references: [id], onDelete: SetNull)
-  shopifyVariantId  String
-  originalPrice     Float
+  id                     String         @id @default(cuid())
+  shop                   String
+  shelfLifeItemId        String?
+  shopifyVariantId       String
+  originalPrice          Float
   originalCompareAtPrice Float?
-  newPrice          Float
-  newCompareAtPrice Float
-  currencyCode      String?
-  appliedAt         DateTime    @default(now())
-  appliedByUserId   String?
-  appliedByUserName String?
-  status            String      @default("APPLIED") // APPLIED, REVERTED, etc.
-  notes             String?
+  newPrice               Float
+  newCompareAtPrice      Float
+  currencyCode           String?
+  appliedAt              DateTime       @default(now())
+  appliedByUserId        String?
+  appliedByUserName      String?
+  status                 String         @default("APPLIED")
+  notes                  String?
+  shelfLifeItem          ShelfLifeItem? @relation(fields: [shelfLifeItemId], references: [id])
 
   @@index([shelfLifeItemId])
   @@index([shopifyVariantId])
 }
 
 model DailyDiscountLog {
-  id                String       @id @default(cuid())
-  shop              String
-  productId         String       // Shopify product ID
-  productTitle      String       // Product title for easier reference
-  variantId         String       // Shopify variant ID
-  variantTitle      String?      // Variant title (if applicable)
-  originalPrice     Float        // Original price before discount
-  discountedPrice   Float        // Price after discount
-  compareAtPrice    Float?       // Compare-at price (if set)
-  costPrice         Float?       // Cost price (if available)
-  profitMargin      Float?       // Original profit margin percentage
-  discountPercentage Float       // Discount percentage applied
-  savingsAmount     Float        // Amount saved by customer
-  savingsPercentage Float        // Percentage saved by customer
-  currencyCode      String       @default("USD")
-  appliedAt         DateTime     @default(now())
-  appliedByUserId   String?      // User ID who applied the discount (if applicable)
-  imageUrl          String?      // Product image URL
-  inventoryQuantity Int?         // Inventory quantity at time of discount
-  isRandomDiscount  Boolean      @default(true) // Whether it was randomly generated or manually set
-  notes             String?      // Any additional notes
+  id                 String   @id @default(cuid())
+  shop               String
+  productId          String
+  productTitle       String
+  variantId          String
+  variantTitle       String?
+  originalPrice      Float
+  discountedPrice    Float
+  compareAtPrice     Float?
+  costPrice          Float?
+  profitMargin       Float?
+  discountPercentage Float
+  savingsAmount      Float
+  savingsPercentage  Float
+  currencyCode       String   @default("USD")
+  appliedAt          DateTime @default(now())
+  appliedByUserId    String?
+  imageUrl           String?
+  inventoryQuantity  Int?
+  isRandomDiscount   Boolean  @default(true)
+  notes              String?
 
   @@index([shop])
   @@index([variantId])
