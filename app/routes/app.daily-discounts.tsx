@@ -530,7 +530,7 @@ export default function DailyDiscounts() {
                           </InlineStack>
                           
                           <InlineStack gap="200" blockAlign="center">
-                            <Text variant="bodyMd" as="span">Has Inventory > 0:</Text>
+                            <Text variant="bodyMd" as="span">Has Inventory &gt; 0:</Text>
                             {debugVariant.hasPositiveInventory ? 
                               <Badge tone="success">Yes</Badge> : 
                               <Badge tone="critical">No (Required)</Badge>
