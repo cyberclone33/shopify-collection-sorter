@@ -159,18 +159,42 @@
       const showSavings = {{ block.settings.show_savings }};
       const shopDomain = '{{ shop.permanent_domain }}';
       
-      // Fetch the discounted products - add shop parameter for fallback authentication
-      fetch('/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + '&sort=' + sortBy + '&shop=' + shopDomain)
+      console.log('Daily Discounts App Block - Loading products');
+      console.log('Shop:', shopDomain);
+      console.log('Max products:', maxProducts);
+      console.log('Sort by:', sortBy);
+      
+      // Show loading indicator
+      container.innerHTML = `
+        <div class="loading-indicator">
+          <div class="loading-spinner"></div>
+          <p>Loading discounted products...</p>
+        </div>
+      `;
+      
+      // Construct API URL with shop parameter
+      const apiUrl = '/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + 
+                    '&sort=' + sortBy + 
+                    '&shop=' + encodeURIComponent(shopDomain);
+      
+      console.log('Fetching products from:', apiUrl);
+      
+      // Fetch the discounted products
+      fetch(apiUrl)
         .then(response => {
+          console.log('API response status:', response.status);
           if (!response.ok) {
             throw new Error('Network response was not ok: ' + response.status);
           }
           return response.json();
         })
         .then(data => {
+          console.log('API response data:', data);
           if (data.products && data.products.length > 0) {
+            console.log(`Rendering ${data.products.length} products`);
             renderProducts(data.products);
           } else {
+            console.log('No products found in response');
             showError('No discounted products available at the moment.');
           }
         })
@@ -224,9 +248,18 @@
       }
       
       function getProductHandle(productId) {
-        // Instead of trying to extract the handle, we'll use our API endpoint
-        // that will handle the redirection to the product page
-        return `/apps/alpha-dog-1/api/daily-discounts/product/${productId}`;
+        // Using a direct URL approach since productId might be in different formats
+        // This ensures we can still link to products even if the API redirect isn't working
+        if (productId.includes('gid://')) {
+          // Extract numeric ID from GID format
+          const matches = productId.match(/gid:\/\/shopify\/Product\/(\d+)/);
+          if (matches && matches[1]) {
+            return `/products/${matches[1]}`;
+          }
+        }
+        
+        // Fallback to direct productId if it's not in GID format
+        return `/products/${productId}`;
       }
       
       function getVariantId(variantId) {

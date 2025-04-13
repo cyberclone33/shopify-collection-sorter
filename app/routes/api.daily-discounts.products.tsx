@@ -4,44 +4,20 @@ import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
-    // Extract shop from the request - support both admin and public access
-    let shop;
-    
-    // Check if this is coming from app proxy (storefront)
-    try {
-      // First try to authenticate as a public request
-      const appProxyResult = await authenticate.public.appProxy(request);
-      shop = appProxyResult.shop;
-      console.log("Authenticated as app proxy request from shop:", shop);
-    } catch (appProxyError) {
-      // If app proxy auth fails, try admin auth
-      try {
-        const { session } = await authenticate.admin(request);
-        shop = session.shop;
-        console.log("Authenticated as admin request from shop:", shop);
-      } catch (adminAuthError) {
-        // If both fail, extract shop from URL parameters
-        const url = new URL(request.url);
-        shop = url.searchParams.get('shop');
-        console.log("Using shop from URL parameter:", shop);
-        
-        if (!shop) {
-          throw new Error("Authentication failed and no shop parameter provided");
-        }
-      }
-    }
-    
     // Get URL parameters
     const url = new URL(request.url);
     const maxProducts = parseInt(url.searchParams.get('max') || '4', 10);
     const sortBy = url.searchParams.get('sort') || 'newest';
+    const shop = url.searchParams.get('shop');
     
-    // Validate shop
+    console.log(`API request for discounted products - shop: ${shop}, maxProducts: ${maxProducts}, sortBy: ${sortBy}`);
+    
+    // Validate shop parameter
     if (!shop) {
       return json({ 
         status: "error", 
-        message: "Shop not authenticated" 
-      }, { status: 401 });
+        message: "Missing shop parameter" 
+      }, { status: 400 });
     }
     
     // Query parameters for findMany
@@ -55,8 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
     
     // Fetch discounted products
-    console.log(`Fetching discounted products for shop: ${shop}, max: ${maxProducts}, sortBy: ${sortBy}`);
-    
+    console.log(`Querying DailyDiscountLog for shop: ${shop}`);
     const discountedProducts = await prisma.dailyDiscountLog.findMany({
       where: {
         shop: shop
@@ -82,7 +57,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       savingsPercentage: product.savingsPercentage,
       currencyCode: product.currencyCode,
       imageUrl: product.imageUrl,
-      appliedAt: product.appliedAt
+      appliedAt: product.appliedAt,
+      inventoryQuantity: product.inventoryQuantity
     }));
     
     // Return the product data
