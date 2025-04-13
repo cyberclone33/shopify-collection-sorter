@@ -64,8 +64,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       orderBy = { discountedPrice: 'asc' };
     }
     
-    // Get admin API access for the shop
-    const { admin } = await authenticate.public.appProxy(request);
+    // We already have admin access from earlier authentication
+    // No need to authenticate again
     
     // Fetch products with the specified tag using the Shopify GraphQL API
     console.log(`Querying Shopify for products with tag: ${tag}`);
