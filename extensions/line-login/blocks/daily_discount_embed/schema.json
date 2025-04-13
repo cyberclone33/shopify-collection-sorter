@@ -4,7 +4,6 @@
   "shopify": {
     "theme-extension-version": "1.0"
   },
-  "type": "app-embed",
   "description": "Displays products tagged with DailyDiscount_每日優惠 on your storefront",
   "categories": ["products", "discounts"]
 }

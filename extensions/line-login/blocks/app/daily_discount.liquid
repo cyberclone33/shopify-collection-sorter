@@ -1,0 +1,408 @@
+{% comment %}
+  Daily Discounts App Block
+  Displays products with the tag "DailyDiscount_每日優惠"
+{% endcomment %}
+
+<div id="alpha-dog-daily-discount" class="alpha-dog-daily-discount">
+  <div class="daily-discount-container">
+    <style>
+      .alpha-dog-daily-discount {
+        margin: {{ block.settings.margin_vertical }}px {{ block.settings.margin_horizontal }}px;
+      }
+      .daily-discount-container {
+        font-family: {{ block.settings.font_family }}, sans-serif;
+      }
+      .daily-discount-header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .daily-discount-header h2 {
+        color: {{ block.settings.heading_color }};
+        font-size: {{ block.settings.heading_size }}px;
+        margin-bottom: 10px;
+        font-weight: {{ block.settings.heading_weight }};
+      }
+      .daily-discount-header p {
+        color: {{ block.settings.text_color }};
+        font-size: {{ block.settings.subtitle_size }}px;
+      }
+      .daily-discount-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax({{ block.settings.min_card_width }}px, 1fr));
+        gap: {{ block.settings.grid_gap }}px;
+      }
+      .daily-discount-carousel {
+        display: flex;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        padding: 10px 0;
+      }
+      .daily-discount-carousel .product-card {
+        flex: 0 0 {{ block.settings.min_card_width }}px;
+        margin-right: {{ block.settings.grid_gap }}px;
+        scroll-snap-align: start;
+      }
+      .daily-discount-list {
+        display: flex;
+        flex-direction: column;
+        gap: {{ block.settings.grid_gap }}px;
+      }
+      .product-card {
+        border: 1px solid {{ block.settings.card_border_color }};
+        border-radius: {{ block.settings.card_border_radius }}px;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        background-color: {{ block.settings.card_background }};
+      }
+      .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+      .product-image {
+        width: 100%;
+        padding-top: 100%;
+        position: relative;
+        overflow: hidden;
+        background-color: #f5f5f5;
+      }
+      .product-image img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .product-info {
+        padding: 15px;
+      }
+      .product-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+        font-size: {{ block.settings.product_title_size }}px;
+        color: {{ block.settings.product_title_color }};
+      }
+      .price-container {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .current-price {
+        font-weight: bold;
+        color: {{ block.settings.price_color }};
+        font-size: {{ block.settings.price_size }}px;
+        margin-right: 10px;
+      }
+      .original-price {
+        text-decoration: line-through;
+        color: {{ block.settings.compare_price_color }};
+        font-size: {{ block.settings.compare_price_size }}px;
+      }
+      .savings-badge {
+        display: inline-block;
+        background-color: {{ block.settings.savings_badge_color }};
+        color: {{ block.settings.savings_badge_text_color }};
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: {{ block.settings.badge_size }}px;
+        font-weight: bold;
+        margin-top: 8px;
+      }
+    </style>
+
+    <div class="daily-discount-header">
+      <h2>{{ block.settings.heading_text }}</h2>
+      {% if block.settings.show_subtitle %}
+        <p>{{ block.settings.subtitle_text }}</p>
+      {% endif %}
+    </div>
+
+    <div class="daily-discount-products-container daily-discount-grid">
+      {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
+      {% assign max_products = block.settings.max_products | default: 4 %}
+      
+      {% assign tagged_products = collections.all.products | where: "tags", custom_tag | limit: max_products %}
+      
+      {% if tagged_products.size > 0 %}
+        {% for product in tagged_products %}
+          {% assign current_variant = product.selected_or_first_available_variant %}
+          {% if current_variant.compare_at_price > current_variant.price %}
+            {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
+            {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
+            
+            <div class="product-card">
+              <a href="{{ product.url }}">
+                <div class="product-image">
+                  {% if product.featured_image %}
+                    {% assign img_src = product.featured_image | image_url: width: 300 %}
+                    <img src="{{ img_src }}" alt="{{ product.title }}">
+                  {% endif %}
+                </div>
+                <div class="product-info">
+                  <div class="product-title">{{ product.title }}</div>
+                  <div class="price-container">
+                    <div class="current-price">{{ current_variant.price | money }}</div>
+                    <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+                  </div>
+                  {% if block.settings.show_savings %}
+                    <div class="savings-badge">Save {{ savings_percentage }}%</div>
+                  {% endif %}
+                </div>
+              </a>
+            </div>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <p>No discounted products available at the moment.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Daily Discounts",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Product Tag",
+      "default": "DailyDiscount_每日優惠",
+      "info": "Enter the tag used to identify products to display in this section"
+    },
+    {
+      "type": "range",
+      "id": "max_products",
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "label": "Maximum Products to Display",
+      "default": 4
+    },
+    {
+      "type": "text",
+      "id": "heading_text",
+      "label": "Heading Text",
+      "default": "Today's Special Discounts"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_subtitle",
+      "label": "Show Subtitle",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "subtitle_text",
+      "label": "Subtitle Text",
+      "default": "Limited time offers on today's featured products"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_savings",
+      "label": "Show Savings Badge",
+      "default": true
+    },
+    {
+      "type": "range",
+      "id": "margin_vertical",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "label": "Vertical Margin",
+      "default": 30
+    },
+    {
+      "type": "range",
+      "id": "margin_horizontal",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "label": "Horizontal Margin",
+      "default": 0
+    },
+    {
+      "type": "range",
+      "id": "grid_gap",
+      "min": 10,
+      "max": 50,
+      "step": 5,
+      "label": "Grid Gap",
+      "default": 20
+    },
+    {
+      "type": "range",
+      "id": "min_card_width",
+      "min": 150,
+      "max": 400,
+      "step": 10,
+      "label": "Min Card Width",
+      "default": 250
+    },
+    {
+      "type": "select",
+      "id": "font_family",
+      "label": "Font Family",
+      "default": "inherit",
+      "options": [
+        {
+          "value": "inherit",
+          "label": "Theme Default"
+        },
+        {
+          "value": "Arial",
+          "label": "Arial"
+        },
+        {
+          "value": "Helvetica",
+          "label": "Helvetica"
+        }
+      ]
+    },
+    {
+      "type": "color",
+      "id": "heading_color",
+      "label": "Heading Color",
+      "default": "#333333"
+    },
+    {
+      "type": "range",
+      "id": "heading_size",
+      "min": 16,
+      "max": 48,
+      "step": 1,
+      "label": "Heading Size",
+      "default": 28
+    },
+    {
+      "type": "select",
+      "id": "heading_weight",
+      "label": "Heading Weight",
+      "default": "700",
+      "options": [
+        {
+          "value": "400",
+          "label": "Regular"
+        },
+        {
+          "value": "500",
+          "label": "Medium"
+        },
+        {
+          "value": "600",
+          "label": "Semibold"
+        },
+        {
+          "value": "700",
+          "label": "Bold"
+        }
+      ]
+    },
+    {
+      "type": "range",
+      "id": "subtitle_size",
+      "min": 12,
+      "max": 24,
+      "step": 1,
+      "label": "Subtitle Size",
+      "default": 16
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text Color",
+      "default": "#666666"
+    },
+    {
+      "type": "color",
+      "id": "card_background",
+      "label": "Card Background",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "card_border_color",
+      "label": "Card Border Color",
+      "default": "#e8e8e8"
+    },
+    {
+      "type": "range",
+      "id": "card_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "label": "Card Border Radius",
+      "default": 8
+    },
+    {
+      "type": "color",
+      "id": "product_title_color",
+      "label": "Product Title Color",
+      "default": "#333333"
+    },
+    {
+      "type": "range",
+      "id": "product_title_size",
+      "min": 12,
+      "max": 24,
+      "step": 1,
+      "label": "Product Title Size",
+      "default": 16
+    },
+    {
+      "type": "color",
+      "id": "price_color",
+      "label": "Price Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "range",
+      "id": "price_size",
+      "min": 14,
+      "max": 24,
+      "step": 1,
+      "label": "Price Size",
+      "default": 18
+    },
+    {
+      "type": "color",
+      "id": "compare_price_color",
+      "label": "Compare Price Color",
+      "default": "#999999"
+    },
+    {
+      "type": "range",
+      "id": "compare_price_size",
+      "min": 12,
+      "max": 20,
+      "step": 1,
+      "label": "Compare Price Size",
+      "default": 14
+    },
+    {
+      "type": "color",
+      "id": "savings_badge_color",
+      "label": "Savings Badge Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "color",
+      "id": "savings_badge_text_color",
+      "label": "Savings Badge Text Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "badge_size",
+      "min": 10,
+      "max": 16,
+      "step": 1,
+      "label": "Badge Size",
+      "default": 12
+    }
+  ]
+}
+{% endschema %}
