@@ -81,6 +81,20 @@
         font-weight: bold;
         margin-top: 8px;
       }
+      .debug-info {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 12px;
+        display: none;
+      }
+      {% if block.settings.show_debug %}
+      .debug-info {
+        display: block;
+      }
+      {% endif %}
     </style>
 
     <div class="daily-discount-header">
@@ -91,46 +105,99 @@
     <div class="daily-discount-products-container daily-discount-grid">
       {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
       {% assign max_products = block.settings.max_products | default: 4 %}
+      {% assign total_products = 0 %}
+      {% assign products_with_tag = 0 %}
+      {% assign products_with_discount = 0 %}
       
+      {% comment %} 
+        First approach: using collections.all and filtering by tag
+      {% endcomment %}
       {% assign tagged_products = collections.all.products | where: "tags", custom_tag %}
+      
+      {% comment %}
+        If that didn't work, try alternative approach
+      {% endcomment %}
+      {% if tagged_products.size == 0 %}
+        {% assign tagged_products = collections.all.products %}
+      {% endif %}
+      
       {% assign counter = 0 %}
       
       {% if tagged_products.size > 0 %}
+        {% assign total_products = tagged_products.size %}
+        
         {% for product in tagged_products %}
-          {% if counter < max_products %}
-            {% assign current_variant = product.selected_or_first_available_variant %}
-            {% if current_variant.compare_at_price > current_variant.price %}
-              {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
-              {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
-              
-              <div class="product-card">
-                <a href="{{ product.url }}">
-                  <div class="product-image">
-                    {% if product.featured_image %}
-                      {% assign img_src = product.featured_image | image_url: width: 300 %}
-                      <img src="{{ img_src }}" alt="{{ product.title }}" width="300" height="300" loading="lazy">
-                    {% endif %}
-                  </div>
-                  <div class="product-info">
-                    <div class="product-title">{{ product.title }}</div>
-                    <div class="price-container">
-                      <div class="current-price">{{ current_variant.price | money }}</div>
-                      <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+          {% comment %} 
+            Check if this product has the tag we want 
+          {% endcomment %}
+          {% assign has_tag = false %}
+          {% for tag in product.tags %}
+            {% if tag == custom_tag %}
+              {% assign has_tag = true %}
+              {% assign products_with_tag = products_with_tag | plus: 1 %}
+              {% break %}
+            {% endif %}
+          {% endfor %}
+          
+          {% comment %} 
+            Only proceed if product has the tag or we're in debug mode 
+          {% endcomment %}
+          {% if has_tag or block.settings.show_all_products %}
+            {% if counter < max_products %}
+              {% assign current_variant = product.selected_or_first_available_variant %}
+              {% if current_variant.compare_at_price > current_variant.price %}
+                {% assign products_with_discount = products_with_discount | plus: 1 %}
+                {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
+                {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
+                
+                <div class="product-card">
+                  <a href="{{ product.url }}">
+                    <div class="product-image">
+                      {% if product.featured_image %}
+                        {% assign img_src = product.featured_image | image_url: width: 300 %}
+                        <img src="{{ img_src }}" alt="{{ product.title }}" width="300" height="300" loading="lazy">
+                      {% endif %}
                     </div>
-                    <div class="savings-badge">Save {{ savings_percentage }}%</div>
-                  </div>
-                </a>
-              </div>
-              {% assign counter = counter | plus: 1 %}
+                    <div class="product-info">
+                      <div class="product-title">{{ product.title }}</div>
+                      <div class="price-container">
+                        <div class="current-price">{{ current_variant.price | money }}</div>
+                        <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+                      </div>
+                      <div class="savings-badge">Save {{ savings_percentage }}%</div>
+                    </div>
+                  </a>
+                </div>
+                {% assign counter = counter | plus: 1 %}
+              {% endif %}
             {% endif %}
           {% endif %}
         {% endfor %}
       {% endif %}
       
       {% if counter == 0 %}
-        <p>No discounted products available at the moment.</p>
+        <p style="text-align: center; grid-column: 1/-1; margin: 20px 0;">No discounted products available with tag "{{ custom_tag }}".</p>
       {% endif %}
     </div>
+    
+    {% if block.settings.show_debug %}
+    <div class="debug-info">
+      <h4>Debug Information</h4>
+      <p>Looking for tag: "{{ custom_tag }}"</p>
+      <p>Total products found: {{ total_products }}</p>
+      <p>Products with matching tag: {{ products_with_tag }}</p>
+      <p>Products with discounts: {{ products_with_discount }}</p>
+      <p>Products displayed: {{ counter }}</p>
+      
+      <h4>All Available Tags</h4>
+      <ul>
+        {% assign all_tags = collections.all.products | map: 'tags' | join: ',' | split: ',' | uniq | sort %}
+        {% for tag in all_tags %}
+          <li>{{ tag }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -178,6 +245,24 @@
       "id": "price_color",
       "label": "Price Color",
       "default": "#ff6b6b"
+    },
+    {
+      "type": "header",
+      "content": "Debug Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_debug",
+      "label": "Show Debug Information",
+      "default": false,
+      "info": "Enable to see debugging information about available products and tags"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_all_products",
+      "label": "Show All Discounted Products",
+      "default": false,
+      "info": "Enable to show all discounted products regardless of tag (for testing)"
     }
   ]
 }
