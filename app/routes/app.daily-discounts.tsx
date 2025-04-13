@@ -52,6 +52,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const debugVariantId = url.searchParams.get("debugVariantId");
   
+  // Fetch recent discount logs (limited to 5)
+  const recentDiscountLogs = await prisma.dailyDiscountLog.findMany({
+    where: {
+      shop: session.shop
+    },
+    orderBy: {
+      appliedAt: 'desc'
+    },
+    take: 5
+  });
+  
   // If a specific variant ID is provided for debugging
   if (debugVariantId) {
     try {
@@ -281,7 +292,8 @@ Please ensure some products have images and inventory quantity > 0.`,
     
     return json({
       status: "success",
-      randomProduct
+      randomProduct,
+      recentDiscountLogs
     });
     
   } catch (error) {
@@ -408,7 +420,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
-  const { randomProduct, status, message } = loaderData;
+  const { randomProduct, status, message, recentDiscountLogs } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -858,6 +870,49 @@ export default function DailyDiscounts() {
                       </BlockStack>
                     </Box>
                   </BlockStack>
+                </BlockStack>
+              )}
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Recent Discount History
+              </Text>
+              
+              {(!recentDiscountLogs || recentDiscountLogs.length === 0) ? (
+                <Banner tone="info">
+                  <p>No daily discount logs found. Apply discounts to products to see them here.</p>
+                </Banner>
+              ) : (
+                <BlockStack gap="400">
+                  {recentDiscountLogs.map((log) => (
+                    <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
+                      <BlockStack gap="200">
+                        <InlineStack gap="200" align="space-between">
+                          <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                          <Text variant="bodySm" as="span">
+                            {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
+                          </Text>
+                        </InlineStack>
+                        
+                        <InlineStack gap="200" wrap={true}>
+                          <Text variant="bodySm" as="span">
+                            Original: {formatCurrency(log.originalPrice, log.currencyCode)}
+                          </Text>
+                          <Text variant="bodySm" as="span">
+                            Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
+                          </Text>
+                          <Text variant="bodySm" as="span" tone="success">
+                            Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
+                          </Text>
+                        </InlineStack>
+                      </BlockStack>
+                    </Box>
+                  ))}
                 </BlockStack>
               )}
             </BlockStack>
