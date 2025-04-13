@@ -167,7 +167,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // We're getting up to 50 products to have a good pool for random selection
     const response = await admin.graphql(`
       query GetProductsWithInventory {
-        products(first: 50) {
+        products(first: 100) {
           edges {
             node {
               id
@@ -289,9 +289,28 @@ Please ensure some products have images and inventory quantity > 0.`,
       });
     }
     
-    // Select a random product
-    const randomIndex = Math.floor(Math.random() * productsWithData.length);
-    const randomProduct = productsWithData[randomIndex];
+    // Get array of recently discounted product IDs to avoid repeating
+    const recentlyDiscountedProductIds = recentDiscountLogs
+      .map(log => log.productId)
+      .filter(Boolean);
+      
+    // Filter out recently discounted products if possible
+    let eligibleProducts = productsWithData;
+    if (recentlyDiscountedProductIds.length > 0 && productsWithData.length > recentlyDiscountedProductIds.length) {
+      eligibleProducts = productsWithData.filter(product => 
+        !recentlyDiscountedProductIds.includes(product.id)
+      );
+      
+      // If we filtered out all products, fall back to the full list
+      if (eligibleProducts.length === 0) {
+        eligibleProducts = productsWithData;
+        console.log("All available products have been recently discounted. Using full product list.");
+      }
+    }
+    
+    // Select a random product from eligible products
+    const randomIndex = Math.floor(Math.random() * eligibleProducts.length);
+    const randomProduct = eligibleProducts[randomIndex];
     
     return json({
       status: "success",
