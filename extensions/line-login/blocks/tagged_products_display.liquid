@@ -1,0 +1,799 @@
+{% comment %}
+  Tagged Products Display Block
+  Displays products that match a specific tag selected in the block settings
+{% endcomment %}
+
+<div id="tagged-products-container" class="tagged-products-container">
+  <style>
+    .tagged-products-container {
+      margin: {{ block.settings.section_margin }}px 0;
+    }
+    .tagged-products-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .tagged-products-header h2 {
+      color: {{ block.settings.accent_color }};
+      font-size: {{ block.settings.heading_size }}px;
+      margin-bottom: 10px;
+    }
+    .tagged-products-header p {
+      color: {{ block.settings.text_color }};
+      font-size: {{ block.settings.text_size }}px;
+    }
+    .tagged-products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax({{ block.settings.product_card_width }}px, 1fr));
+      gap: {{ block.settings.grid_gap }}px;
+    }
+    .tagged-products-carousel {
+      display: flex;
+      overflow-x: auto;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      padding: 10px 0;
+    }
+    .tagged-products-carousel .product-card {
+      flex: 0 0 {{ block.settings.product_card_width }}px;
+      margin-right: {{ block.settings.grid_gap }}px;
+      scroll-snap-align: start;
+    }
+    .tagged-products-list {
+      display: flex;
+      flex-direction: column;
+      gap: {{ block.settings.grid_gap }}px;
+    }
+    .tagged-products-list .product-card {
+      display: flex;
+      align-items: center;
+    }
+    .tagged-products-list .product-image {
+      flex: 0 0 120px;
+      margin-right: 15px;
+    }
+    .product-card {
+      border: {{ block.settings.card_border_width }}px solid {{ block.settings.card_border_color }};
+      border-radius: {{ block.settings.card_border_radius }}px;
+      background-color: {{ block.settings.card_background }};
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .product-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    .product-image {
+      width: 100%;
+      padding-top: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .product-image img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .product-info {
+      padding: 15px;
+    }
+    .product-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: {{ block.settings.product_title_size }}px;
+      color: {{ block.settings.text_color }};
+      {% if block.settings.truncate_title %}
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      {% endif %}
+    }
+    .variant-title {
+      color: {{ block.settings.text_color }};
+      opacity: 0.8;
+      font-size: {{ block.settings.text_size }}px;
+      margin-bottom: 8px;
+    }
+    .price-container {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .current-price {
+      font-weight: bold;
+      color: {{ block.settings.price_color }};
+      font-size: {{ block.settings.price_size }}px;
+      margin-right: 10px;
+    }
+    .original-price {
+      text-decoration: line-through;
+      color: {{ block.settings.compare_price_color }};
+      font-size: {{ block.settings.text_size }}px;
+    }
+    .savings-badge {
+      display: inline-block;
+      background-color: {{ block.settings.accent_color }};
+      color: white;
+      padding: 3px 8px;
+      border-radius: {{ block.settings.badge_border_radius }}px;
+      font-size: {{ block.settings.badge_font_size }}px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+    .loading-indicator {
+      text-align: center;
+      padding: 20px;
+      color: {{ block.settings.text_color }};
+    }
+    .loading-spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left-color: {{ block.settings.accent_color }};
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error-message {
+      text-align: center;
+      color: #d9534f;
+      padding: 15px;
+    }
+    .view-all-button {
+      text-align: center;
+      margin-top: 20px;
+    }
+    .view-all-button a {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: {{ block.settings.button_background }};
+      color: {{ block.settings.button_text_color }};
+      text-decoration: none;
+      border-radius: {{ block.settings.button_border_radius }}px;
+      font-weight: bold;
+      transition: background-color 0.2s ease;
+    }
+    .view-all-button a:hover {
+      background-color: {{ block.settings.button_hover_background }};
+    }
+    .sold-out-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: {{ block.settings.sold_out_badge_color }};
+      color: white;
+      padding: 5px 10px;
+      border-radius: {{ block.settings.badge_border_radius }}px;
+      font-size: {{ block.settings.badge_font_size }}px;
+      font-weight: bold;
+    }
+    .sale-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background-color: {{ block.settings.sale_badge_color }};
+      color: white;
+      padding: 5px 10px;
+      border-radius: {{ block.settings.badge_border_radius }}px;
+      font-size: {{ block.settings.badge_font_size }}px;
+      font-weight: bold;
+    }
+    @media (max-width: 768px) {
+      .tagged-products-grid {
+        grid-template-columns: repeat(auto-fill, minmax({{ block.settings.mobile_card_width }}px, 1fr));
+        gap: {{ block.settings.mobile_grid_gap }}px;
+      }
+      .tagged-products-carousel .product-card {
+        flex: 0 0 {{ block.settings.mobile_card_width }}px;
+        margin-right: {{ block.settings.mobile_grid_gap }}px;
+      }
+      .tagged-products-header h2 {
+        font-size: {{ block.settings.mobile_heading_size }}px;
+      }
+      .product-title {
+        font-size: {{ block.settings.mobile_product_title_size }}px;
+      }
+      .current-price {
+        font-size: {{ block.settings.mobile_price_size }}px;
+      }
+    }
+  </style>
+
+  <div class="tagged-products-header">
+    <h2>{{ block.settings.section_title }}</h2>
+    {% if block.settings.section_subtitle != blank %}
+      <p>{{ block.settings.section_subtitle }}</p>
+    {% endif %}
+  </div>
+
+  <div class="tagged-products-container {% if block.settings.layout == 'grid' %}tagged-products-grid{% elsif block.settings.layout == 'carousel' %}tagged-products-carousel{% else %}tagged-products-list{% endif %}">
+    <div class="loading-indicator">
+      <div class="loading-spinner"></div>
+      <p>{{ block.settings.loading_text }}</p>
+    </div>
+  </div>
+
+  {% if block.settings.show_view_all_button and block.settings.view_all_link != blank %}
+    <div class="view-all-button">
+      <a href="{{ block.settings.view_all_link }}">{{ block.settings.view_all_text }}</a>
+    </div>
+  {% endif %}
+
+  <script>
+    (function() {
+      const container = document.querySelector('.tagged-products-container');
+      const maxProducts = {{ block.settings.max_products }};
+      const sortBy = '{{ block.settings.sort_by }}';
+      const showSavings = {{ block.settings.show_savings }};
+      const shopDomain = '{{ shop.permanent_domain }}';
+      const customTag = '{{ block.settings.product_tag }}';
+      const showSoldOutProducts = {{ block.settings.show_sold_out_products }};
+      
+      console.log('Tagged Products Display - Loading products');
+      console.log('Shop:', shopDomain);
+      console.log('Max products:', maxProducts);
+      console.log('Sort by:', sortBy);
+      console.log('Product tag:', customTag);
+      
+      // Show loading indicator
+      container.innerHTML = `
+        <div class="loading-indicator">
+          <div class="loading-spinner"></div>
+          <p>{{ block.settings.loading_text }}</p>
+        </div>
+      `;
+      
+      // First try: Use the app's API to get products if it's available
+      const apiUrl = '/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + 
+                     '&sort=' + sortBy + 
+                     '&shop=' + encodeURIComponent(shopDomain) +
+                     '&tag=' + encodeURIComponent(customTag);
+      
+      console.log('Fetching products with tag from:', apiUrl);
+      
+      fetch(apiUrl)
+        .then(response => {
+          console.log('API response status:', response.status);
+          if (!response.ok) {
+            throw new Error('Network response was not ok: ' + response.status);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('API response data:', data);
+          if (data.products && data.products.length > 0) {
+            console.log(`Rendering ${data.products.length} products from API`);
+            renderProducts(data.products);
+          } else {
+            console.log('No products found in API response, trying direct collection fetch');
+            
+            // Fallback: Fetch directly from Shopify collections
+            fetchDirectFromShopify();
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching from API:', error);
+          console.log('Falling back to direct collection fetch');
+          
+          // Fallback to direct fetch if API fails
+          fetchDirectFromShopify();
+        });
+      
+      function fetchDirectFromShopify() {
+        // Try to fetch directly from Shopify collections
+        fetch('/collections/all/products.json?limit=' + maxProducts + '&filter.p.tag=' + encodeURIComponent(customTag))
+          .then(response => response.json())
+          .then(data => {
+            if (data.products && data.products.length > 0) {
+              console.log(`Rendering ${data.products.length} products from collection`);
+              
+              // Transform data to match our expected format
+              const formattedProducts = data.products.map(product => {
+                // Find the first variant that is available or just use the first one
+                const variant = showSoldOutProducts 
+                  ? product.variants[0]
+                  : (product.variants.find(v => v.available) || product.variants[0]);
+                
+                const isAvailable = variant.available;
+                if (!showSoldOutProducts && !isAvailable) {
+                  return null; // Skip if we don't want to show sold out products
+                }
+                
+                return {
+                  productId: product.id,
+                  productTitle: product.title,
+                  productHandle: product.handle,
+                  variantId: variant.id,
+                  variantTitle: variant.title !== "Default Title" ? variant.title : null,
+                  discountedPrice: variant.price / 100, // Convert cents to dollars
+                  originalPrice: variant.compare_at_price ? variant.compare_at_price / 100 : variant.price / 100,
+                  imageUrl: product.featured_image || product.images[0],
+                  currencyCode: '{{ shop.currency }}',
+                  available: isAvailable
+                };
+              }).filter(Boolean); // Remove null entries
+              
+              // Sort products according to selected sort method
+              sortProducts(formattedProducts);
+              
+              // Render the products
+              renderProducts(formattedProducts);
+            } else {
+              console.log('No products found with tag "' + customTag + '"');
+              showError('{{ block.settings.no_products_message }}');
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching from collection:', error);
+            showError('{{ block.settings.error_message }}');
+          });
+      }
+      
+      function sortProducts(products) {
+        if (sortBy === 'price-ascending') {
+          products.sort((a, b) => a.discountedPrice - b.discountedPrice);
+        } else if (sortBy === 'price-descending') {
+          products.sort((a, b) => b.discountedPrice - a.discountedPrice);
+        } else if (sortBy === 'title-ascending') {
+          products.sort((a, b) => a.productTitle.localeCompare(b.productTitle));
+        } else if (sortBy === 'title-descending') {
+          products.sort((a, b) => b.productTitle.localeCompare(a.productTitle));
+        } else if (sortBy === 'highest_discount') {
+          products.sort((a, b) => {
+            const discountA = ((a.originalPrice - a.discountedPrice) / a.originalPrice) || 0;
+            const discountB = ((b.originalPrice - b.discountedPrice) / b.originalPrice) || 0;
+            return discountB - discountA;
+          });
+        }
+        // For newest (default), we assume the products are already sorted by created_at
+      }
+      
+      function renderProducts(products) {
+        // Clear loading indicator
+        container.innerHTML = '';
+        
+        // Limit to max products
+        const limitedProducts = products.slice(0, maxProducts);
+        
+        // Render each product
+        limitedProducts.forEach(product => {
+          const productCard = document.createElement('div');
+          productCard.className = 'product-card';
+          
+          const savingsPercentage = ((product.originalPrice - product.discountedPrice) / product.originalPrice * 100).toFixed(0);
+          const hasDiscount = product.originalPrice > product.discountedPrice;
+          
+          const productUrl = '/products/' + 
+                            (product.productHandle || getProductHandle(product.productId)) + 
+                            '?variant=' + getVariantId(product.variantId);
+          
+          let productHtml = `
+            <a href="${productUrl}">
+              <div class="product-image">
+                <img src="${product.imageUrl || 'https://cdn.shopify.com/s/assets/no-image-2048-5e88c1b20e087fb7bbe9a3771824e743c244f437e4f8ba93bbf7b11b53f7824c.gif'}" alt="${product.productTitle}">
+                ${!product.available && {{ block.settings.show_sold_out_badge }} ? `<div class="sold-out-badge">{{ block.settings.sold_out_text }}</div>` : ''}
+                ${hasDiscount && {{ block.settings.show_sale_badge }} ? `<div class="sale-badge">{{ block.settings.sale_text }}</div>` : ''}
+              </div>
+              <div class="product-info">
+                <div class="product-title">${product.productTitle}</div>
+                ${product.variantTitle ? `<div class="variant-title">${product.variantTitle}</div>` : ''}
+                <div class="price-container">
+                  <div class="current-price">${formatMoney(product.discountedPrice, product.currencyCode)}</div>
+                  ${hasDiscount ? `<div class="original-price">${formatMoney(product.originalPrice, product.currencyCode)}</div>` : ''}
+                </div>
+                ${hasDiscount && showSavings ? `<div class="savings-badge">{{ block.settings.save_text }} ${savingsPercentage}%</div>` : ''}
+              </div>
+            </a>
+          `;
+          
+          productCard.innerHTML = productHtml;
+          container.appendChild(productCard);
+        });
+        
+        // Show message if no products found
+        if (limitedProducts.length === 0) {
+          showError('{{ block.settings.no_products_message }}');
+        }
+      }
+      
+      function showError(message) {
+        container.innerHTML = `<div class="error-message">${message}</div>`;
+      }
+      
+      function formatMoney(amount, currencyCode = 'USD') {
+        return new Intl.NumberFormat('{{ shop.locale }}', {
+          style: 'currency',
+          currency: currencyCode
+        }).format(amount);
+      }
+      
+      function getProductHandle(productId) {
+        // Extract numeric ID from Shopify GID format
+        if (productId.includes('gid://')) {
+          const matches = productId.match(/gid:\/\/shopify\/Product\/(\d+)/);
+          if (matches && matches[1]) {
+            return matches[1];
+          }
+        }
+        return productId;
+      }
+      
+      function getVariantId(variantId) {
+        // Extract numeric ID from Shopify GID format
+        const matches = String(variantId).match(/\d+$/);
+        return matches ? matches[0] : '';
+      }
+    })();
+  </script>
+</div>
+
+{% schema %}
+{
+  "name": "Tagged Products Display",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Product Tag",
+      "default": "sale",
+      "info": "Enter the tag used to identify products you want to display in this section"
+    },
+    {
+      "type": "text",
+      "id": "section_title",
+      "label": "Section Title",
+      "default": "Featured Products"
+    },
+    {
+      "type": "text",
+      "id": "section_subtitle",
+      "label": "Section Subtitle",
+      "default": "Discover our special selection"
+    },
+    {
+      "type": "select",
+      "id": "layout",
+      "label": "Layout Style",
+      "options": [
+        {
+          "value": "grid",
+          "label": "Grid"
+        },
+        {
+          "value": "carousel",
+          "label": "Carousel"
+        },
+        {
+          "value": "list",
+          "label": "List"
+        }
+      ],
+      "default": "grid"
+    },
+    {
+      "type": "select",
+      "id": "sort_by",
+      "label": "Sort Products By",
+      "options": [
+        {
+          "value": "newest",
+          "label": "Newest"
+        },
+        {
+          "value": "highest_discount",
+          "label": "Highest Discount"
+        },
+        {
+          "value": "price-ascending",
+          "label": "Price: Low to High"
+        },
+        {
+          "value": "price-descending",
+          "label": "Price: High to Low"
+        },
+        {
+          "value": "title-ascending",
+          "label": "Title: A-Z"
+        },
+        {
+          "value": "title-descending",
+          "label": "Title: Z-A"
+        }
+      ],
+      "default": "newest"
+    },
+    {
+      "type": "number",
+      "id": "max_products",
+      "label": "Maximum Products to Display",
+      "default": 4
+    },
+    {
+      "type": "header",
+      "content": "Visual Settings"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text Color",
+      "default": "#333333"
+    },
+    {
+      "type": "color",
+      "id": "price_color",
+      "label": "Price Color",
+      "default": "#333333"
+    },
+    {
+      "type": "color",
+      "id": "compare_price_color",
+      "label": "Compare Price Color",
+      "default": "#999999"
+    },
+    {
+      "type": "color",
+      "id": "card_background",
+      "label": "Card Background Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "card_border_color",
+      "label": "Card Border Color",
+      "default": "#e8e8e8"
+    },
+    {
+      "type": "number",
+      "id": "section_margin",
+      "label": "Section Margin (px)",
+      "default": 30
+    },
+    {
+      "type": "number",
+      "id": "heading_size",
+      "label": "Heading Font Size (px)",
+      "default": 24
+    },
+    {
+      "type": "number",
+      "id": "text_size",
+      "label": "Text Font Size (px)",
+      "default": 14
+    },
+    {
+      "type": "number",
+      "id": "product_title_size",
+      "label": "Product Title Size (px)",
+      "default": 16
+    },
+    {
+      "type": "number",
+      "id": "price_size",
+      "label": "Price Font Size (px)",
+      "default": 18
+    },
+    {
+      "type": "number",
+      "id": "product_card_width",
+      "label": "Product Card Width (px)",
+      "default": 250
+    },
+    {
+      "type": "number",
+      "id": "grid_gap",
+      "label": "Space Between Products (px)",
+      "default": 20
+    },
+    {
+      "type": "number",
+      "id": "card_border_width",
+      "label": "Card Border Width (px)",
+      "default": 1
+    },
+    {
+      "type": "number",
+      "id": "card_border_radius",
+      "label": "Card Border Radius (px)",
+      "default": 8
+    },
+    {
+      "type": "header",
+      "content": "Mobile Settings"
+    },
+    {
+      "type": "number",
+      "id": "mobile_heading_size",
+      "label": "Mobile Heading Size (px)",
+      "default": 20
+    },
+    {
+      "type": "number",
+      "id": "mobile_product_title_size",
+      "label": "Mobile Title Size (px)",
+      "default": 14
+    },
+    {
+      "type": "number",
+      "id": "mobile_price_size",
+      "label": "Mobile Price Size (px)",
+      "default": 16
+    },
+    {
+      "type": "number",
+      "id": "mobile_card_width",
+      "label": "Mobile Card Width (px)",
+      "default": 150
+    },
+    {
+      "type": "number",
+      "id": "mobile_grid_gap",
+      "label": "Mobile Grid Gap (px)",
+      "default": 10
+    },
+    {
+      "type": "header",
+      "content": "Badge Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_savings",
+      "label": "Show Savings Badge",
+      "default": true
+    },
+    {
+      "type": "number",
+      "id": "badge_font_size",
+      "label": "Badge Font Size (px)",
+      "default": 12
+    },
+    {
+      "type": "number",
+      "id": "badge_border_radius",
+      "label": "Badge Border Radius (px)",
+      "default": 4
+    },
+    {
+      "type": "checkbox",
+      "id": "show_sale_badge",
+      "label": "Show Sale Badge on Discounted Products",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "sale_text",
+      "label": "Sale Badge Text",
+      "default": "Sale"
+    },
+    {
+      "type": "color",
+      "id": "sale_badge_color",
+      "label": "Sale Badge Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_sold_out_badge",
+      "label": "Show Sold Out Badge",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "sold_out_text",
+      "label": "Sold Out Badge Text",
+      "default": "Sold Out"
+    },
+    {
+      "type": "color",
+      "id": "sold_out_badge_color",
+      "label": "Sold Out Badge Color",
+      "default": "#999999"
+    },
+    {
+      "type": "text",
+      "id": "save_text",
+      "label": "Save Badge Text",
+      "default": "Save"
+    },
+    {
+      "type": "header",
+      "content": "View All Button"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_view_all_button",
+      "label": "Show View All Button",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "view_all_text",
+      "label": "Button Text",
+      "default": "View All Products"
+    },
+    {
+      "type": "url",
+      "id": "view_all_link",
+      "label": "Button Link",
+      "info": "Link to collection or page with all products"
+    },
+    {
+      "type": "color",
+      "id": "button_background",
+      "label": "Button Background Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button Text Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "button_hover_background",
+      "label": "Button Hover Background",
+      "default": "#ff5252"
+    },
+    {
+      "type": "number",
+      "id": "button_border_radius",
+      "label": "Button Border Radius (px)",
+      "default": 4
+    },
+    {
+      "type": "header",
+      "content": "Product Display Options"
+    },
+    {
+      "type": "checkbox",
+      "id": "truncate_title",
+      "label": "Limit Product Title to 2 Lines",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_sold_out_products",
+      "label": "Show Sold Out Products",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Messages"
+    },
+    {
+      "type": "text",
+      "id": "loading_text",
+      "label": "Loading Message",
+      "default": "Loading products..."
+    },
+    {
+      "type": "text",
+      "id": "no_products_message",
+      "label": "No Products Message",
+      "default": "No products found with this tag"
+    },
+    {
+      "type": "text",
+      "id": "error_message",
+      "label": "Error Message",
+      "default": "Unable to load products. Please try again later."
+    }
+  ]
+}
+{% endschema %}
