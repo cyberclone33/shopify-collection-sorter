@@ -1,0 +1,109 @@
+{% schema %}
+{
+  "name": "Daily Discounts",
+  "target": "section",
+  "templates": ["index", "product", "collection"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Product Tag",
+      "default": "DailyDiscount_每日優惠"
+    },
+    {
+      "type": "range",
+      "id": "max_products",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "label": "Maximum Products",
+      "default": 4
+    }
+  ]
+}
+{% endschema %}
+
+<div class="app-block">
+  <h2>{{ block.settings.heading | default: "Today's Discounts" }}</h2>
+  
+  <div class="product-grid">
+    {% assign custom_tag = block.settings.product_tag | default: "DailyDiscount_每日優惠" %}
+    {% assign tagged_products = collections.all.products | where: "tags", custom_tag %}
+    {% assign counter = 0 %}
+    {% assign max_products = block.settings.max_products | default: 4 %}
+    
+    {% for product in tagged_products %}
+      {% if counter < max_products %}
+        {% assign current_variant = product.selected_or_first_available_variant %}
+        {% if current_variant.compare_at_price > current_variant.price %}
+          <div class="product-card">
+            <a href="{{ product.url }}">
+              {% if product.featured_image %}
+                <img src="{{ product.featured_image | img_url: '300x300', crop: 'center' }}" 
+                     alt="{{ product.title }}"
+                     width="300" 
+                     height="300"
+                     loading="lazy">
+              {% endif %}
+              <h3>{{ product.title }}</h3>
+              <div class="price">
+                <span class="current-price">{{ current_variant.price | money }}</span>
+                <span class="original-price">{{ current_variant.compare_at_price | money }}</span>
+              </div>
+            </a>
+          </div>
+          {% assign counter = counter | plus: 1 %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    
+    {% if counter == 0 %}
+      <p>No discounted products available.</p>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+  .app-block {
+    margin: 30px 0;
+  }
+  
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+  }
+  
+  .product-card {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  .product-card img {
+    width: 100%;
+    display: block;
+  }
+  
+  .product-card h3 {
+    padding: 10px;
+    margin: 0;
+    font-size: 16px;
+  }
+  
+  .price {
+    padding: 10px;
+  }
+  
+  .current-price {
+    font-weight: bold;
+    color: #ff6b6b;
+    margin-right: 10px;
+  }
+  
+  .original-price {
+    text-decoration: line-through;
+    color: #999;
+    font-size: 14px;
+  }
+</style>

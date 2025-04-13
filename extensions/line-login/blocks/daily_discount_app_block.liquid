@@ -1,0 +1,186 @@
+{% comment %}
+  Daily Discounts App Block (Simple Version)
+  Displays products with the tag "DailyDiscount_每日優惠"
+{% endcomment %}
+
+<div id="alpha-dog-daily-discount-simple" class="alpha-dog-daily-discount">
+  <div class="daily-discount-container">
+    <style>
+      .alpha-dog-daily-discount {
+        margin: 30px 0;
+      }
+      .daily-discount-header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .daily-discount-header h2 {
+        color: {{ block.settings.heading_color }};
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+      .daily-discount-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+      }
+      .product-card {
+        border: 1px solid #e8e8e8;
+        border-radius: 8px;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+      .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+      .product-image {
+        width: 100%;
+        padding-top: 100%;
+        position: relative;
+        overflow: hidden;
+      }
+      .product-image img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .product-info {
+        padding: 15px;
+      }
+      .product-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+        font-size: 16px;
+      }
+      .price-container {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .current-price {
+        font-weight: bold;
+        color: {{ block.settings.price_color }};
+        font-size: 18px;
+        margin-right: 10px;
+      }
+      .original-price {
+        text-decoration: line-through;
+        color: #999;
+        font-size: 14px;
+      }
+      .savings-badge {
+        display: inline-block;
+        background-color: {{ block.settings.price_color }};
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-top: 8px;
+      }
+    </style>
+
+    <div class="daily-discount-header">
+      <h2>{{ block.settings.heading_text }}</h2>
+      <p>{{ block.settings.subtitle_text }}</p>
+    </div>
+
+    <div class="daily-discount-products-container daily-discount-grid">
+      {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
+      {% assign max_products = block.settings.max_products | default: 4 %}
+      
+      {% assign tagged_products = collections.all.products | where: "tags", custom_tag %}
+      {% assign counter = 0 %}
+      
+      {% if tagged_products.size > 0 %}
+        {% for product in tagged_products %}
+          {% if counter < max_products %}
+            {% assign current_variant = product.selected_or_first_available_variant %}
+            {% if current_variant.compare_at_price > current_variant.price %}
+              {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
+              {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round %}
+              
+              <div class="product-card">
+                <a href="{{ product.url }}">
+                  <div class="product-image">
+                    {% if product.featured_image %}
+                      {% assign img_src = product.featured_image | image_url: width: 300 %}
+                      <img src="{{ img_src }}" alt="{{ product.title }}" width="300" height="300" loading="lazy">
+                    {% endif %}
+                  </div>
+                  <div class="product-info">
+                    <div class="product-title">{{ product.title }}</div>
+                    <div class="price-container">
+                      <div class="current-price">{{ current_variant.price | money }}</div>
+                      <div class="original-price">{{ current_variant.compare_at_price | money }}</div>
+                    </div>
+                    <div class="savings-badge">Save {{ savings_percentage }}%</div>
+                  </div>
+                </a>
+              </div>
+              {% assign counter = counter | plus: 1 %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      
+      {% if counter == 0 %}
+        <p>No discounted products available at the moment.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Daily Discounts Lite",
+  "target": "section",
+  "stylesheet": "daily-discount.css",
+  "javascript": "daily-discount.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "product_tag",
+      "label": "Product Tag",
+      "default": "DailyDiscount_每日優惠",
+      "info": "Enter the tag used to identify products to display in this section"
+    },
+    {
+      "type": "range",
+      "id": "max_products",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "label": "Maximum Products to Display",
+      "default": 4
+    },
+    {
+      "type": "text",
+      "id": "heading_text",
+      "label": "Heading Text",
+      "default": "Today's Special Discounts"
+    },
+    {
+      "type": "text",
+      "id": "subtitle_text",
+      "label": "Subtitle Text",
+      "default": "Limited time offers on today's featured products"
+    },
+    {
+      "type": "color",
+      "id": "heading_color",
+      "label": "Heading Color",
+      "default": "#333333"
+    },
+    {
+      "type": "color",
+      "id": "price_color",
+      "label": "Price Color",
+      "default": "#ff6b6b"
+    }
+  ]
+}
+{% endschema %}
