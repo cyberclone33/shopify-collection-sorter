@@ -163,99 +163,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   
   // Regular product fetch logic
   try {
-    // We'll fetch all products by using pagination
-    let allProductEdges = [];
-    let hasNextPage = true;
-    let cursor = null;
-    
-    // Function to build the query with the appropriate cursor
-    const buildQuery = (cursor) => {
-      return `
-        query GetProductsWithInventory {
-          products(first: 250${cursor ? `, after: "${cursor}"` : ''}) {
-            edges {
-              node {
-                id
-                title
-                featuredImage {
-                  url
-                  altText
-                }
-                variants(first: 1) {
-                  edges {
-                    node {
-                      id
-                      title
-                      price
-                      compareAtPrice
-                      inventoryQuantity
-                      inventoryItem {
-                        unitCost {
-                          amount
-                          currencyCode
-                        }
+    // Fetch a random product with inventory, cost, and price data
+    // We're getting up to 50 products to have a good pool for random selection
+    const response = await admin.graphql(`
+      query GetProductsWithInventory {
+        products(first: 100) {
+          edges {
+            node {
+              id
+              title
+              featuredImage {
+                url
+                altText
+              }
+              variants(first: 1) {
+                edges {
+                  node {
+                    id
+                    title
+                    price
+                    compareAtPrice
+                    inventoryQuantity
+                    inventoryItem {
+                      unitCost {
+                        amount
+                        currencyCode
                       }
                     }
                   }
                 }
               }
-              cursor
-            }
-            pageInfo {
-              hasNextPage
             }
           }
         }
-      `;
-    };
-    
-    // Loop to fetch all pages of products
-    while (hasNextPage) {
-      console.log(`Fetching products${cursor ? ' after cursor: ' + cursor : ''}`);
-      
-      const response = await admin.graphql(buildQuery(cursor));
-      const responseJson = await response.json();
-      
-      if (responseJson.errors) {
-        console.error("GraphQL errors:", responseJson.errors);
-        break;
       }
-      
-      const products = responseJson.data?.products;
-      
-      if (!products || !products.edges || products.edges.length === 0) {
-        break;
-      }
-      
-      // Add the current page of edges to our collection
-      allProductEdges = [...allProductEdges, ...products.edges];
-      
-      // Check if there are more pages
-      hasNextPage = products.pageInfo.hasNextPage;
-      
-      // If there are more pages, get the cursor of the last item
-      if (hasNextPage && products.edges.length > 0) {
-        cursor = products.edges[products.edges.length - 1].cursor;
-      } else {
-        break;
-      }
-      
-      // Log progress for large stores
-      if (allProductEdges.length % 500 === 0) {
-        console.log(`Fetched ${allProductEdges.length} products so far...`);
-      }
-    }
-    
-    console.log(`Fetched a total of ${allProductEdges.length} products`);
-    
-    // Create a response object structure that matches the original format
-    const responseJson = {
-      data: {
-        products: {
-          edges: allProductEdges
-        }
-      }
-    };
+    `);
+
+    const responseJson = await response.json();
     
     // First, check if we received any products at all
     if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {
@@ -465,10 +409,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
     
-    // Check if this is a revert action by looking at the notes
-    const isRevert = notes && notes.includes("Reverted discount");
-    
-    // First step: Update the product variant with the new price
+    // Update the product variant with the new price
     // Using productVariantsBulkUpdate mutation for Shopify API 2025-01
     const response = await admin.graphql(`
       mutation updateProductVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -494,64 +435,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }]
       }
     });
-    
-    // Second step: Update the product tags - add or remove "DailyDiscount_每日優惠" tag
-    // First, fetch the current product tags
-    const productResponse = await admin.graphql(`
-      query getProductTags($productId: ID!) {
-        product(id: $productId) {
-          id
-          tags
-        }
-      }
-    `, {
-      variables: {
-        productId: parentProductId
-      }
-    });
-    
-    const productJson = await productResponse.json();
-    const currentTags = productJson.data?.product?.tags || [];
-    const dailyDiscountTag = "DailyDiscount_每日優惠";
-    
-    // Prepare new tags list based on whether we're applying or reverting a discount
-    let newTags;
-    if (isRevert) {
-      // Remove the tag when reverting
-      newTags = currentTags.filter(tag => tag !== dailyDiscountTag);
-    } else {
-      // Add the tag when applying discount (if not already present)
-      if (!currentTags.includes(dailyDiscountTag)) {
-        newTags = [...currentTags, dailyDiscountTag];
-      } else {
-        newTags = currentTags; // Tag already exists, no change needed
-      }
-    }
-    
-    // Only update tags if they've changed
-    if (JSON.stringify(newTags) !== JSON.stringify(currentTags)) {
-      await admin.graphql(`
-        mutation updateProductTags($input: ProductInput!) {
-          productUpdate(input: $input) {
-            product {
-              id
-              tags
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `, {
-        variables: {
-          input: {
-            id: parentProductId,
-            tags: newTags
-          }
-        }
-      });
-    }
     
     const responseJson = await response.json();
     
@@ -592,6 +475,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.error("Error logging discount:", logError);
       // Continue anyway even if logging fails
     }
+    
+    // Check if this was a revert action by looking at the notes
+    const isRevert = notes && notes.includes("Reverted discount");
     
     return json({
       status: "success",
@@ -770,31 +656,25 @@ export default function DailyDiscounts() {
     if (actionData && actionData.status === "success") {
       // Clear any reverting state
       setIsReverting(null);
-      setDiscountError(null);
       
       // If we just reverted a price, show a success message
       if (actionData.isRevert) {
+        setDiscountError(null);
         setSuccessToast({
           active: true,
-          message: "Price successfully reverted to original value and DailyDiscount tag removed"
+          message: "Price successfully reverted to original value"
         });
-      } else {
-        // If we applied a discount, show a success message about the tag being added
-        setSuccessToast({
-          active: true,
-          message: "Price updated successfully and DailyDiscount_每日優惠 tag added to product"
-        });
+        
+        // Auto-hide toast after 5 seconds
+        setTimeout(() => {
+          setSuccessToast(prev => ({ ...prev, active: false }));
+        }, 5000);
+        
+        // Refresh the page after a short delay to update the discount logs
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       }
-      
-      // Auto-hide toast after 5 seconds
-      setTimeout(() => {
-        setSuccessToast(prev => ({ ...prev, active: false }));
-      }, 5000);
-      
-      // Refresh the page after a short delay to update the discount logs
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
     }
   }, [actionData]);
 
@@ -843,7 +723,7 @@ export default function DailyDiscounts() {
     formData.append("originalPrice", log.discountedPrice.toString());
     formData.append("costPrice", log.costPrice?.toString() || "0");
     formData.append("currencyCode", log.currencyCode || "USD");
-    formData.append("notes", "Reverted discount");
+    formData.append("notes", "Reverted discount to original price");
     
     // Close the confirmation dialog
     setConfirmRevert(null);
