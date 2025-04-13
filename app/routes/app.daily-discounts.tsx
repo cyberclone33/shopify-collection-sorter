@@ -261,8 +261,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     
     // Now, also fetch a random product that doesn't have the tag yet - for suggesting new discounts
     const randomProductResponse = await admin.graphql(`
-      query GetRandomProduct($excludeTag: String!, $first: Int!) {
-        products(first: $first, query: "NOT ${TAG_NAME}") {
+      query GetRandomProduct($first: Int!) {
+        products(first: $first, query: "NOT tag:${TAG_NAME}") {
           edges {
             node {
               id
@@ -294,7 +294,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     `, {
       variables: {
-        excludeTag: TAG_NAME,
         first: 50
       }
     });
