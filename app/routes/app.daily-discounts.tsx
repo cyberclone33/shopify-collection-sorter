@@ -890,7 +890,8 @@ export default function DailyDiscounts() {
       ) : (
         // Regular UI
         <Layout>
-        <Layout.Section>
+        <Layout.Section oneHalf>
+          
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
@@ -909,9 +910,9 @@ export default function DailyDiscounts() {
               )}
             </BlockStack>
           </Card>
-        </Layout.Section>
         
-        <Layout.Section>
+          
+          
           <Card>
             <BlockStack gap="600">
               <Text as="h2" variant="headingMd" alignment="center">
@@ -1092,9 +1093,11 @@ export default function DailyDiscounts() {
               )}
             </BlockStack>
           </Card>
+        
         </Layout.Section>
-
-        <Layout.Section>
+        
+        <Layout.Section oneHalf>
+          
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
@@ -1167,9 +1170,9 @@ export default function DailyDiscounts() {
               )}
             </BlockStack>
           </Card>
-        </Layout.Section>
         
-        <Layout.Section>
+          
+          
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
@@ -1198,52 +1201,7 @@ export default function DailyDiscounts() {
               </Banner>
             </BlockStack>
           </Card>
-        </Layout.Section>
         
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Debug Information
-              </Text>
-              
-              <Text as="p">
-                If you're having issues with the Daily Discounts feature, you can use the following GraphQL query in the 
-                Shopify Admin API Explorer to check if your product variants have cost data set:
-              </Text>
-              
-              <Box padding="400" style={{ backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
-                <pre style={{ whiteSpace: "pre-wrap", overflow: "auto", margin: 0 }}>
-{`query {
-  productVariant(id: "gid://shopify/ProductVariant/YOUR_VARIANT_ID") {
-    id
-    title
-    price
-    compareAtPrice
-    inventoryItem {
-      id
-      unitCost {
-        amount
-        currencyCode
-      }
-    }
-  }
-}`}
-                </pre>
-              </Box>
-              
-              <Text as="p">
-                Replace YOUR_VARIANT_ID with the numeric ID of the variant you want to check. You can find this ID in the product URL 
-                when editing a product in Shopify.
-              </Text>
-              
-              <Text as="p">
-                If the cost value shows as null, you'll need to set the cost for your products in Shopify:
-                <br />
-                Go to Products → Inventory → click "Edit" next to a product → find "Unit cost" field.
-              </Text>
-            </BlockStack>
-          </Card>
         </Layout.Section>
       </Layout>
       )}
