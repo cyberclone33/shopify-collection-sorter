@@ -1,0 +1,315 @@
+{% comment %}
+  Daily Discounts Block
+  Displays products that have been discounted using the Daily Discounts app
+{% endcomment %}
+
+<div id="daily-discount-products" class="daily-discount-container">
+  <style>
+    .daily-discount-container {
+      margin: 30px 0;
+    }
+    .daily-discount-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .daily-discount-header h2 {
+      color: {{ block.settings.section_color }};
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    .daily-discount-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+    }
+    .daily-discount-carousel {
+      display: flex;
+      overflow-x: auto;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      padding: 10px 0;
+    }
+    .daily-discount-carousel .product-card {
+      flex: 0 0 250px;
+      margin-right: 20px;
+      scroll-snap-align: start;
+    }
+    .daily-discount-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .daily-discount-list .product-card {
+      display: flex;
+      align-items: center;
+    }
+    .daily-discount-list .product-image {
+      flex: 0 0 100px;
+      margin-right: 15px;
+    }
+    .product-card {
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .product-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    .product-image {
+      width: 100%;
+      padding-top: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .product-image img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .product-info {
+      padding: 15px;
+    }
+    .product-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 16px;
+    }
+    .price-container {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .current-price {
+      font-weight: bold;
+      color: {{ block.settings.section_color }};
+      font-size: 18px;
+      margin-right: 10px;
+    }
+    .original-price {
+      text-decoration: line-through;
+      color: #999;
+      font-size: 14px;
+    }
+    .savings-badge {
+      display: inline-block;
+      background-color: {{ block.settings.section_color }};
+      color: white;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+    .loading-indicator {
+      text-align: center;
+      padding: 20px;
+    }
+    .loading-spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left-color: {{ block.settings.section_color }};
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error-message {
+      text-align: center;
+      color: #d9534f;
+      padding: 15px;
+    }
+    @media (max-width: 768px) {
+      .daily-discount-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+      }
+      .daily-discount-carousel .product-card {
+        flex: 0 0 200px;
+      }
+    }
+  </style>
+
+  <div class="daily-discount-header">
+    <h2>{{ block.settings.section_title }}</h2>
+    <p>Limited time offers on selected products</p>
+  </div>
+
+  <div class="daily-discount-products-container {% if block.settings.layout == 'grid' %}daily-discount-grid{% elsif block.settings.layout == 'carousel' %}daily-discount-carousel{% else %}daily-discount-list{% endif %}">
+    <div class="loading-indicator">
+      <div class="loading-spinner"></div>
+      <p>Loading discounted products...</p>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const container = document.querySelector('.daily-discount-products-container');
+      const maxProducts = {{ block.settings.max_products }};
+      const sortBy = '{{ block.settings.sort_by }}';
+      const showSavings = {{ block.settings.show_savings }};
+      const shopDomain = '{{ shop.permanent_domain }}';
+      
+      // Fetch the discounted products
+      fetch('/apps/alpha-dog-1/api/daily-discounts/products?max=' + maxProducts + '&sort=' + sortBy)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.products && data.products.length > 0) {
+            renderProducts(data.products);
+          } else {
+            showError('No discounted products available at the moment.');
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching discounted products:', error);
+          showError('Unable to load discounted products. Please try again later.');
+        });
+      
+      function renderProducts(products) {
+        // Clear loading indicator
+        container.innerHTML = '';
+        
+        products.forEach(product => {
+          const productCard = document.createElement('div');
+          productCard.className = 'product-card';
+          
+          const savingsPercentage = ((product.originalPrice - product.discountedPrice) / product.originalPrice * 100).toFixed(0);
+          
+          productCard.innerHTML = `
+            <a href="/products/${getProductHandle(product.productId)}?variant=${getVariantId(product.variantId)}">
+              <div class="product-image">
+                <img src="${product.imageUrl || 'https://cdn.shopify.com/s/assets/no-image-2048-5e88c1b20e087fb7bbe9a3771824e743c244f437e4f8ba93bbf7b11b53f7824c.gif'}" alt="${product.productTitle}">
+              </div>
+              <div class="product-info">
+                <div class="product-title">${product.productTitle}</div>
+                ${product.variantTitle ? `<div class="variant-title">${product.variantTitle}</div>` : ''}
+                <div class="price-container">
+                  <div class="current-price">${formatMoney(product.discountedPrice, product.currencyCode)}</div>
+                  <div class="original-price">${formatMoney(product.originalPrice, product.currencyCode)}</div>
+                </div>
+                ${showSavings ? `<div class="savings-badge">Save ${savingsPercentage}%</div>` : ''}
+              </div>
+            </a>
+          `;
+          
+          container.appendChild(productCard);
+        });
+      }
+      
+      function showError(message) {
+        container.innerHTML = `<div class="error-message">${message}</div>`;
+      }
+      
+      function formatMoney(amount, currencyCode = 'USD') {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: currencyCode
+        }).format(amount);
+      }
+      
+      function getProductHandle(productId) {
+        // Instead of trying to extract the handle, we'll use our API endpoint
+        // that will handle the redirection to the product page
+        return `/apps/alpha-dog-1/api/daily-discounts/product/${productId}`;
+      }
+      
+      function getVariantId(variantId) {
+        // Extract numeric ID from Shopify GID format
+        const matches = variantId.match(/\d+$/);
+        return matches ? matches[0] : '';
+      }
+    })();
+  </script>
+</div>
+
+{% schema %}
+{
+  "name": "Daily Discounts",
+  "target": "section",
+  "settings": [
+    {
+      "type": "number",
+      "id": "max_products",
+      "label": "Maximum Products to Display",
+      "default": 4
+    },
+    {
+      "type": "select",
+      "id": "layout",
+      "label": "Layout Style",
+      "options": [
+        {
+          "value": "grid",
+          "label": "Grid"
+        },
+        {
+          "value": "carousel",
+          "label": "Carousel"
+        },
+        {
+          "value": "list",
+          "label": "List"
+        }
+      ],
+      "default": "grid"
+    },
+    {
+      "type": "select",
+      "id": "sort_by",
+      "label": "Sort Products By",
+      "options": [
+        {
+          "value": "newest",
+          "label": "Most Recent Discounts"
+        },
+        {
+          "value": "highest_discount",
+          "label": "Highest Discount"
+        },
+        {
+          "value": "lowest_price",
+          "label": "Lowest Price"
+        }
+      ],
+      "default": "newest"
+    },
+    {
+      "type": "text",
+      "id": "section_title",
+      "label": "Section Title",
+      "default": "Today's Special Discounts"
+    },
+    {
+      "type": "color",
+      "id": "section_color",
+      "label": "Section Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_savings",
+      "label": "Show Savings Amount",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "Daily Discounts"
+    }
+  ]
+}
+{% endschema %}

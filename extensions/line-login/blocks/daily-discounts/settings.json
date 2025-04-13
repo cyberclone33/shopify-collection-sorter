@@ -1,0 +1,73 @@
+{
+  "name": "Daily Discounts Display",
+  "settings": [
+    {
+      "type": "number",
+      "id": "max_products",
+      "label": "Maximum Products to Display",
+      "default": 4,
+      "info": "Set the maximum number of discounted products to display."
+    },
+    {
+      "type": "select",
+      "id": "layout",
+      "label": "Layout Style",
+      "options": [
+        {
+          "value": "grid",
+          "label": "Grid"
+        },
+        {
+          "value": "carousel",
+          "label": "Carousel"
+        },
+        {
+          "value": "list",
+          "label": "List"
+        }
+      ],
+      "default": "grid",
+      "info": "Choose how products will be displayed"
+    },
+    {
+      "type": "select",
+      "id": "sort_by",
+      "label": "Sort Products By",
+      "options": [
+        {
+          "value": "newest",
+          "label": "Most Recent Discounts"
+        },
+        {
+          "value": "highest_discount",
+          "label": "Highest Discount"
+        },
+        {
+          "value": "lowest_price",
+          "label": "Lowest Price"
+        }
+      ],
+      "default": "newest",
+      "info": "Choose how to sort the displayed products"
+    },
+    {
+      "type": "text",
+      "id": "section_title",
+      "label": "Section Title",
+      "default": "Today's Special Discounts"
+    },
+    {
+      "type": "color",
+      "id": "section_color",
+      "label": "Section Color",
+      "default": "#ff6b6b"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_savings",
+      "label": "Show Savings Amount",
+      "default": true,
+      "info": "Display how much customers save with the discount"
+    }
+  ]
+}
