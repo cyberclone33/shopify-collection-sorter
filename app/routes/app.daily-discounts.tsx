@@ -172,7 +172,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const buildQuery = (cursor) => {
       return `
         query GetProductsWithInventory {
-          products(first: 250${cursor ? `, after: "${cursor}"` : ''}) {
+          products(first: 500${cursor ? `, after: "${cursor}"` : ''}) {
             edges {
               node {
                 id
@@ -240,10 +240,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         break;
       }
       
-      // For safety, limit the number of requests in case of very large stores
-      if (allProductEdges.length > 1000) {
-        console.log("Reached maximum product fetch limit of 1000 products");
-        break;
+      // Log progress for large stores
+      if (allProductEdges.length % 500 === 0) {
+        console.log(`Fetched ${allProductEdges.length} products so far...`);
       }
     }
     
