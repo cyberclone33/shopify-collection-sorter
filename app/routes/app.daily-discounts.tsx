@@ -163,43 +163,100 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   
   // Regular product fetch logic
   try {
-    // Fetch a random product with inventory, cost, and price data
-    // We're getting up to 50 products to have a good pool for random selection
-    const response = await admin.graphql(`
-      query GetProductsWithInventory {
-        products(first: 100) {
-          edges {
-            node {
-              id
-              title
-              featuredImage {
-                url
-                altText
-              }
-              variants(first: 1) {
-                edges {
-                  node {
-                    id
-                    title
-                    price
-                    compareAtPrice
-                    inventoryQuantity
-                    inventoryItem {
-                      unitCost {
-                        amount
-                        currencyCode
+    // We'll fetch all products by using pagination
+    let allProductEdges = [];
+    let hasNextPage = true;
+    let cursor = null;
+    
+    // Function to build the query with the appropriate cursor
+    const buildQuery = (cursor) => {
+      return `
+        query GetProductsWithInventory {
+          products(first: 250${cursor ? `, after: "${cursor}"` : ''}) {
+            edges {
+              node {
+                id
+                title
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price
+                      compareAtPrice
+                      inventoryQuantity
+                      inventoryItem {
+                        unitCost {
+                          amount
+                          currencyCode
+                        }
                       }
                     }
                   }
                 }
               }
+              cursor
+            }
+            pageInfo {
+              hasNextPage
             }
           }
         }
+      `;
+    };
+    
+    // Loop to fetch all pages of products
+    while (hasNextPage) {
+      console.log(`Fetching products${cursor ? ' after cursor: ' + cursor : ''}`);
+      
+      const response = await admin.graphql(buildQuery(cursor));
+      const responseJson = await response.json();
+      
+      if (responseJson.errors) {
+        console.error("GraphQL errors:", responseJson.errors);
+        break;
       }
-    `);
-
-    const responseJson = await response.json();
+      
+      const products = responseJson.data?.products;
+      
+      if (!products || !products.edges || products.edges.length === 0) {
+        break;
+      }
+      
+      // Add the current page of edges to our collection
+      allProductEdges = [...allProductEdges, ...products.edges];
+      
+      // Check if there are more pages
+      hasNextPage = products.pageInfo.hasNextPage;
+      
+      // If there are more pages, get the cursor of the last item
+      if (hasNextPage && products.edges.length > 0) {
+        cursor = products.edges[products.edges.length - 1].cursor;
+      } else {
+        break;
+      }
+      
+      // For safety, limit the number of requests in case of very large stores
+      if (allProductEdges.length > 1000) {
+        console.log("Reached maximum product fetch limit of 1000 products");
+        break;
+      }
+    }
+    
+    console.log(`Fetched a total of ${allProductEdges.length} products`);
+    
+    // Create a response object structure that matches the original format
+    const responseJson = {
+      data: {
+        products: {
+          edges: allProductEdges
+        }
+      }
+    };
     
     // First, check if we received any products at all
     if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {
