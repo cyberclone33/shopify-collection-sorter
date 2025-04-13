@@ -17,6 +17,7 @@ import {
   SkeletonBodyText,
   SkeletonDisplayText,
   Icon,
+  TextField,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -48,7 +49,105 @@ interface DiscountData {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  const debugVariantId = url.searchParams.get("debugVariantId");
   
+  // If a specific variant ID is provided for debugging
+  if (debugVariantId) {
+    try {
+      const variantId = debugVariantId.includes("gid://") 
+        ? debugVariantId 
+        : `gid://shopify/ProductVariant/${debugVariantId}`;
+        
+      const response = await admin.graphql(`
+        query GetVariantDetails($id: ID!) {
+          productVariant(id: $id) {
+            id
+            title
+            price
+            compareAtPrice
+            inventoryQuantity
+            product {
+              id
+              title
+              featuredImage {
+                url
+              }
+            }
+            inventoryItem {
+              id
+              unitCost {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+      `, {
+        variables: {
+          id: variantId
+        }
+      });
+      
+      const responseJson = await response.json();
+      
+      if (responseJson.errors) {
+        return json({
+          status: "error",
+          message: `Error fetching variant: ${responseJson.errors[0].message}`,
+          debugVariant: null,
+          debugVariantId
+        });
+      }
+      
+      const variant = responseJson.data?.productVariant;
+      
+      if (!variant) {
+        return json({
+          status: "error",
+          message: "Variant not found",
+          debugVariant: null,
+          debugVariantId
+        });
+      }
+      
+      // Transform data for easier display
+      const debugVariant = {
+        id: variant.id,
+        variantTitle: variant.title,
+        productTitle: variant.product.title,
+        price: parseFloat(variant.price),
+        compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
+        inventoryQuantity: variant.inventoryQuantity,
+        cost: variant.inventoryItem?.unitCost?.amount 
+          ? parseFloat(variant.inventoryItem.unitCost.amount) 
+          : null,
+        currencyCode: variant.inventoryItem?.unitCost?.currencyCode || 'USD',
+        imageUrl: variant.product.featuredImage?.url || null,
+        hasCost: !!variant.inventoryItem?.unitCost?.amount,
+        hasImage: !!variant.product.featuredImage,
+        hasPositiveInventory: variant.inventoryQuantity > 0
+      };
+      
+      return json({
+        status: "debug",
+        debugVariant,
+        debugVariantId,
+        message: "Debug mode: Displaying variant information"
+      });
+    }
+    catch (error) {
+      console.error("Error in debug mode:", error);
+      return json({
+        status: "error",
+        message: `Error in debug mode: ${error instanceof Error ? error.message : "Unknown error"}`,
+        debugVariant: null,
+        debugVariantId
+      });
+    }
+  }
+  
+  // Regular product fetch logic
   try {
     // Fetch a random product with inventory, cost, and price data
     // We're getting up to 50 products to have a good pool for random selection
@@ -260,7 +359,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function DailyDiscounts() {
-  const { randomProduct, status, message } = useLoaderData<typeof loader>();
+  const loaderData = useLoaderData<typeof loader>();
+  const { randomProduct, status, message } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -344,11 +444,176 @@ export default function DailyDiscounts() {
     window.location.reload();
   };
   
+  // Check if in debug mode
+  const isDebugMode = status === "debug" && !!loaderData.debugVariant;
+  const debugVariant = loaderData.debugVariant;
+  const debugVariantId = loaderData.debugVariantId;
+  
   return (
-    <Page>
+    <Page
+      title="Daily Discounts"
+      primaryAction={isDebugMode ? {
+        content: "Back to Daily Discounts",
+        url: "/app/daily-discounts"
+      } : undefined}
+    >
       <TitleBar title="Daily Discounts" />
       
-      <Layout>
+      {isDebugMode ? (
+        // Debug mode UI
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Product Variant Debug Info
+                </Text>
+                
+                <Banner tone="info">
+                  <p>Showing debug information for variant ID: {debugVariantId}</p>
+                </Banner>
+                
+                {debugVariant && (
+                  <BlockStack gap="400">
+                    <InlineStack gap="400" blockAlign="center">
+                      {debugVariant.imageUrl && (
+                        <Box>
+                          <Thumbnail
+                            source={debugVariant.imageUrl}
+                            alt={debugVariant.productTitle}
+                            size="large"
+                          />
+                        </Box>
+                      )}
+                      
+                      <Box>
+                        <BlockStack gap="200">
+                          <Text variant="headingLg" as="h3">{debugVariant.productTitle}</Text>
+                          <Text variant="bodyMd" as="p">{debugVariant.variantTitle}</Text>
+                        </BlockStack>
+                      </Box>
+                    </InlineStack>
+                    
+                    <Divider />
+                    
+                    <InlineStack gap="400" wrap={false}>
+                      <Box style={{ flex: 1 }}>
+                        <BlockStack gap="200">
+                          <Text variant="headingMd" as="h4">Pricing Information</Text>
+                          <Text variant="bodyMd" as="p">Price: {formatCurrency(debugVariant.price, debugVariant.currencyCode)}</Text>
+                          <Text variant="bodyMd" as="p">Compare At: {debugVariant.compareAtPrice ? formatCurrency(debugVariant.compareAtPrice, debugVariant.currencyCode) : "Not set"}</Text>
+                          <Text variant="bodyMd" as="p">
+                            Cost: {debugVariant.cost ? formatCurrency(debugVariant.cost, debugVariant.currencyCode) : "Not set"} 
+                            {!debugVariant.hasCost && <Badge tone="warning">Missing</Badge>}
+                          </Text>
+                          <Text variant="bodyMd" as="p">Inventory: {debugVariant.inventoryQuantity}</Text>
+                        </BlockStack>
+                      </Box>
+                      
+                      <Box style={{ flex: 1 }}>
+                        <BlockStack gap="200">
+                          <Text variant="headingMd" as="h4">Requirement Status</Text>
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodyMd" as="span">Has Image:</Text>
+                            {debugVariant.hasImage ? 
+                              <Badge tone="success">Yes</Badge> : 
+                              <Badge tone="critical">No (Required)</Badge>
+                            }
+                          </InlineStack>
+                          
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodyMd" as="span">Has Cost Data:</Text>
+                            {debugVariant.hasCost ? 
+                              <Badge tone="success">Yes</Badge> : 
+                              <Badge tone="warning">No (Will estimate)</Badge>
+                            }
+                          </InlineStack>
+                          
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodyMd" as="span">Has Inventory > 0:</Text>
+                            {debugVariant.hasPositiveInventory ? 
+                              <Badge tone="success">Yes</Badge> : 
+                              <Badge tone="critical">No (Required)</Badge>
+                            }
+                          </InlineStack>
+                          
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodyMd" as="span">Overall:</Text>
+                            {(debugVariant.hasImage && debugVariant.hasPositiveInventory) ? 
+                              <Badge tone="success">Eligible for Daily Discount</Badge> : 
+                              <Badge tone="critical">Not eligible</Badge>
+                            }
+                          </InlineStack>
+                        </BlockStack>
+                      </Box>
+                    </InlineStack>
+                    
+                    <Box paddingBlock="300">
+                      <Divider />
+                    </Box>
+                    
+                    <Text variant="bodyMd" as="p">
+                      This product variant {(debugVariant.hasImage && debugVariant.hasPositiveInventory) ? 
+                        <strong>is eligible</strong> : 
+                        <strong>is not eligible</strong>
+                      } to be selected for Daily Discounts.
+                    </Text>
+                    
+                    {!debugVariant.hasImage && (
+                      <Text variant="bodyMd" as="p">
+                        <strong>Missing requirement:</strong> This product needs a featured image. Edit the product and add an image.
+                      </Text>
+                    )}
+                    
+                    {!debugVariant.hasPositiveInventory && (
+                      <Text variant="bodyMd" as="p">
+                        <strong>Missing requirement:</strong> This product needs positive inventory. Currently it has {debugVariant.inventoryQuantity}.
+                      </Text>
+                    )}
+                    
+                    {!debugVariant.hasCost && (
+                      <Text variant="bodyMd" as="p">
+                        <strong>Optional improvement:</strong> This product doesn't have cost data. Cost will be estimated as 50% of the selling price.
+                        For more accurate discounts, add cost data in Inventory → Edit inventory → Unit cost.
+                      </Text>
+                    )}
+                  </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+          
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Check Another Variant
+                </Text>
+                
+                <form method="get" action="/app/daily-discounts">
+                  <InlineStack gap="300">
+                    <div style={{ flex: 1 }}>
+                      <TextField
+                        label="Variant ID"
+                        name="debugVariantId"
+                        placeholder="Enter variant ID (numbers only)"
+                        helpText="Enter just the numeric ID, not the full gid://shopify/ProductVariant/ prefix"
+                        autoComplete="off"
+                        defaultValue=""
+                      />
+                    </div>
+                    <div style={{ paddingTop: "1.9rem" }}>
+                      <Button submit>Check Variant</Button>
+                    </div>
+                  </InlineStack>
+                </form>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      ) : (
+        // Regular UI
+        <Layout>
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
@@ -566,7 +831,51 @@ export default function DailyDiscounts() {
             </BlockStack>
           </Card>
         </Layout.Section>
+        
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Debug Information
+              </Text>
+              
+              <Text as="p">
+                If you're having issues with the Daily Discounts feature, you can use the following GraphQL query in the 
+                Shopify Admin API Explorer to check if your product variants have cost data set:
+              </Text>
+              
+              <Box padding="400" style={{ backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
+                <pre style={{ whiteSpace: "pre-wrap", overflow: "auto", margin: 0 }}>
+{`query {
+  productVariant(id: "gid://shopify/ProductVariant/YOUR_VARIANT_ID") {
+    id
+    title
+    price
+    compareAtPrice
+    inventoryItem {
+      id
+      cost
+    }
+  }
+}`}
+                </pre>
+              </Box>
+              
+              <Text as="p">
+                Replace YOUR_VARIANT_ID with the numeric ID of the variant you want to check. You can find this ID in the product URL 
+                when editing a product in Shopify.
+              </Text>
+              
+              <Text as="p">
+                If the cost value shows as null, you'll need to set the cost for your products in Shopify:
+                <br />
+                Go to Products → Inventory → click "Edit" next to a product → find "Unit cost" field.
+              </Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
       </Layout>
+      )}
     </Page>
   );
 }
