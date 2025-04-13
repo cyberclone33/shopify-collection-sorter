@@ -6,7 +6,7 @@
 <div id="tagged-products-container" class="tagged-products-container">
   <style>
     .tagged-products-container {
-      margin: {{ block.settings.section_margin }}px 0;
+      margin: 30px 0;
     }
     .tagged-products-header {
       text-align: center;
@@ -14,16 +14,16 @@
     }
     .tagged-products-header h2 {
       color: {{ block.settings.accent_color }};
-      font-size: {{ block.settings.heading_size }}px;
+      font-size: 24px;
       margin-bottom: 10px;
     }
     .tagged-products-header p {
       color: {{ block.settings.text_color }};
-      font-size: {{ block.settings.text_size }}px;
+      font-size: 14px;
     }
     .tagged-products-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax({{ block.settings.product_card_width }}px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
       gap: {{ block.settings.grid_gap }}px;
     }
     .tagged-products-carousel {
@@ -35,7 +35,7 @@
       padding: 10px 0;
     }
     .tagged-products-carousel .product-card {
-      flex: 0 0 {{ block.settings.product_card_width }}px;
+      flex: 0 0 250px;
       margin-right: {{ block.settings.grid_gap }}px;
       scroll-snap-align: start;
     }
@@ -53,7 +53,7 @@
       margin-right: 15px;
     }
     .product-card {
-      border: {{ block.settings.card_border_width }}px solid {{ block.settings.card_border_color }};
+      border: 1px solid #e8e8e8;
       border-radius: {{ block.settings.card_border_radius }}px;
       background-color: {{ block.settings.card_background }};
       overflow: hidden;
@@ -83,20 +83,18 @@
     .product-title {
       font-weight: bold;
       margin-bottom: 5px;
-      font-size: {{ block.settings.product_title_size }}px;
+      font-size: 16px;
       color: {{ block.settings.text_color }};
-      {% if block.settings.truncate_title %}
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      {% endif %}
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .variant-title {
       color: {{ block.settings.text_color }};
       opacity: 0.8;
-      font-size: {{ block.settings.text_size }}px;
+      font-size: 14px;
       margin-bottom: 8px;
     }
     .price-container {
@@ -107,21 +105,21 @@
     .current-price {
       font-weight: bold;
       color: {{ block.settings.price_color }};
-      font-size: {{ block.settings.price_size }}px;
+      font-size: 18px;
       margin-right: 10px;
     }
     .original-price {
       text-decoration: line-through;
-      color: {{ block.settings.compare_price_color }};
-      font-size: {{ block.settings.text_size }}px;
+      color: #999999;
+      font-size: 14px;
     }
     .savings-badge {
       display: inline-block;
       background-color: {{ block.settings.accent_color }};
       color: white;
       padding: 3px 8px;
-      border-radius: {{ block.settings.badge_border_radius }}px;
-      font-size: {{ block.settings.badge_font_size }}px;
+      border-radius: 4px;
+      font-size: 12px;
       font-weight: bold;
       margin-top: 8px;
     }
@@ -155,55 +153,56 @@
     .view-all-button a {
       display: inline-block;
       padding: 10px 20px;
-      background-color: {{ block.settings.button_background }};
-      color: {{ block.settings.button_text_color }};
+      background-color: {{ block.settings.accent_color }};
+      color: #ffffff;
       text-decoration: none;
-      border-radius: {{ block.settings.button_border_radius }}px;
+      border-radius: 4px;
       font-weight: bold;
       transition: background-color 0.2s ease;
     }
     .view-all-button a:hover {
-      background-color: {{ block.settings.button_hover_background }};
+      background-color: {{ block.settings.accent_color }};
+      opacity: 0.9;
     }
     .sold-out-badge {
       position: absolute;
       top: 10px;
       right: 10px;
-      background-color: {{ block.settings.sold_out_badge_color }};
+      background-color: #999999;
       color: white;
       padding: 5px 10px;
-      border-radius: {{ block.settings.badge_border_radius }}px;
-      font-size: {{ block.settings.badge_font_size }}px;
+      border-radius: 4px;
+      font-size: 12px;
       font-weight: bold;
     }
     .sale-badge {
       position: absolute;
       top: 10px;
       left: 10px;
-      background-color: {{ block.settings.sale_badge_color }};
+      background-color: {{ block.settings.accent_color }};
       color: white;
       padding: 5px 10px;
-      border-radius: {{ block.settings.badge_border_radius }}px;
-      font-size: {{ block.settings.badge_font_size }}px;
+      border-radius: 4px;
+      font-size: 12px;
       font-weight: bold;
     }
     @media (max-width: 768px) {
       .tagged-products-grid {
-        grid-template-columns: repeat(auto-fill, minmax({{ block.settings.mobile_card_width }}px, 1fr));
-        gap: {{ block.settings.mobile_grid_gap }}px;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
       }
       .tagged-products-carousel .product-card {
-        flex: 0 0 {{ block.settings.mobile_card_width }}px;
-        margin-right: {{ block.settings.mobile_grid_gap }}px;
+        flex: 0 0 150px;
+        margin-right: 10px;
       }
       .tagged-products-header h2 {
-        font-size: {{ block.settings.mobile_heading_size }}px;
+        font-size: 20px;
       }
       .product-title {
-        font-size: {{ block.settings.mobile_product_title_size }}px;
+        font-size: 14px;
       }
       .current-price {
-        font-size: {{ block.settings.mobile_price_size }}px;
+        font-size: 16px;
       }
     }
   </style>
@@ -248,7 +247,7 @@
       container.innerHTML = `
         <div class="loading-indicator">
           <div class="loading-spinner"></div>
-          <p>{{ block.settings.loading_text }}</p>
+          <p>Loading products...</p>
         </div>
       `;
       
@@ -329,12 +328,12 @@
               renderProducts(formattedProducts);
             } else {
               console.log('No products found with tag "' + customTag + '"');
-              showError('{{ block.settings.no_products_message }}');
+              showError('No products found with this tag');
             }
           })
           .catch(error => {
             console.error('Error fetching from collection:', error);
-            showError('{{ block.settings.error_message }}');
+            showError('Unable to load products. Please try again later.');
           });
       }
       
@@ -520,7 +519,7 @@
     },
     {
       "type": "header",
-      "content": "Visual Settings"
+      "content": "Colors"
     },
     {
       "type": "color",
@@ -542,113 +541,33 @@
     },
     {
       "type": "color",
-      "id": "compare_price_color",
-      "label": "Compare Price Color",
-      "default": "#999999"
-    },
-    {
-      "type": "color",
       "id": "card_background",
-      "label": "Card Background Color",
+      "label": "Card Background",
       "default": "#ffffff"
     },
     {
-      "type": "color",
-      "id": "card_border_color",
-      "label": "Card Border Color",
-      "default": "#e8e8e8"
-    },
-    {
-      "type": "number",
-      "id": "section_margin",
-      "label": "Section Margin (px)",
-      "default": 30
-    },
-    {
-      "type": "number",
-      "id": "heading_size",
-      "label": "Heading Font Size (px)",
-      "default": 24
-    },
-    {
-      "type": "number",
-      "id": "text_size",
-      "label": "Text Font Size (px)",
-      "default": 14
-    },
-    {
-      "type": "number",
-      "id": "product_title_size",
-      "label": "Product Title Size (px)",
-      "default": 16
-    },
-    {
-      "type": "number",
-      "id": "price_size",
-      "label": "Price Font Size (px)",
-      "default": 18
-    },
-    {
-      "type": "number",
-      "id": "product_card_width",
-      "label": "Product Card Width (px)",
-      "default": 250
-    },
-    {
-      "type": "number",
-      "id": "grid_gap",
-      "label": "Space Between Products (px)",
-      "default": 20
-    },
-    {
-      "type": "number",
-      "id": "card_border_width",
-      "label": "Card Border Width (px)",
-      "default": 1
-    },
-    {
-      "type": "number",
+      "type": "range",
       "id": "card_border_radius",
-      "label": "Card Border Radius (px)",
-      "default": 8
+      "label": "Card Border Radius",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "default": 8,
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "grid_gap",
+      "label": "Space Between Products",
+      "min": 5,
+      "max": 40,
+      "step": 5,
+      "default": 20,
+      "unit": "px"
     },
     {
       "type": "header",
-      "content": "Mobile Settings"
-    },
-    {
-      "type": "number",
-      "id": "mobile_heading_size",
-      "label": "Mobile Heading Size (px)",
-      "default": 20
-    },
-    {
-      "type": "number",
-      "id": "mobile_product_title_size",
-      "label": "Mobile Title Size (px)",
-      "default": 14
-    },
-    {
-      "type": "number",
-      "id": "mobile_price_size",
-      "label": "Mobile Price Size (px)",
-      "default": 16
-    },
-    {
-      "type": "number",
-      "id": "mobile_card_width",
-      "label": "Mobile Card Width (px)",
-      "default": 150
-    },
-    {
-      "type": "number",
-      "id": "mobile_grid_gap",
-      "label": "Mobile Grid Gap (px)",
-      "default": 10
-    },
-    {
-      "type": "header",
-      "content": "Badge Settings"
+      "content": "Product Badges"
     },
     {
       "type": "checkbox",
@@ -657,21 +576,9 @@
       "default": true
     },
     {
-      "type": "number",
-      "id": "badge_font_size",
-      "label": "Badge Font Size (px)",
-      "default": 12
-    },
-    {
-      "type": "number",
-      "id": "badge_border_radius",
-      "label": "Badge Border Radius (px)",
-      "default": 4
-    },
-    {
       "type": "checkbox",
       "id": "show_sale_badge",
-      "label": "Show Sale Badge on Discounted Products",
+      "label": "Show Sale Badge",
       "default": true
     },
     {
@@ -679,12 +586,6 @@
       "id": "sale_text",
       "label": "Sale Badge Text",
       "default": "Sale"
-    },
-    {
-      "type": "color",
-      "id": "sale_badge_color",
-      "label": "Sale Badge Color",
-      "default": "#ff6b6b"
     },
     {
       "type": "checkbox",
@@ -697,18 +598,6 @@
       "id": "sold_out_text",
       "label": "Sold Out Badge Text",
       "default": "Sold Out"
-    },
-    {
-      "type": "color",
-      "id": "sold_out_badge_color",
-      "label": "Sold Out Badge Color",
-      "default": "#999999"
-    },
-    {
-      "type": "text",
-      "id": "save_text",
-      "label": "Save Badge Text",
-      "default": "Save"
     },
     {
       "type": "header",
@@ -733,66 +622,16 @@
       "info": "Link to collection or page with all products"
     },
     {
-      "type": "color",
-      "id": "button_background",
-      "label": "Button Background Color",
-      "default": "#ff6b6b"
-    },
-    {
-      "type": "color",
-      "id": "button_text_color",
-      "label": "Button Text Color",
-      "default": "#ffffff"
-    },
-    {
-      "type": "color",
-      "id": "button_hover_background",
-      "label": "Button Hover Background",
-      "default": "#ff5252"
-    },
-    {
-      "type": "number",
-      "id": "button_border_radius",
-      "label": "Button Border Radius (px)",
-      "default": 4
-    },
-    {
-      "type": "header",
-      "content": "Product Display Options"
-    },
-    {
-      "type": "checkbox",
-      "id": "truncate_title",
-      "label": "Limit Product Title to 2 Lines",
-      "default": true
-    },
-    {
       "type": "checkbox",
       "id": "show_sold_out_products",
       "label": "Show Sold Out Products",
       "default": true
     },
     {
-      "type": "header",
-      "content": "Messages"
-    },
-    {
       "type": "text",
-      "id": "loading_text",
-      "label": "Loading Message",
-      "default": "Loading products..."
-    },
-    {
-      "type": "text",
-      "id": "no_products_message",
-      "label": "No Products Message",
-      "default": "No products found with this tag"
-    },
-    {
-      "type": "text",
-      "id": "error_message",
-      "label": "Error Message",
-      "default": "Unable to load products. Please try again later."
+      "id": "save_text",
+      "label": "Save Badge Text",
+      "default": "Save"
     }
   ]
 }
