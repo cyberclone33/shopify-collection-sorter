@@ -932,6 +932,14 @@ export default function DailyDiscounts() {
                 <BlockStack gap="400">
                   <TextContainer spacing="tight">
                     <Text as="h3" variant="headingLg" alignment="center">{randomProduct.title}</Text>
+                    {randomProduct.variantTitle && (
+                      <Text as="p" variant="bodyMd" alignment="center">
+                        Variant: {randomProduct.variantTitle}
+                      </Text>
+                    )}
+                    <Text as="p" variant="bodySm" alignment="center" tone="subdued">
+                      Variant ID: {randomProduct.variantId.split("/").pop()}
+                    </Text>
                   </TextContainer>
                   
                   <Box padding="400" style={{ textAlign: "center" }}>
@@ -1102,11 +1110,32 @@ export default function DailyDiscounts() {
                   {recentDiscountLogs.map((log) => (
                     <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
                       <BlockStack gap="200">
-                        <InlineStack gap="200" align="space-between">
-                          <Text variant="headingSm" as="h3">{log.productTitle}</Text>
-                          <Text variant="bodySm" as="span">
-                            {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
-                          </Text>
+                        <InlineStack gap="300" align="start" blockAlign="center">
+                          {log.imageUrl && (
+                            <Box>
+                              <Thumbnail
+                                source={log.imageUrl}
+                                alt={log.productTitle}
+                                size="small"
+                              />
+                            </Box>
+                          )}
+                          <BlockStack gap="100">
+                            <InlineStack gap="200" align="space-between">
+                              <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                              <Text variant="bodySm" as="span">
+                                {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
+                              </Text>
+                            </InlineStack>
+                            {log.variantTitle && (
+                              <Text variant="bodySm" as="p">
+                                Variant: {log.variantTitle}
+                              </Text>
+                            )}
+                            <Text variant="bodySm" as="p" tone="subdued">
+                              Variant ID: {log.variantId.split("/").pop()}
+                            </Text>
+                          </BlockStack>
                         </InlineStack>
                         
                         <InlineStack gap="200" wrap={true}>
