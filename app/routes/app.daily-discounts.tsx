@@ -19,9 +19,7 @@ import {
   TextField,
   Toast,
   Frame,
-  Modal,
-=======
-=======
+  Modal
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -524,7 +522,6 @@ export default function DailyDiscounts() {
   });
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
   const submit = useSubmit();
-=======
   
   // Function to generate a random discount
   const generateRandomDiscount = () => {
