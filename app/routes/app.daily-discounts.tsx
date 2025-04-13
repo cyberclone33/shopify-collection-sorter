@@ -17,6 +17,11 @@ import {
   SkeletonBodyText,
   SkeletonDisplayText,
   TextField,
+  Toast,
+  Frame,
+  Modal,
+=======
+=======
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -454,10 +459,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Continue anyway even if logging fails
     }
     
+    // Check if this was a revert action by looking at the notes
+    const isRevert = notes && notes.includes("Reverted discount");
+    
     return json({
       status: "success",
-      message: "Product price updated successfully",
-      variant: responseJson.data?.productVariantsBulkUpdate?.productVariants?.[0] || null
+      message: isRevert ? "Price reverted successfully" : "Product price updated successfully",
+      variant: responseJson.data?.productVariantsBulkUpdate?.productVariants?.[0] || null,
+      isRevert
     });
     
   } catch (error) {
@@ -508,7 +517,14 @@ export default function DailyDiscounts() {
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
+  const [isReverting, setIsReverting] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<{active: boolean, message: string}>({
+    active: false,
+    message: ""
+  });
+  const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
   const submit = useSubmit();
+=======
   
   // Function to generate a random discount
   const generateRandomDiscount = () => {
@@ -617,6 +633,32 @@ export default function DailyDiscounts() {
     if (actionData && actionData.status === "error") {
       setDiscountError(actionData.message || "Error applying discount");
       setIsPriceUpdated(false);
+      setIsReverting(null);
+    }
+    
+    // Handle successful action
+    if (actionData && actionData.status === "success") {
+      // Clear any reverting state
+      setIsReverting(null);
+      
+      // If we just reverted a price, show a success message
+      if (actionData.isRevert) {
+        setDiscountError(null);
+        setSuccessToast({
+          active: true,
+          message: "Price successfully reverted to original value"
+        });
+        
+        // Auto-hide toast after 5 seconds
+        setTimeout(() => {
+          setSuccessToast(prev => ({ ...prev, active: false }));
+        }, 5000);
+        
+        // Refresh the page after a short delay to update the discount logs
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
     }
   }, [actionData]);
 
@@ -626,6 +668,53 @@ export default function DailyDiscounts() {
       generateRandomDiscount();
     }
   }, [randomProduct]);
+  
+  // Show confirmation dialog for reverting a discount
+  const handleRevertDiscount = (log: any) => {
+    if (!log.variantId || !log.originalPrice) {
+      setDiscountError("Cannot revert: Missing variant ID or original price");
+      return;
+    }
+    
+    // Set the log in state to show confirmation dialog
+    setConfirmRevert(log);
+  };
+  
+  // Actually perform the revert after confirmation
+  const confirmRevertDiscount = () => {
+    if (!confirmRevert) return;
+    
+    const log = confirmRevert;
+    setIsReverting(log.id);
+    
+    const formData = new FormData();
+    formData.append("variantId", log.variantId);
+    formData.append("newPrice", log.originalPrice.toString());
+    
+    // Set compareAtPrice to null to remove the sale price effect
+    formData.append("compareAtPrice", "");
+    
+    // We need the product ID for the bulk update mutation
+    if (log.productId) {
+      formData.append("productId", log.productId);
+    }
+    
+    // Add additional fields for logging
+    formData.append("productTitle", log.productTitle);
+    if (log.variantTitle) {
+      formData.append("variantTitle", log.variantTitle);
+    }
+    formData.append("originalPrice", log.discountedPrice.toString());
+    formData.append("costPrice", log.costPrice?.toString() || "0");
+    formData.append("currencyCode", log.currencyCode || "USD");
+    formData.append("notes", "Reverted discount to original price");
+    
+    // Close the confirmation dialog
+    setConfirmRevert(null);
+    
+    // The revert action is just a regular price update back to the original price
+    submit(formData, { method: "post" });
+  };
   
   // Get a new random product
   const getNewRandomProduct = () => {
@@ -639,13 +728,14 @@ export default function DailyDiscounts() {
   const debugVariantId = loaderData.debugVariantId;
   
   return (
-    <Page
-      title="Daily Discounts"
-      primaryAction={isDebugMode ? {
-        content: "Back to Daily Discounts",
-        url: "/app/daily-discounts"
-      } : undefined}
-    >
+    <Frame>
+      <Page
+        title="Daily Discounts"
+        primaryAction={isDebugMode ? {
+          content: "Back to Daily Discounts",
+          url: "/app/daily-discounts"
+        } : undefined}
+      >
       <TitleBar title="Daily Discounts" />
       
       {isDebugMode ? (
@@ -1033,6 +1123,17 @@ export default function DailyDiscounts() {
                             Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
                           </Text>
                         </InlineStack>
+                        
+                        <InlineStack align="end">
+                          <Button 
+                            size="micro" 
+                            tone="critical"
+                            onClick={() => handleRevertDiscount(log)}
+                            disabled={isReverting === log.id}
+                          >
+                            {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
+                          </Button>
+                        </InlineStack>
                       </BlockStack>
                     </Box>
                   ))}
@@ -1120,6 +1221,46 @@ export default function DailyDiscounts() {
         </Layout.Section>
       </Layout>
       )}
-    </Page>
+      </Page>
+      
+      {/* Success toast notification */}
+      {successToast.active && (
+        <Toast 
+          content={successToast.message} 
+          onDismiss={() => setSuccessToast(prev => ({ ...prev, active: false }))}
+          duration={4000}
+          tone="success"
+        />
+      )}
+      
+      {/* Revert confirmation modal */}
+      <Modal
+        open={confirmRevert !== null}
+        onClose={() => setConfirmRevert(null)}
+        title="Revert Price"
+        primaryAction={{
+          content: "Yes, revert price",
+          onAction: confirmRevertDiscount,
+          destructive: true
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: () => setConfirmRevert(null)
+          }
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p">
+              Are you sure you want to revert the price of "{confirmRevert?.productTitle}" back to its original price of {confirmRevert?.originalPrice ? formatCurrency(confirmRevert.originalPrice, confirmRevert.currencyCode) : "original price"}?
+            </Text>
+            <Text as="p">
+              This will remove the discount and update the product price in your store immediately.
+            </Text>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+    </Frame>
   );
 }
