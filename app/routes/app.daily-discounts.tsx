@@ -460,10 +460,8 @@ export default function DailyDiscounts() {
     formData.append("variantId", randomProduct.variantId);
     formData.append("newPrice", discount.discountedPrice.toString());
     
-    // If there's no compare-at price yet, use the original price
-    if (!randomProduct.compareAtPrice) {
-      formData.append("compareAtPrice", randomProduct.sellingPrice.toString());
-    }
+    // Always set compareAtPrice to original price to ensure it appears as a sale
+    formData.append("compareAtPrice", randomProduct.sellingPrice.toString());
     
     // Add all the fields needed for logging to the database
     formData.append("productId", randomProduct.id);
