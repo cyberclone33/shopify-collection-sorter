@@ -22,7 +22,7 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { useState, useEffect } from "react";
-import { MobileAcceptIcon, DiscountAutomaticIcon } from "@shopify/polaris-icons";
+import { MobileAcceptIcon, DiscountsMajor } from "@shopify/polaris-icons";
 
 // Interface for our product data
 interface ProductData {
@@ -721,7 +721,7 @@ export default function DailyDiscounts() {
                         <InlineStack align="space-between">
                           <Text variant="headingMd" as="h3">
                             <InlineStack gap="200" align="center" blockAlign="center">
-                              <Icon source={DiscountAutomaticIcon} />
+                              <Icon source={DiscountsMajor} />
                               <span>Discount Generator</span>
                             </InlineStack>
                           </Text>
