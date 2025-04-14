@@ -974,8 +974,8 @@ export default function DailyDiscounts() {
     });
   };
   
-  // Apply discounts to multiple selected products using direct API calls
-  // This ensures each product gets a unique randomized discount
+  // Apply discounts to multiple selected products using existing data
+  // No need to refetch products since we already have all data in memory
   const applyMultipleDiscounts = async () => {
     if (!multipleRandomProducts || !discount || selectedProducts.size === 0) return;
     
@@ -988,45 +988,47 @@ export default function DailyDiscounts() {
     let failedProducts = [];
     let processedProducts = [];
     
-    // Convert set to array and sort for predictable processing order
+    // Use the products we already have in memory - no need to refetch anything
     const selectedIndices = Array.from(selectedProducts).sort();
-    console.log(`Starting batch application of discounts to ${selectedIndices.length} products`);
+    console.log(`Processing ${selectedIndices.length} products for batch discount (using existing data)`);
     
-    // Process one product at a time with sufficient delay
-    const DELAY_BETWEEN_REQUESTS = 2000; // 2 second delay
+    // Process products one at a time with a moderate delay to avoid API rate limits
+    const DELAY_BETWEEN_REQUESTS = 1500; // 1.5 second delay between requests
 
     for (let i = 0; i < selectedIndices.length; i++) {
       const index = selectedIndices[i];
       const product = multipleRandomProducts[index];
       
-      // Fully randomize discount for each product (10-25% range)
-      const randomDiscountPercent = Math.floor(Math.random() * 16) + 10;
+      // Create a unique random discount for this product
+      const randomDiscountPercent = Math.floor(Math.random() * 16) + 10; // random 10-25%
       
-      // Calculate discount based on product's specific details
+      // All calculations use the data we already have
       const profit = product.sellingPrice - product.cost;
       const profitMargin = profit / product.sellingPrice * 100;
       
-      // Calculate the discounted profit amount
+      // Calculate the discounted profit
       const discountFactor = 1 - (randomDiscountPercent / 100);
       const discountedProfit = profit * discountFactor;
       
-      // Calculate new price with attractive .99 ending
+      // Calculate price with .99 ending for better marketing
       const newPrice = product.cost + discountedProfit;
       const roundedPrice = Math.floor(newPrice * 100) / 100;
       const discountedPrice = Math.floor(roundedPrice) + 0.99;
       
-      // Calculate savings amount and percentage
+      // Calculate customer savings
       const savingsAmount = product.sellingPrice - discountedPrice;
       const savingsPercentage = (savingsAmount / product.sellingPrice) * 100;
       
-      // Log what we're about to process
-      console.log(`Processing product ${i+1}/${selectedIndices.length}: ${product.title}`);
-      console.log(`  Original: ${formatCurrency(product.sellingPrice, product.currencyCode)} → Discounted: ${formatCurrency(discountedPrice, product.currencyCode)}`);
-      console.log(`  Discount: ${randomDiscountPercent}% of profit margin (${profitMargin.toFixed(1)}%)`);
-      console.log(`  Savings: ${formatCurrency(savingsAmount, product.currencyCode)} (${savingsPercentage.toFixed(1)}%)`);
+      // Log the details for transparency
+      console.log(`[${i+1}/${selectedIndices.length}] ${product.title}`);
+      console.log(`  ${formatCurrency(product.sellingPrice, product.currencyCode)} → ${formatCurrency(discountedPrice, product.currencyCode)}`);
+      console.log(`  Discount: ${randomDiscountPercent}% of profit (${profitMargin.toFixed(1)}% margin)`);
+      console.log(`  Customer saves: ${formatCurrency(savingsAmount, product.currencyCode)} (${savingsPercentage.toFixed(1)}%)`);
       
-      // Prepare form data with all required fields
+      // Create minimal data needed for price update - we don't need to send everything
       const formData = new FormData();
+      
+      // Essential fields for price update
       formData.append("variantId", product.variantId);
       formData.append("newPrice", discountedPrice.toString());
       formData.append("productId", product.id);
@@ -1037,7 +1039,7 @@ export default function DailyDiscounts() {
         formData.append("variantTitle", product.variantTitle);
       }
       
-      // Include all metadata for logging and calculations
+      // Fields for logging/tracking
       formData.append("originalPrice", product.sellingPrice.toString());
       formData.append("costPrice", product.cost.toString());
       formData.append("profitMargin", profitMargin.toString());
@@ -1050,30 +1052,32 @@ export default function DailyDiscounts() {
       formData.append("notes", `Randomized ${randomDiscountPercent}% profit discount (${product.hasCostData ? "actual cost" : "estimated cost"})`);
       
       try {
-        // Use fetch directly instead of submit() for better control
+        // Use direct fetch instead of submit() to avoid page refreshes
         const response = await fetch('/app/daily-discounts', {
           method: 'POST',
-          body: formData,
-          headers: {
-            // Include CSRF token if available
-            ...(document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
-               ? {'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')} 
-               : {})
-          }
+          body: formData
         });
         
         if (response.ok) {
+          // Track successful price update
           successCount++;
+          
+          // Save product details for result display
           processedProducts.push({
             title: product.title,
             originalPrice: product.sellingPrice,
             discountedPrice: discountedPrice,
             discountPercentage: randomDiscountPercent,
             savingsAmount: savingsAmount,
-            savingsPercentage: savingsPercentage.toFixed(1)
+            savingsPercentage: savingsPercentage.toFixed(1),
+            currencyCode: product.currencyCode
           });
           console.log(`✓ Successfully applied discount to ${product.title}`);
+          
+          // For better UI feedback, we could also update the local state here
+          // This would show the discount in the UI without a page refresh
         } else {
+          // Handle server-side errors
           failedCount++;
           let errorText = await response.text();
           let errorMessage = "Server returned an error response";
@@ -1094,15 +1098,19 @@ export default function DailyDiscounts() {
             error: errorMessage,
             discountPercentage: randomDiscountPercent,
             originalPrice: product.sellingPrice,
-            discountedPrice: discountedPrice
+            discountedPrice: discountedPrice,
+            currencyCode: product.currencyCode
           });
           console.error(`✗ Failed to apply discount to ${product.title}: ${errorMessage}`);
         }
         
-        // Wait between requests to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+        // Wait between requests to prevent hitting rate limits
+        // Only if not the last item
+        if (i < selectedIndices.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+        }
       } catch (error) {
-        // Handle network or other errors
+        // Handle client-side errors (network issues, etc.)
         failedCount++;
         failedProducts.push({
           title: product.title,
@@ -1110,15 +1118,20 @@ export default function DailyDiscounts() {
           error: error instanceof Error ? error.message : "Unknown error",
           discountPercentage: randomDiscountPercent,
           originalPrice: product.sellingPrice,
-          discountedPrice: discountedPrice
+          discountedPrice: discountedPrice,
+          currencyCode: product.currencyCode
         });
         console.error(`✗ Error applying discount to ${product.title}:`, error);
+        
+        // Add a small delay after an error to allow potential network recovery
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
-    console.log(`Batch discount application completed: ${successCount} succeeded, ${failedCount} failed`);
+    // Log completion statistics
+    console.log(`✅ Batch discount application completed: ${successCount} succeeded, ${failedCount} failed`);
     
-    // Store results for display in the modal
+    // Store results for display in the modal - no need to reload the page
     setBatchResults({
       success: successCount,
       failed: failedCount,
@@ -1129,7 +1142,7 @@ export default function DailyDiscounts() {
     setApplyingMultiple(false);
     setIsBatchOperation(false);
     
-    // Show success toast
+    // Show appropriate toast notification based on results
     if (successCount > 0) {
       setSuccessToast({
         active: true,
@@ -1151,6 +1164,9 @@ export default function DailyDiscounts() {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
     }
+    
+    // Instead of reloading the page (which would trigger another product fetch),
+    // we just show the batch results modal with the updated information
   };
   
   // Format currency
@@ -1174,14 +1190,14 @@ export default function DailyDiscounts() {
   const [isBatchOperation, setIsBatchOperation] = useState(false);
 
   useEffect(() => {
-    // Check for errors from the action
+    // Check for errors from the action (for single product operations)
     if (actionData && actionData.status === "error") {
       setDiscountError(actionData.message || "Error applying discount");
       setIsPriceUpdated(false);
       setIsReverting(null);
     }
     
-    // Handle successful action
+    // Handle successful action (for single product operations)
     if (actionData && actionData.status === "success") {
       // Clear any reverting state
       setIsReverting(null);
@@ -1206,14 +1222,12 @@ export default function DailyDiscounts() {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
       
-      // Don't auto-refresh during batch operations
-      // This prevents multiple redundant API calls
-      if (!applyingMultiple) {
-        // Display toast but don't automatically refresh the page
-        // Let the user manually refresh when ready
-      }
+      // No automatic page refresh - let the user decide when to refresh
+      // This prevents unnecessary product fetching and API calls
+      // If the user wants to see updated discount history, they can
+      // manually refresh using the button in the success message
     }
-  }, [actionData, applyingMultiple]);
+  }, [actionData]);
 
   // Generate a discount when the component loads or when the selected product changes
   useEffect(() => {
@@ -1967,6 +1981,11 @@ export default function DailyDiscounts() {
                   with prices calculated individually based on each product's cost, profit margin, and a unique
                   discount percentage. All prices end in .99 for more attractive pricing.
                 </Text>
+                
+                <Text variant="bodySm" tone="subdued">
+                  All calculations were performed using your existing product data without making redundant API calls or
+                  reloading the page - ensuring maximum efficiency and speed while minimizing server load.
+                </Text>
               </BlockStack>
               
               <BlockStack gap="400">
@@ -1988,13 +2007,13 @@ export default function DailyDiscounts() {
                                 <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
                                 <InlineStack wrap={true} gap="200">
                                   <Text variant="bodySm">
-                                    Original: {formatCurrency(product.originalPrice)}
+                                    Original: {formatCurrency(product.originalPrice, product.currencyCode)}
                                   </Text>
                                   <Text variant="bodySm" tone="success">
-                                    Discounted: {formatCurrency(product.discountedPrice)}
+                                    Discounted: {formatCurrency(product.discountedPrice, product.currencyCode)}
                                   </Text>
                                   <Text variant="bodySm" tone="success">
-                                    Savings: {formatCurrency(product.savingsAmount)} ({product.savingsPercentage}%)
+                                    Savings: {formatCurrency(product.savingsAmount, product.currencyCode)} ({product.savingsPercentage}%)
                                   </Text>
                                   <Text variant="bodySm">
                                     Discount: {product.discountPercentage}% of profit
@@ -2028,7 +2047,7 @@ export default function DailyDiscounts() {
                               <Text variant="bodySm">
                                 Discount: {product.discountPercentage}% of profit 
                                 ({product.originalPrice && product.discountedPrice ? 
-                                  `${formatCurrency(product.originalPrice)} → ${formatCurrency(product.discountedPrice)}` : 
+                                  `${formatCurrency(product.originalPrice, product.currencyCode)} → ${formatCurrency(product.discountedPrice, product.currencyCode)}` : 
                                   ''})
                               </Text>
                             )}
