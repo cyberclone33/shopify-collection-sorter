@@ -627,6 +627,14 @@ export default function DailyDiscounts() {
   const [apiLogCount, setApiLogCount] = useState(20);
   const [isLoadingMoreManual, setIsLoadingMoreManual] = useState(false);
   const [isLoadingMoreApi, setIsLoadingMoreApi] = useState(false);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [isResettingHistory, setIsResettingHistory] = useState(false);
+  const submit = useSubmit();
+=======
+  const [isLoadingMoreManual, setIsLoadingMoreManual] = useState(false);
+  const [isLoadingMoreApi, setIsLoadingMoreApi] = useState(false);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [isResettingHistory, setIsResettingHistory] = useState(false);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -1735,9 +1743,22 @@ export default function DailyDiscounts() {
           
           <Card>
             <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Recent Discount History
-              </Text>
+              <InlineStack align="space-between" blockAlign="center">
+                <Text as="h2" variant="headingMd">
+                  Recent Discount History
+                </Text>
+                
+                <Button 
+                  tone="critical" 
+                  variant="plain"
+                  onClick={() => {
+                    // Show confirmation modal
+                    setConfirmClearHistory(true);
+                  }}
+                >
+                  Delete All History
+                </Button>
+              </InlineStack>
               
               <Layout>
                 {/* Manual Discounts Column */}
@@ -2249,6 +2270,174 @@ export default function DailyDiscounts() {
             <Text as="p">
               This will remove the discount and update the product price in your store immediately.
             </Text>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+      
+      {/* Clear History confirmation modal */}
+      <Modal
+        open={confirmClearHistory}
+        onClose={() => setConfirmClearHistory(false)}
+        title="Delete All Discount History"
+        primaryAction={{
+          content: "Yes, Delete All History",
+          onAction: async () => {
+            setIsResettingHistory(true);
+            
+            try {
+              // Send request to the API endpoint to reset history
+              const response = await fetch('/api/daily-discounts/reset', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                  confirm: "DELETE_ALL_DISCOUNT_LOGS",
+                  useSql: false // Use the safer Prisma method by default
+                })
+              });
+              
+              const data = await response.json();
+              
+              if (data.status === "success") {
+                // Show success toast
+                setSuccessToast({
+                  active: true,
+                  message: `Successfully deleted all discount history. ${data.message}`
+                });
+                
+                // Update the local state to reflect the empty history
+                loaderData.recentManualDiscountLogs = [];
+                loaderData.recentApiDiscountLogs = [];
+                
+                // Reset the log counters
+                setManualLogCount(20);
+                setApiLogCount(20);
+              } else {
+                throw new Error(data.message || "Failed to delete history");
+              }
+            } catch (error) {
+              console.error("Error clearing history:", error);
+              
+              // Show error toast
+              setSuccessToast({
+                active: true,
+                message: `Failed to delete history: ${error instanceof Error ? error.message : "Unknown error"}`
+              });
+            } finally {
+              setIsResettingHistory(false);
+              setConfirmClearHistory(false);
+              
+              // Auto-hide toast after 5 seconds
+              setTimeout(() => {
+                setSuccessToast(prev => ({ ...prev, active: false }));
+              }, 5000);
+            }
+          },
+          destructive: true,
+          loading: isResettingHistory
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: () => setConfirmClearHistory(false)
+          }
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p" tone="critical" fontWeight="bold">
+              Warning: This action cannot be undone.
+            </Text>
+            <Text as="p">
+              You are about to delete all discount history records for your store. This includes both manual and automated discounts.
+            </Text>
+            <Text as="p">
+              This action will not affect the current prices of your products, but will erase all logs of previous discount operations.
+            </Text>
+            <Text as="p">
+              Are you sure you want to proceed?
+            </Text>
+            
+            <Box paddingBlock="400">
+              <Divider />
+            </Box>
+            
+            <details>
+              <summary>
+                <Text as="span" tone="subdued">Advanced Options</Text>
+              </summary>
+              <Box paddingBlock="300">
+                <BlockStack gap="300">
+                  <Text as="p" tone="warning">
+                    For developer use only. These options can affect database integrity.
+                  </Text>
+                  
+                  <Button 
+                    tone="critical" 
+                    onClick={async () => {
+                      if (window.confirm("WARNING: This will completely drop and recreate the discount logs table. Are you absolutely sure?")) {
+                        setIsResettingHistory(true);
+                        
+                        try {
+                          // Send request with SQL flag
+                          const response = await fetch('/api/daily-discounts/reset', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ 
+                              confirm: "DELETE_ALL_DISCOUNT_LOGS",
+                              useSql: true // Use SQL method
+                            })
+                          });
+                          
+                          const data = await response.json();
+                          
+                          if (data.status === "success") {
+                            // Show success toast
+                            setSuccessToast({
+                              active: true,
+                              message: `SQL Reset successful: ${data.message}`
+                            });
+                            
+                            // Update the local state to reflect the empty history
+                            loaderData.recentManualDiscountLogs = [];
+                            loaderData.recentApiDiscountLogs = [];
+                            
+                            // Reset the log counters
+                            setManualLogCount(20);
+                            setApiLogCount(20);
+                            
+                            // Close the modal
+                            setConfirmClearHistory(false);
+                          } else {
+                            throw new Error(data.message || "SQL reset failed");
+                          }
+                        } catch (error) {
+                          console.error("Error performing SQL reset:", error);
+                          
+                          // Show error toast
+                          setSuccessToast({
+                            active: true,
+                            message: `SQL Reset failed: ${error instanceof Error ? error.message : "Unknown error"}`
+                          });
+                        } finally {
+                          setIsResettingHistory(false);
+                          
+                          // Auto-hide toast after 5 seconds
+                          setTimeout(() => {
+                            setSuccessToast(prev => ({ ...prev, active: false }));
+                          }, 5000);
+                        }
+                      }
+                    }}
+                  >
+                    Complete SQL Reset (Drop Table)
+                  </Button>
+                </BlockStack>
+              </Box>
+            </details>
           </BlockStack>
         </Modal.Section>
       </Modal>
