@@ -25,6 +25,8 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { useState, useEffect } from "react";
 import prisma from "../db.server";
+import { getRandomProducts } from '../utils/productFetcher';
+import { shuffleArray } from '../utils/productCache';
 
 // Interface for our product data
 interface ProductData {
@@ -50,10 +52,17 @@ interface DiscountData {
   savingsPercentage: number;
 }
 
+import { getRandomProducts } from '../utils/productFetcher';
+
+// Constants
+const DAILY_DISCOUNT_TAG = "DailyDiscount_每日優惠";
+const NUM_RANDOM_PRODUCTS = 6; // How many products to show in UI
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const debugVariantId = url.searchParams.get("debugVariantId");
+  const forceRefresh = url.searchParams.get("refresh") === "true";
   
   // Fetch recent discount logs (limited to 5)
   const recentDiscountLogs = await prisma.dailyDiscountLog.findMany({
@@ -65,9 +74,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
     take: 5
   });
-  
-  // Fetch products with the DailyDiscount tag
-  const TAG_NAME = "DailyDiscount_每日優惠";
   
   // If a specific variant ID is provided for debugging
   if (debugVariantId) {
@@ -164,14 +170,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
   
-  // Fetch products with the DailyDiscount tag
+  // Regular product fetch logic with caching
   try {
-    console.log(`Fetching products with tag "${TAG_NAME}"...`);
+    // Get random products using our optimized utility
+    const { products, stats, cacheStatus } = await getRandomProducts(
+      NUM_RANDOM_PRODUCTS,
+      admin,
+      session.shop,
+      forceRefresh
+    );
     
-    // Fetch products with the tag using the Shopify GraphQL API
+    if (products.length === 0) {
+      return json({
+        status: "error",
+        message: "No products found meeting minimum requirements (image and positive inventory).",
+        randomProduct: null,
+        recentDiscountLogs
+      });
+    }
+    
+    // The first product is our primary random product (for backward compatibility)
+    const randomProduct = products[0];
+    
+    // For detailed debugging, log the selected products
+    console.log(`Using ${products.length} random products for display`);
+    products.forEach((product, index) => {
+      console.log(`Selected random product ${index + 1}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
+    });
+    
+    // Fetch products with the DailyDiscount tag for UI display
+    console.log(`Fetching products with tag "${DAILY_DISCOUNT_TAG}"...`);
+    
+    // Fetch a small number of tagged products for display (we only need to display a few)
     const response = await admin.graphql(`
       query GetTaggedProducts($tag: String!) {
-        products(first: 20, query: $tag) {
+        products(first: 10, query: $tag) {
           edges {
             node {
               id
@@ -204,27 +237,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     `, {
       variables: {
-        tag: `tag:${TAG_NAME}`
+        tag: `tag:${DAILY_DISCOUNT_TAG}`
       }
     });
     
     const responseJson = await response.json();
     
-    if (responseJson.errors) {
-      console.error("GraphQL errors:", responseJson.errors);
-      return json({
-        status: "error",
-        message: `Error fetching tagged products: ${responseJson.errors[0].message}`,
-        taggedProducts: [],
-        recentDiscountLogs
-      });
-    }
-    
-    const products = responseJson.data?.products?.edges || [];
-    console.log(`Found ${products.length} products with tag "${TAG_NAME}"`);
+    // Parse tagged products (these are current active discounts)
+    const taggedProductsEdges = responseJson.data?.products?.edges || [];
+    console.log(`Found ${taggedProductsEdges.length} products with tag "${DAILY_DISCOUNT_TAG}"`);
     
     // Transform the data for easier display
-    const taggedProducts = products.map((edge: any) => {
+    const taggedProducts = taggedProductsEdges.map((edge: any) => {
       const product = edge.node;
       const variant = product.variants.edges[0]?.node;
       
@@ -259,192 +283,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     }).filter(Boolean); // Remove null entries
     
-    // Now, fetch ALL products that don't have the tag yet using pagination
-    console.log("Fetching ALL products without the DailyDiscount tag (paginated)...");
-    
-    let allRandomProducts = [];
-    let hasNextPage = true;
-    let cursor = null;
-    
-    // Use pagination to fetch all products
-    while (hasNextPage) {
-      const paginationQuery = cursor ? 
-        `after: "${cursor}", first: 100, query: "NOT tag:${TAG_NAME}"` :
-        `first: 100, query: "NOT tag:${TAG_NAME}"`;
-      
-      const randomProductResponse = await admin.graphql(`
-        query GetRandomProductPaginated {
-          products(${paginationQuery}) {
-            edges {
-              cursor
-              node {
-                id
-                title
-                featuredImage {
-                  url
-                  altText
-                }
-                variants(first: 1) {
-                  edges {
-                    node {
-                      id
-                      title
-                      price
-                      compareAtPrice
-                      inventoryQuantity
-                      inventoryItem {
-                        unitCost {
-                          amount
-                          currencyCode
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      `);
-      
-      const pageData = await randomProductResponse.json();
-      const pageEdges = pageData.data?.products?.edges || [];
-      const pageInfo = pageData.data?.products?.pageInfo;
-      
-      // Append this page's products to our collection
-      allRandomProducts = [...allRandomProducts, ...pageEdges];
-      
-      // Check if there are more pages
-      hasNextPage = pageInfo?.hasNextPage || false;
-      
-      // Update cursor for next page if needed
-      if (hasNextPage) {
-        cursor = pageInfo.endCursor;
-        console.log(`Fetched ${allRandomProducts.length} products so far, getting next page...`);
-      }
-    }
-    
-    console.log(`Finished fetching all products. Total: ${allRandomProducts.length}`);
-    const randomProducts = allRandomProducts;
-    
-    // Count products with various attributes for debugging
-    const productStats = {
-      total: randomProducts.length,
-      withImage: 0,
-      withVariant: 0,
-      withInventory: 0,
-      withCost: 0,
-      eligible: 0
-    };
-    
-    // Filter to products with images and inventory
-    const eligibleRandomProducts = randomProducts
-      .map((edge: any) => {
-        const product = edge.node;
-        const variant = product.variants.edges[0]?.node;
-        
-        // Count for debugging
-        if (product.featuredImage) productStats.withImage++;
-        if (variant) productStats.withVariant++;
-        if (variant && variant.inventoryQuantity > 0) productStats.withInventory++;
-        if (variant && variant.inventoryItem?.unitCost?.amount) productStats.withCost++;
-        
-        if (!product.featuredImage || !variant || variant.inventoryQuantity <= 0) {
-          return null;
-        }
-        
-        productStats.eligible++;
-        
-        const price = parseFloat(variant.price);
-        const hasCost = variant.inventoryItem?.unitCost?.amount;
-        const cost = hasCost 
-          ? parseFloat(variant.inventoryItem.unitCost.amount)
-          : price * 0.5;
-        
-        const currencyCode = variant.inventoryItem?.unitCost?.currencyCode || 'USD';
-        
-        return {
-          id: product.id,
-          title: product.title,
-          imageUrl: product.featuredImage.url,
-          imageAlt: product.featuredImage.altText || product.title,
-          cost: cost,
-          sellingPrice: price,
-          compareAtPrice: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
-          inventoryQuantity: variant.inventoryQuantity,
-          variantId: variant.id,
-          variantTitle: variant.title !== "Default Title" ? variant.title : null,
-          currencyCode: currencyCode,
-          hasCostData: !!hasCost
-        };
-      })
-      .filter(Boolean);
-    
-    // Fisher-Yates shuffle algorithm to truly randomize the product array
-    const shuffleArray = (array) => {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
-    };
-    
-    // Select a random product to suggest
-    // Log product statistics
-    console.log("Product statistics:", {
-      total: productStats.total,
-      withImage: productStats.withImage,
-      withVariant: productStats.withVariant,
-      withInventory: productStats.withInventory,
-      withCost: productStats.withCost,
-      eligible: productStats.eligible
-    });
-    
-    // Select multiple random products to suggest
-    let randomProduct = null;
-    let multipleRandomProducts = [];
-    const NUM_RANDOM_PRODUCTS = 6; // Number of random products to select
-    
-    if (eligibleRandomProducts.length > 0) {
-      console.log(`Found ${eligibleRandomProducts.length} eligible products for random selection`);
-      
-      // Shuffle the array for true randomization
-      const shuffledProducts = shuffleArray([...eligibleRandomProducts]);
-      
-      // Log the first few products to help with debugging
-      console.log("Sample of eligible products (after shuffle):");
-      shuffledProducts.slice(0, 5).forEach((product, index) => {
-        console.log(`${index + 1}. ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
-      });
-      
-      // Take the first N products after shuffling (or all if less than N)
-      multipleRandomProducts = shuffledProducts.slice(0, NUM_RANDOM_PRODUCTS);
-      
-      // Set the first one as the primary random product (for backward compatibility)
-      randomProduct = multipleRandomProducts[0];
-      
-      // Log the selected products
-      console.log(`Selected ${multipleRandomProducts.length} random products for display`);
-      multipleRandomProducts.forEach((product, index) => {
-        console.log(`Selected random product ${index + 1}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
-      });
-    } else {
-      console.log("No eligible products found for random selection");
-    }
-    
     return json({
       status: "success",
       taggedProducts,
       randomProduct,
-      multipleRandomProducts,
+      multipleRandomProducts: products,
       recentDiscountLogs,
-      tagName: TAG_NAME,
-      productStats: productStats,
-      totalProductsScanned: randomProducts.length
+      tagName: DAILY_DISCOUNT_TAG,
+      productStats: stats,
+      totalProductsScanned: stats.total,
+      cacheStatus
     });
     
   } catch (error) {
@@ -452,7 +300,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({
       status: "error",
       message: error instanceof Error ? error.message : "An unknown error occurred",
-      randomProduct: null
+      randomProduct: null,
+      recentDiscountLogs
     });
   }
 };
@@ -1504,6 +1353,26 @@ export default function DailyDiscounts() {
                         {loaderData.totalProductsScanned - (loaderData.productStats.withInventory || 0)} out of stock)
                       </Text>
                     )}
+                    
+                    {loaderData.cacheStatus && (
+                      <InlineStack gap="200" align="start" blockAlign="center">
+                        <Badge tone="success" progress="complete">
+                          {loaderData.cacheStatus.isCached ? 'Data Cached' : 'Fresh Data'}
+                        </Badge>
+                        <Text variant="bodySm" tone="subdued">
+                          {loaderData.cacheStatus.isCached 
+                            ? `Cache expires in ${Math.floor(loaderData.cacheStatus.cacheExpiry / 60)} min` 
+                            : 'Using fresh data'}
+                        </Text>
+                        <Button 
+                          size="micro" 
+                          url="/app/daily-discounts?refresh=true" 
+                          accessibilityLabel="Refresh product data"
+                        >
+                          Refresh
+                        </Button>
+                      </InlineStack>
+                    )}
                   </BlockStack>
                 </Banner>
               )}
@@ -1928,6 +1797,20 @@ export default function DailyDiscounts() {
                   The tool will set the original price as the "Compare at price" (if not already set)
                   and apply the discounted price as the regular price, making the discount visible to customers.
                 </p>
+              </Banner>
+              
+              <Banner tone="success">
+                <BlockStack gap="200">
+                  <Text variant="headingSm">Performance Optimized</Text>
+                  <Text variant="bodyMd">
+                    This tool now uses an intelligent caching system that stores product data for 30 minutes,
+                    dramatically reducing load times and API usage. You'll notice the app is much faster and more
+                    responsive when selecting and applying discounts.
+                  </Text>
+                  <Text variant="bodySm" tone="subdued">
+                    If you need to see the latest product data, just click the "Refresh" button in the product selection area.
+                  </Text>
+                </BlockStack>
               </Banner>
               
               <Banner tone="warning">
