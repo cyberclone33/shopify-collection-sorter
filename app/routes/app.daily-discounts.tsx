@@ -958,7 +958,7 @@ export default function DailyDiscounts() {
     });
   };
   
-  // Apply discounts to multiple selected products
+  // Apply discounts to multiple selected products in a simpler, more efficient way
   const applyMultipleDiscounts = async () => {
     if (!multipleRandomProducts || !discount || selectedProducts.size === 0) return;
     
@@ -974,9 +974,9 @@ export default function DailyDiscounts() {
     const selectedIndices = Array.from(selectedProducts).sort();
     console.log(`Starting batch application of discounts to ${selectedIndices.length} products`);
     
-    // Process in smaller batches with delay to avoid rate limiting
-    const BATCH_SIZE = 3;
-    const DELAY_BETWEEN_REQUESTS = 1000; // 1 second delay
+    // Process in even smaller batches with longer delays to avoid rate limiting
+    const BATCH_SIZE = 2; // Smaller batch size
+    const DELAY_BETWEEN_REQUESTS = 2000; // 2 second delay
     
     for (let i = 0; i < selectedIndices.length; i += BATCH_SIZE) {
       const batchIndices = selectedIndices.slice(i, i + BATCH_SIZE);
@@ -1017,30 +1017,50 @@ export default function DailyDiscounts() {
           
           if (response.ok) {
             try {
-              const data = await response.json();
-              if (data.status === "success") {
-                console.log(`Successfully applied discount to: ${product.title}`);
-                successCount++;
-              } else {
+              // Log the raw response text for debugging
+              const responseText = await response.text();
+              console.log(`Raw response for ${product.title}:`, responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
+              
+              try {
+                // Try to parse the response text into JSON
+                const data = JSON.parse(responseText);
+                if (data.status === "success") {
+                  console.log(`Successfully applied discount to: ${product.title}`);
+                  successCount++;
+                } else {
+                  failedCount++;
+                  const errorMsg = data.message || "Unknown error";
+                  console.error(`Error applying discount to product: ${product.title}, Error: ${errorMsg}`);
+                  failedProducts.push({
+                    title: product.title,
+                    variantId: product.variantId,
+                    error: errorMsg,
+                    discountPercentage: productDiscount.discountPercentage,
+                    originalPrice: product.sellingPrice,
+                    discountedPrice: productDiscount.discountedPrice
+                  });
+                }
+              } catch (jsonError) {
+                // Handle invalid JSON
                 failedCount++;
-                const errorMsg = data.message || "Unknown error";
-                console.error(`Error applying discount to product: ${product.title}, Error: ${errorMsg}`);
+                console.error(`Invalid JSON response for product: ${product.title}`, jsonError);
                 failedProducts.push({
                   title: product.title,
                   variantId: product.variantId,
-                  error: errorMsg,
+                  error: `Invalid JSON response: ${jsonError.message}`,
                   discountPercentage: productDiscount.discountPercentage,
                   originalPrice: product.sellingPrice,
-                  discountedPrice: productDiscount.discountedPrice
+                  discountedPrice: productDiscount.discountedPrice,
+                  responsePreview: responseText.substring(0, 100) // Add a preview of the response
                 });
               }
             } catch (parseError) {
               failedCount++;
-              console.error(`Error parsing response for product: ${product.title}`, parseError);
+              console.error(`Error reading response for product: ${product.title}`, parseError);
               failedProducts.push({
                 title: product.title,
                 variantId: product.variantId,
-                error: "Failed to parse server response",
+                error: `Error reading response: ${parseError.message}`,
                 discountPercentage: productDiscount.discountPercentage,
                 originalPrice: product.sellingPrice,
                 discountedPrice: productDiscount.discountedPrice
@@ -1931,6 +1951,11 @@ export default function DailyDiscounts() {
                                 </Text>
                               )}
                               <Text variant="bodyMd" tone="critical">Error: {product.error}</Text>
+                              {product.responsePreview && (
+                                <Text variant="bodySm" tone="subdued">
+                                  Response preview: {product.responsePreview}...
+                                </Text>
+                              )}
                             </BlockStack>
                           </Box>
                         ))}
