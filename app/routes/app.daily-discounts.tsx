@@ -906,6 +906,7 @@ export default function DailyDiscounts() {
     if (!multipleRandomProducts || !discount || selectedProducts.size === 0) return;
     
     setApplyingMultiple(true);
+    setIsBatchOperation(true);
     setBatchResults(null);
     
     let successCount = 0;
@@ -1014,6 +1015,7 @@ export default function DailyDiscounts() {
     });
     
     setApplyingMultiple(false);
+    setIsBatchOperation(false);
     
     // Show success toast
     if (successCount > 0) {
@@ -1027,10 +1029,14 @@ export default function DailyDiscounts() {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
       
-      // Refresh the page after a short delay to update the discount logs
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
+      // Instead of reloading the page, we'll show the results and let the user choose when to refresh
+      // This prevents the multiple redundant API calls we're seeing in the logs
+      // The user can manually reload when they're ready to see updated discount logs
+      
+      // Only add a page reload for single updates, not batch processing
+      // setTimeout(() => {
+      //   window.location.reload();
+      // }, 2000);
     }
   };
   
@@ -1050,6 +1056,9 @@ export default function DailyDiscounts() {
       setSelectedProductIndex(0);
     }
   }, [multipleRandomProducts]);
+
+  // Track if we're in the middle of a batch operation to avoid redundant reloads
+  const [isBatchOperation, setIsBatchOperation] = useState(false);
 
   useEffect(() => {
     // Check for errors from the action
@@ -1084,12 +1093,14 @@ export default function DailyDiscounts() {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
       
-      // Refresh the page after a short delay to update the discount logs
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Don't auto-refresh during batch operations
+      // This prevents multiple redundant API calls
+      if (!applyingMultiple) {
+        // Display toast but don't automatically refresh the page
+        // Let the user manually refresh when ready
+      }
     }
-  }, [actionData]);
+  }, [actionData, applyingMultiple]);
 
   // Generate a discount when the component loads or when the selected product changes
   useEffect(() => {
@@ -1634,20 +1645,26 @@ export default function DailyDiscounts() {
                                   New Product Selection
                                 </Button>
                                 
-                                <Button 
-                                  onClick={applyDiscount} 
-                                  variant="primary"
-                                  disabled={isPriceUpdated}
-                                >
-                                  {isPriceUpdated ? (
-                                    <InlineStack gap="200" blockAlign="center">
-                                      <span style={{ color: 'var(--p-color-text-success)', marginRight: '4px' }}>✓</span>
-                                      <span>Price Updated!</span>
-                                    </InlineStack>
-                                  ) : (
-                                    "Apply Discount"
-                                  )}
-                                </Button>
+                                {isPriceUpdated ? (
+                                  <InlineStack gap="300">
+                                    <Button 
+                                      onClick={() => window.location.reload()} 
+                                      tone="success"
+                                    >
+                                      <InlineStack gap="200" blockAlign="center">
+                                        <span style={{ marginRight: '4px' }}>✓</span>
+                                        <span>Refresh Page</span>
+                                      </InlineStack>
+                                    </Button>
+                                  </InlineStack>
+                                ) : (
+                                  <Button 
+                                    onClick={applyDiscount} 
+                                    variant="primary"
+                                  >
+                                    Apply Discount
+                                  </Button>
+                                )}
                               </InlineStack>
                             </BlockStack>
                           </BlockStack>
@@ -1840,12 +1857,21 @@ export default function DailyDiscounts() {
               
               <BlockStack gap="200">
                 <Text variant="bodyMd">
-                  The page will refresh in a moment to update the discount history.
+                  Click the button below to refresh the page and view your updated discount history.
                 </Text>
                 <Text variant="bodySm" tone="subdued">
                   Note: For best results when applying discounts to multiple products, select smaller batches of 3-5 products at a time.
                 </Text>
               </BlockStack>
+              
+              <Box paddingBlock="300">
+                <Button 
+                  onClick={() => window.location.reload()} 
+                  primary
+                >
+                  Refresh Page to See Updates
+                </Button>
+              </Box>
             </BlockStack>
           </Modal.Section>
         </Modal>
