@@ -982,132 +982,84 @@ export default function DailyDiscounts() {
     const selectedIndices = Array.from(selectedProducts).sort();
     console.log(`Starting batch application of discounts to ${selectedIndices.length} products`);
     
-    // Process in even smaller batches with longer delays to avoid rate limiting
-    const BATCH_SIZE = 2; // Smaller batch size
-    const DELAY_BETWEEN_REQUESTS = 2000; // 2 second delay
+    // Process products one at a time to prevent server overload
+    const DELAY_BETWEEN_REQUESTS = 3000; // 3 second delay between requests
     
-    for (let i = 0; i < selectedIndices.length; i += BATCH_SIZE) {
-      const batchIndices = selectedIndices.slice(i, i + BATCH_SIZE);
-      const batchPromises = [];
+    for (const index of selectedIndices) {
+      const product = multipleRandomProducts[index];
       
-      for (const index of batchIndices) {
-        // Add some delay between requests
-        if (batchPromises.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
-        }
+      // Calculate a unique random discount for this product
+      // Completely independent of the main discount
+      const randomDiscountPercent = Math.floor(Math.random() * 16) + 10; // 10-25%
+      
+      // Calculate product-specific profit margin and discount
+      const profit = product.sellingPrice - product.cost;
+      const profitMargin = profit / product.sellingPrice * 100;
+      
+      // Calculate discounted profit
+      const discountFactor = 1 - (randomDiscountPercent / 100);
+      const discountedProfit = profit * discountFactor;
+      
+      // Calculate new price with .99 ending
+      const newPrice = product.cost + discountedProfit;
+      const roundedPrice = Math.floor(newPrice * 100) / 100;
+      const discountedPrice = Math.floor(roundedPrice) + 0.99;
+      
+      // Calculate savings
+      const savingsAmount = product.sellingPrice - discountedPrice;
+      const savingsPercentage = (savingsAmount / product.sellingPrice) * 100;
+      
+      // Create form data manually rather than using helper function
+      // This ensures we're using fresh calculations for each product
+      const formData = new FormData();
+      formData.append("variantId", product.variantId);
+      formData.append("newPrice", discountedPrice.toString());
+      formData.append("productId", product.id);
+      formData.append("compareAtPrice", product.sellingPrice.toString());
+      formData.append("productTitle", product.title);
+      
+      if (product.variantTitle) {
+        formData.append("variantTitle", product.variantTitle);
+      }
+      
+      formData.append("originalPrice", product.sellingPrice.toString());
+      formData.append("costPrice", product.cost.toString());
+      formData.append("profitMargin", profitMargin.toString());
+      formData.append("discountPercentage", randomDiscountPercent.toString());
+      formData.append("savingsAmount", savingsAmount.toString());
+      formData.append("savingsPercentage", savingsPercentage.toString());
+      formData.append("currencyCode", product.currencyCode);
+      formData.append("imageUrl", product.imageUrl);
+      formData.append("inventoryQuantity", product.inventoryQuantity.toString());
+      formData.append("notes", `Randomized ${randomDiscountPercent}% profit discount (${product.hasCostData ? "actual cost" : "estimated cost"})`);
+      
+      console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title}`);
+      console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${discountedPrice}, Discount: ${randomDiscountPercent}% of profit`);
+      
+      try {
+        // Use a direct form submission instead of fetch to avoid JSON/HTML parsing issues
+        submit(formData, { method: "post", replace: false });
         
-        const product = multipleRandomProducts[index];
-        const formData = prepareProductFormData(index);
+        // Track success
+        successCount++;
         
-        if (!formData) {
-          failedCount++;
-          failedProducts.push({
-            title: product.title,
-            variantId: product.variantId,
-            error: "Failed to prepare form data"
-          });
-          continue;
-        }
-        
-        try {
-          // Calculate product-specific discount with randomization
-          const productDiscount = calculateDiscountForProduct(product, discount.discountPercentage, true);
-          
-          console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
-          console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${productDiscount.discountedPrice}, Discount: ${productDiscount.discountPercentage}% of profit`);
-          
-          // We'll create and submit a fetch request manually instead of using submit()
-          // This allows us to track individual successes/failures
-          const response = await fetch('/app/daily-discounts', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (response.ok) {
-            try {
-              // Log the raw response text for debugging
-              const responseText = await response.text();
-              console.log(`Raw response for ${product.title}:`, responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
-              
-              try {
-                // Try to parse the response text into JSON
-                const data = JSON.parse(responseText);
-                if (data.status === "success") {
-                  console.log(`Successfully applied discount to: ${product.title}`);
-                  successCount++;
-                } else {
-                  failedCount++;
-                  const errorMsg = data.message || "Unknown error";
-                  console.error(`Error applying discount to product: ${product.title}, Error: ${errorMsg}`);
-                  failedProducts.push({
-                    title: product.title,
-                    variantId: product.variantId,
-                    error: errorMsg,
-                    discountPercentage: productDiscount.discountPercentage,
-                    originalPrice: product.sellingPrice,
-                    discountedPrice: productDiscount.discountedPrice
-                  });
-                }
-              } catch (jsonError) {
-                // Handle invalid JSON
-                failedCount++;
-                console.error(`Invalid JSON response for product: ${product.title}`, jsonError);
-                failedProducts.push({
-                  title: product.title,
-                  variantId: product.variantId,
-                  error: `Invalid JSON response: ${jsonError.message}`,
-                  discountPercentage: productDiscount.discountPercentage,
-                  originalPrice: product.sellingPrice,
-                  discountedPrice: productDiscount.discountedPrice,
-                  responsePreview: responseText.substring(0, 100) // Add a preview of the response
-                });
-              }
-            } catch (parseError) {
-              failedCount++;
-              console.error(`Error reading response for product: ${product.title}`, parseError);
-              failedProducts.push({
-                title: product.title,
-                variantId: product.variantId,
-                error: `Error reading response: ${parseError.message}`,
-                discountPercentage: productDiscount.discountPercentage,
-                originalPrice: product.sellingPrice,
-                discountedPrice: productDiscount.discountedPrice
-              });
-            }
-          } else {
-            failedCount++;
-            console.error(`Server error applying discount to product: ${product.title}, Status: ${response.status}`);
-            failedProducts.push({
-              title: product.title,
-              variantId: product.variantId,
-              error: `Server returned ${response.status}`,
-              discountPercentage: productDiscount.discountPercentage,
-              originalPrice: product.sellingPrice,
-              discountedPrice: productDiscount.discountedPrice
-            });
-          }
-        } catch (error) {
-          failedCount++;
-          console.error(`Exception applying discount to product: ${product.title}`, error);
-          failedProducts.push({
-            title: product.title,
-            variantId: product.variantId,
-            error: error instanceof Error ? error.message : "Unknown error",
-            discountPercentage: productDiscount.discountPercentage,
-            originalPrice: product.sellingPrice,
-            discountedPrice: productDiscount.discountedPrice
-          });
-        }
-        
-        // Add a small delay after each product
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Wait between requests to avoid server overload
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+      } catch (error) {
+        // Track any failures
+        failedCount++;
+        failedProducts.push({
+          title: product.title,
+          variantId: product.variantId,
+          error: error instanceof Error ? error.message : "Unknown error",
+          discountPercentage: randomDiscountPercent,
+          originalPrice: product.sellingPrice,
+          discountedPrice: discountedPrice
+        });
       }
     }
     
     console.log(`Batch discount application completed: ${successCount} succeeded, ${failedCount} failed`);
-    if (failedProducts.length > 0) {
-      console.log("Failed products:", failedProducts);
-    }
     
     setBatchResults({
       success: successCount,
@@ -1122,22 +1074,13 @@ export default function DailyDiscounts() {
     if (successCount > 0) {
       setSuccessToast({
         active: true,
-        message: `Successfully applied discounts to ${successCount} products${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
+        message: `Started applying ${successCount} unique discounts - check results after refreshing`
       });
       
       // Auto-hide toast after 5 seconds
       setTimeout(() => {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
-      
-      // Instead of reloading the page, we'll show the results and let the user choose when to refresh
-      // This prevents the multiple redundant API calls we're seeing in the logs
-      // The user can manually reload when they're ready to see updated discount logs
-      
-      // Only add a page reload for single updates, not batch processing
-      // setTimeout(() => {
-      //   window.location.reload();
-      // }, 2000);
     }
   };
   
