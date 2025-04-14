@@ -65,43 +65,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         ]
       };
-=======
-    if (type === "manual") {
-      whereClause = {
-        shop,
-        OR: [
-          {
-            notes: {
-              contains: "Manual UI Discount",
-              mode: 'insensitive'
-            }
-          },
-          {
-            notes: {
-              contains: "Manual UI Discount Reverted",
-              mode: 'insensitive'
-            }
-          }
-        ]
-      };
-    } else if (type === "api") {
-      whereClause = {
-        shop,
-        OR: [
-          {
-            notes: {
-              contains: "Auto Discount",
-              mode: 'insensitive'
-            }
-          },
-          {
-            notes: {
-              contains: "Auto Discount Reverted",
-              mode: 'insensitive'
-            }
-          }
-        ]
-      };
     } else {
       return json({
         status: "error",
