@@ -630,7 +630,6 @@ export default function DailyDiscounts() {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [isResettingHistory, setIsResettingHistory] = useState(false);
   const submit = useSubmit();
-=======
   const [isLoadingMoreManual, setIsLoadingMoreManual] = useState(false);
   const [isLoadingMoreApi, setIsLoadingMoreApi] = useState(false);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
