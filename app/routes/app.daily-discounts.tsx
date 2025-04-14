@@ -730,7 +730,7 @@ export default function DailyDiscounts() {
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [applyingMultiple, setApplyingMultiple] = useState(false);
-  const [batchResults, setBatchResults] = useState<{success: number, failed: number} | null>(null);
+  const [batchResults, setBatchResults] = useState<{success: number, failed: number, failedProducts?: Array<{title: string, variantId: string, error: string}>} | null>(null);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -910,46 +910,107 @@ export default function DailyDiscounts() {
     
     let successCount = 0;
     let failedCount = 0;
+    let failedProducts = [];
     
     // Convert set to array and sort for predictable processing order
     const selectedIndices = Array.from(selectedProducts).sort();
+    console.log(`Starting batch application of discounts to ${selectedIndices.length} products`);
     
-    for (const index of selectedIndices) {
-      const formData = prepareProductFormData(index);
-      if (!formData) {
-        failedCount++;
-        continue;
-      }
+    // Process in smaller batches with delay to avoid rate limiting
+    const BATCH_SIZE = 3;
+    const DELAY_BETWEEN_REQUESTS = 1000; // 1 second delay
+    
+    for (let i = 0; i < selectedIndices.length; i += BATCH_SIZE) {
+      const batchIndices = selectedIndices.slice(i, i + BATCH_SIZE);
+      const batchPromises = [];
       
-      try {
-        // We'll create and submit a fetch request manually instead of using submit()
-        // This allows us to track individual successes/failures
-        const response = await fetch('/app/daily-discounts', {
-          method: 'POST',
-          body: formData
-        });
+      for (const index of batchIndices) {
+        // Add some delay between requests
+        if (batchPromises.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+        }
         
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === "success") {
-            successCount++;
+        const product = multipleRandomProducts[index];
+        const formData = prepareProductFormData(index);
+        
+        if (!formData) {
+          failedCount++;
+          failedProducts.push({
+            title: product.title,
+            variantId: product.variantId,
+            error: "Failed to prepare form data"
+          });
+          continue;
+        }
+        
+        try {
+          console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
+          
+          // We'll create and submit a fetch request manually instead of using submit()
+          // This allows us to track individual successes/failures
+          const response = await fetch('/app/daily-discounts', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            try {
+              const data = await response.json();
+              if (data.status === "success") {
+                console.log(`Successfully applied discount to: ${product.title}`);
+                successCount++;
+              } else {
+                failedCount++;
+                const errorMsg = data.message || "Unknown error";
+                console.error(`Error applying discount to product: ${product.title}, Error: ${errorMsg}`);
+                failedProducts.push({
+                  title: product.title,
+                  variantId: product.variantId,
+                  error: errorMsg
+                });
+              }
+            } catch (parseError) {
+              failedCount++;
+              console.error(`Error parsing response for product: ${product.title}`, parseError);
+              failedProducts.push({
+                title: product.title,
+                variantId: product.variantId,
+                error: "Failed to parse server response"
+              });
+            }
           } else {
             failedCount++;
-            console.error("Error applying discount to product:", multipleRandomProducts[index].title, data.message);
+            console.error(`Server error applying discount to product: ${product.title}, Status: ${response.status}`);
+            failedProducts.push({
+              title: product.title,
+              variantId: product.variantId,
+              error: `Server returned ${response.status}`
+            });
           }
-        } else {
+        } catch (error) {
           failedCount++;
-          console.error("Failed to apply discount to product:", multipleRandomProducts[index].title);
+          console.error(`Exception applying discount to product: ${product.title}`, error);
+          failedProducts.push({
+            title: product.title,
+            variantId: product.variantId,
+            error: error instanceof Error ? error.message : "Unknown error"
+          });
         }
-      } catch (error) {
-        failedCount++;
-        console.error("Exception applying discount to product:", multipleRandomProducts[index].title, error);
+        
+        // Add a small delay after each product
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+    }
+    
+    console.log(`Batch discount application completed: ${successCount} succeeded, ${failedCount} failed`);
+    if (failedProducts.length > 0) {
+      console.log("Failed products:", failedProducts);
     }
     
     setBatchResults({
       success: successCount,
-      failed: failedCount
+      failed: failedCount,
+      failedProducts: failedProducts
     });
     
     setApplyingMultiple(false);
@@ -1738,6 +1799,7 @@ export default function DailyDiscounts() {
             content: "OK",
             onAction: () => setBatchResults(null)
           }}
+          size="large"
         >
           <Modal.Section>
             <BlockStack gap="400">
@@ -1748,14 +1810,42 @@ export default function DailyDiscounts() {
               </Text>
               
               {batchResults.failed > 0 && (
-                <Text variant="bodyLg" tone="critical">
-                  ✗ Failed to apply discounts to {batchResults.failed} products
-                </Text>
+                <BlockStack gap="400">
+                  <Text variant="bodyLg" tone="critical">
+                    ✗ Failed to apply discounts to {batchResults.failed} products
+                  </Text>
+                  
+                  {batchResults.failedProducts && batchResults.failedProducts.length > 0 && (
+                    <Box background="bg-surface-secondary" padding="400" borderRadius="200">
+                      <BlockStack gap="300">
+                        <Text variant="headingSm">Error details:</Text>
+                        {batchResults.failedProducts.map((product, index) => (
+                          <Box key={index} padding="300" background="bg-surface" borderRadius="200">
+                            <BlockStack gap="200">
+                              <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
+                              <Text variant="bodySm">Variant ID: {product.variantId.split('/').pop()}</Text>
+                              <Text variant="bodyMd" tone="critical">Error: {product.error}</Text>
+                            </BlockStack>
+                          </Box>
+                        ))}
+                      </BlockStack>
+                    </Box>
+                  )}
+                </BlockStack>
               )}
               
-              <Text variant="bodyMd">
-                The page will refresh in a moment to update the discount history.
-              </Text>
+              <Box paddingBlock="400">
+                <Divider />
+              </Box>
+              
+              <BlockStack gap="200">
+                <Text variant="bodyMd">
+                  The page will refresh in a moment to update the discount history.
+                </Text>
+                <Text variant="bodySm" tone="subdued">
+                  Note: For best results when applying discounts to multiple products, select smaller batches of 3-5 products at a time.
+                </Text>
+              </BlockStack>
             </BlockStack>
           </Modal.Section>
         </Modal>
