@@ -12,6 +12,33 @@ import { authenticateWebhook } from "../utils/webhook-auth.server";
 import prisma from "../db.server";
 
 /**
+ * Checks if a shop session has been invalidated and cleans up any associated data
+ * @param shop - Shop domain
+ */
+async function cleanupInvalidatedShop(shop: string) {
+  try {
+    console.log(`[Auto-Discount] Cleaning up invalidated shop: ${shop}`);
+    
+    // Check if this is a 410 Gone error (app uninstalled)
+    // We could mark the shop as inactive or delete its sessions
+    
+    // For now, just log that we would clean up this shop
+    console.log(`[Auto-Discount] Shop ${shop} appears to have uninstalled the app. Cleanup would happen here.`);
+    
+    // Optionally, you could delete or mark sessions as invalid:
+    // await prisma.session.updateMany({
+    //   where: { shop },
+    //   data: { invalid: true }
+    // });
+    
+    return true;
+  } catch (error) {
+    console.error(`[Auto-Discount] Error cleaning up shop ${shop}:`, error);
+    return false;
+  }
+}
+
+/**
  * Webhook endpoint for triggering automated daily discounts
  * This can be called by n8n at 12:00 AM daily to rotate discounts
  */
@@ -26,20 +53,37 @@ export async function action({ request }: ActionFunctionArgs) {
       }, { status: 401 });
     }
     
-    // Get all shops from the database
+    // Get all active shops from the database
+    // Only get shops that have valid sessions (not expired)
     const shops = await prisma.session.findMany({
+      where: {
+        // Only include sessions that haven't expired or have no expiry
+        OR: [
+          { expires: { gt: new Date() } },
+          { expires: null }
+        ]
+      },
       select: {
-        shop: true
+        shop: true,
+        accessToken: true,
+        expires: true
       },
       distinct: ['shop']
     });
     
     if (!shops || shops.length === 0) {
+      console.log('[Auto-Discount] No active shops found with valid sessions');
       return json({
         status: "error",
-        message: "No shops found"
+        message: "No shops found with valid sessions"
       });
     }
+    
+    console.log(`[Auto-Discount] Found ${shops.length} active shops to process`);
+    // Log some info about each shop's session
+    shops.forEach(shop => {
+      console.log(`[Auto-Discount] Shop: ${shop.shop}, Token: ${shop.accessToken ? 'Valid' : 'Missing'}, Expires: ${shop.expires || 'No expiry'}`);
+    });
     
     const results = {
       total: shops.length,
@@ -57,9 +101,33 @@ export async function action({ request }: ActionFunctionArgs) {
         
         // Get the admin API context for this shop
         console.log(`[Auto-Discount] Getting admin API context for shop: ${shop}`);
+        
+        // Get the admin session
+        let authResponse;
         try {
-          const { admin } = await authenticate.admin(request, shop);
-          console.log(`[Auto-Discount] Successfully got admin API context for shop: ${shop}`);
+          authResponse = await authenticate.admin(request, shop);
+          if (!authResponse || !authResponse.admin) {
+            throw new Error(`Failed to get admin API context for shop: ${shop}`);
+          }
+        } catch (authError) {
+          console.error(`[Auto-Discount] Authentication error for shop ${shop}:`, authError);
+          
+          // Check if it's a 410 Gone error (shop uninstalled or token revoked)
+          const isGoneError = 
+            authError.toString().includes("410") || 
+            (authError.response && authError.response.status === 410);
+          
+          if (isGoneError) {
+            // Try to clean up the invalidated shop
+            await cleanupInvalidatedShop(shop);
+            throw new Error(`Shop ${shop} appears to have uninstalled the app or revoked access (410 Gone)`);
+          } else {
+            throw new Error(`Authentication failed for shop ${shop}: ${authError.message || 'Unknown error'}`);
+          }
+        }
+        
+        const { admin } = authResponse;
+        console.log(`[Auto-Discount] Successfully got admin API context for shop: ${shop}`);
         
         // Step 1: Find and revert previous auto-discounts
         try {
@@ -139,10 +207,7 @@ export async function action({ request }: ActionFunctionArgs) {
           discountResults
         });
         
-        } catch (adminError) {
-          console.error(`[Auto-Discount] Error with admin API for shop ${shop}:`, adminError);
-          throw adminError;
-        }
+
         
       } catch (shopError) {
         results.failed++;
