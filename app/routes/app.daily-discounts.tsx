@@ -829,10 +829,13 @@ export default function DailyDiscounts() {
     
     // Calculate new price (cost + discounted profit)
     const newPrice = selectedProduct.cost + discountedProfit;
-    const roundedPrice = Math.ceil(newPrice * 100) / 100; // Round up to nearest cent
+    
+    // Make the price end in .99 for more attractive pricing
+    const roundedPrice = Math.floor(newPrice * 100) / 100;
+    const marketingPrice = Math.floor(roundedPrice) + 0.99;
     
     // Calculate savings
-    const savingsAmount = selectedProduct.sellingPrice - roundedPrice;
+    const savingsAmount = selectedProduct.sellingPrice - marketingPrice;
     const savingsPercentage = (savingsAmount / selectedProduct.sellingPrice) * 100;
     
     // Set discount data
@@ -840,7 +843,7 @@ export default function DailyDiscounts() {
       profitMargin: profitMargin,
       discountPercentage: discountPercentage,
       originalPrice: selectedProduct.sellingPrice,
-      discountedPrice: roundedPrice,
+      discountedPrice: marketingPrice,
       savingsAmount: savingsAmount,
       savingsPercentage: savingsPercentage
     });
@@ -849,19 +852,21 @@ export default function DailyDiscounts() {
   };
   
   // Helper function to calculate a discount for a specific product
-  // In batch mode, each product gets a slightly different discount percentage
+  // In batch mode, each product gets a completely randomized discount percentage
   const calculateDiscountForProduct = (product, baseDiscountPercentage, isRandomized = false) => {
     // Calculate product-specific profit margin
     const profit = product.sellingPrice - product.cost;
     const profitMargin = profit / product.sellingPrice * 100;
     
-    // For batch operations, randomize the discount slightly for each product
-    // This makes each product have a unique discount while staying within the range
-    let actualDiscountPercentage = baseDiscountPercentage;
+    // For batch operations, use a completely random discount percentage for each product
+    // This makes each product have a unique discount that's more interesting for customers
+    let actualDiscountPercentage;
     if (isRandomized) {
-      // Vary by +/- 3% (so if base is 15%, range becomes 12-18%)
-      const variation = Math.floor(Math.random() * 7) - 3; // -3 to +3
-      actualDiscountPercentage = Math.max(10, Math.min(25, baseDiscountPercentage + variation));
+      // Generate a fresh random discount between 10-25%
+      actualDiscountPercentage = Math.floor(Math.random() * 16) + 10; // 10 to 25
+      console.log(`Generated random discount for ${product.title}: ${actualDiscountPercentage}%`);
+    } else {
+      actualDiscountPercentage = baseDiscountPercentage;
     }
     
     // Calculate discounted profit (applying discount to the profit)
@@ -870,17 +875,20 @@ export default function DailyDiscounts() {
     
     // Calculate new price (cost + discounted profit)
     const newPrice = product.cost + discountedProfit;
-    const roundedPrice = Math.ceil(newPrice * 100) / 100; // Round up to nearest cent
+    
+    // Make the price end in .99 for more attractive pricing
+    const roundedPrice = Math.floor(newPrice * 100) / 100;
+    const marketingPrice = Math.floor(roundedPrice) + 0.99;
     
     // Calculate savings
-    const savingsAmount = product.sellingPrice - roundedPrice;
+    const savingsAmount = product.sellingPrice - marketingPrice;
     const savingsPercentage = (savingsAmount / product.sellingPrice) * 100;
     
     return {
       profitMargin,
       discountPercentage: actualDiscountPercentage,
       originalPrice: product.sellingPrice,
-      discountedPrice: roundedPrice,
+      discountedPrice: marketingPrice,
       savingsAmount,
       savingsPercentage
     };
@@ -896,7 +904,7 @@ export default function DailyDiscounts() {
     // For batch operations, calculate a product-specific discount with randomized percentage
     // For single operations, use the global discount
     const productDiscount = applyingMultiple
-      ? calculateDiscountForProduct(product, discount.discountPercentage, true) // true = randomize
+      ? calculateDiscountForProduct(product, Math.floor(Math.random() * 16) + 10, true) // random 10-25% discount
       : discount;
       
     if (!productDiscount) return null;
@@ -1567,20 +1575,36 @@ export default function DailyDiscounts() {
                     
                     {selectedProducts.size > 1 && (
                       <Box padding="300" background="bg-surface-secondary" borderRadius="200">
-                        <InlineStack gap="400" align="space-between" blockAlign="center">
-                          <Text variant="bodyMd">
-                            <strong>{selectedProducts.size}</strong> products selected for batch discount
-                          </Text>
+                        <BlockStack gap="300">
+                          <InlineStack gap="400" align="space-between" blockAlign="center">
+                            <Text variant="bodyMd">
+                              <strong>{selectedProducts.size}</strong> products selected for batch discount
+                            </Text>
+                            
+                            <Button 
+                              onClick={() => applyMultipleDiscounts()}
+                              primary
+                              loading={applyingMultiple}
+                              disabled={isPriceUpdated || isGeneratingDiscount || !discount}
+                            >
+                              Apply Unique Discounts to All Selected
+                            </Button>
+                          </InlineStack>
                           
-                          <Button 
-                            onClick={() => applyMultipleDiscounts()}
-                            primary
-                            loading={applyingMultiple}
-                            disabled={isPriceUpdated || isGeneratingDiscount || !discount}
-                          >
-                            Apply Discount to All Selected
-                          </Button>
-                        </InlineStack>
+                          {applyingMultiple && (
+                            <Banner tone="info">
+                              <BlockStack gap="200">
+                                <Text variant="bodyMd">
+                                  Applying unique randomized discounts to {selectedProducts.size} products...
+                                </Text>
+                                <Text variant="bodySm">
+                                  Each product receives its own random discount percentage between 10-25% of profit.
+                                  This may take a few moments to complete.
+                                </Text>
+                              </BlockStack>
+                            </Banner>
+                          )}
+                        </BlockStack>
                       </Box>
                     )}
                   </BlockStack>
@@ -1862,6 +1886,12 @@ export default function DailyDiscounts() {
               </Text>
               
               <Text as="p">
+                When applying discounts to multiple products at once, each product receives its own unique random
+                discount percentage (between 10-25%). This creates varied and more interesting savings amounts for your
+                customers, with all prices ending in .99 for maximum appeal.
+              </Text>
+              
+              <Text as="p">
                 The randomization process scans through all products in your store (not just the first batch)
                 and uses a thorough shuffling algorithm to ensure truly random selection. Only products with
                 images and positive inventory are eligible for selection.
@@ -1921,17 +1951,33 @@ export default function DailyDiscounts() {
                 </Text>
                 
                 <Text variant="bodyMd">
-                  Varied discount rates (between 10-25% of profit) were applied to each product,
+                  Completely randomized discount rates (between 10-25% of profit) were applied to each product,
                   with prices calculated individually based on each product's cost, profit margin, and a unique
-                  discount percentage.
+                  discount percentage. All prices end in .99 for more attractive pricing.
                 </Text>
               </BlockStack>
               
-              {batchResults.failed > 0 && (
-                <BlockStack gap="400">
+              <BlockStack gap="400">
+                {batchResults.success > 0 && (
+                  <Box background="bg-surface-success" padding="400" borderRadius="200">
+                    <BlockStack gap="300">
+                      <Text variant="headingSm">Successfully updated products:</Text>
+                      <InlineStack wrap={true} gap="200">
+                        <Text variant="bodySm">
+                          Each product received a unique randomized discount between 10-25% of their profit margin.
+                          This creates an engaging variety of savings for your customers while ensuring all products
+                          remain profitable.
+                        </Text>
+                      </InlineStack>
+                    </BlockStack>
+                  </Box>
+                )}
+                
+                {batchResults.failed > 0 && (
                   <Text variant="bodyLg" tone="critical">
                     ✗ Failed to apply discounts to {batchResults.failed} products
                   </Text>
+                )}
                   
                   {batchResults.failedProducts && batchResults.failedProducts.length > 0 && (
                     <Box background="bg-surface-secondary" padding="400" borderRadius="200">
