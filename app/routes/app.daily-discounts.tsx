@@ -730,7 +730,18 @@ export default function DailyDiscounts() {
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [applyingMultiple, setApplyingMultiple] = useState(false);
-  const [batchResults, setBatchResults] = useState<{success: number, failed: number, failedProducts?: Array<{title: string, variantId: string, error: string}>} | null>(null);
+  const [batchResults, setBatchResults] = useState<{
+    success: number, 
+    failed: number, 
+    failedProducts?: Array<{
+      title: string, 
+      variantId: string, 
+      error: string,
+      discountPercentage?: number,
+      originalPrice?: number,
+      discountedPrice?: number
+    }>
+  } | null>(null);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -838,13 +849,23 @@ export default function DailyDiscounts() {
   };
   
   // Helper function to calculate a discount for a specific product
-  const calculateDiscountForProduct = (product, discountPercentage) => {
+  // In batch mode, each product gets a slightly different discount percentage
+  const calculateDiscountForProduct = (product, baseDiscountPercentage, isRandomized = false) => {
     // Calculate product-specific profit margin
     const profit = product.sellingPrice - product.cost;
     const profitMargin = profit / product.sellingPrice * 100;
     
+    // For batch operations, randomize the discount slightly for each product
+    // This makes each product have a unique discount while staying within the range
+    let actualDiscountPercentage = baseDiscountPercentage;
+    if (isRandomized) {
+      // Vary by +/- 3% (so if base is 15%, range becomes 12-18%)
+      const variation = Math.floor(Math.random() * 7) - 3; // -3 to +3
+      actualDiscountPercentage = Math.max(10, Math.min(25, baseDiscountPercentage + variation));
+    }
+    
     // Calculate discounted profit (applying discount to the profit)
-    const discountFactor = 1 - (discountPercentage / 100);
+    const discountFactor = 1 - (actualDiscountPercentage / 100);
     const discountedProfit = profit * discountFactor;
     
     // Calculate new price (cost + discounted profit)
@@ -857,7 +878,7 @@ export default function DailyDiscounts() {
     
     return {
       profitMargin,
-      discountPercentage,
+      discountPercentage: actualDiscountPercentage,
       originalPrice: product.sellingPrice,
       discountedPrice: roundedPrice,
       savingsAmount,
@@ -872,10 +893,10 @@ export default function DailyDiscounts() {
     const product = multipleRandomProducts[productIndex];
     if (!product) return null;
     
-    // For batch operations, calculate a product-specific discount
+    // For batch operations, calculate a product-specific discount with randomized percentage
     // For single operations, use the global discount
     const productDiscount = applyingMultiple
-      ? calculateDiscountForProduct(product, discount.discountPercentage)
+      ? calculateDiscountForProduct(product, discount.discountPercentage, true) // true = randomize
       : discount;
       
     if (!productDiscount) return null;
@@ -981,11 +1002,11 @@ export default function DailyDiscounts() {
         }
         
         try {
-          // Calculate product-specific discount
-          const productDiscount = calculateDiscountForProduct(product, discount.discountPercentage);
+          // Calculate product-specific discount with randomization
+          const productDiscount = calculateDiscountForProduct(product, discount.discountPercentage, true);
           
           console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
-          console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${productDiscount.discountedPrice}`);
+          console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${productDiscount.discountedPrice}, Discount: ${productDiscount.discountPercentage}% of profit`);
           
           // We'll create and submit a fetch request manually instead of using submit()
           // This allows us to track individual successes/failures
@@ -1007,7 +1028,10 @@ export default function DailyDiscounts() {
                 failedProducts.push({
                   title: product.title,
                   variantId: product.variantId,
-                  error: errorMsg
+                  error: errorMsg,
+                  discountPercentage: productDiscount.discountPercentage,
+                  originalPrice: product.sellingPrice,
+                  discountedPrice: productDiscount.discountedPrice
                 });
               }
             } catch (parseError) {
@@ -1016,7 +1040,10 @@ export default function DailyDiscounts() {
               failedProducts.push({
                 title: product.title,
                 variantId: product.variantId,
-                error: "Failed to parse server response"
+                error: "Failed to parse server response",
+                discountPercentage: productDiscount.discountPercentage,
+                originalPrice: product.sellingPrice,
+                discountedPrice: productDiscount.discountedPrice
               });
             }
           } else {
@@ -1025,7 +1052,10 @@ export default function DailyDiscounts() {
             failedProducts.push({
               title: product.title,
               variantId: product.variantId,
-              error: `Server returned ${response.status}`
+              error: `Server returned ${response.status}`,
+              discountPercentage: productDiscount.discountPercentage,
+              originalPrice: product.sellingPrice,
+              discountedPrice: productDiscount.discountedPrice
             });
           }
         } catch (error) {
@@ -1034,7 +1064,10 @@ export default function DailyDiscounts() {
           failedProducts.push({
             title: product.title,
             variantId: product.variantId,
-            error: error instanceof Error ? error.message : "Unknown error"
+            error: error instanceof Error ? error.message : "Unknown error",
+            discountPercentage: productDiscount.discountPercentage,
+            originalPrice: product.sellingPrice,
+            discountedPrice: productDiscount.discountedPrice
           });
         }
         
@@ -1851,7 +1884,7 @@ export default function DailyDiscounts() {
         <Modal
           open={!!batchResults}
           onClose={() => setBatchResults(null)}
-          title={`Batch Discount Results (${discount?.discountPercentage}% Profit Discount)`}
+          title="Batch Discount Results (Varied Profit Discounts)"
           primaryAction={{
             content: "OK",
             onAction: () => setBatchResults(null)
@@ -1868,8 +1901,9 @@ export default function DailyDiscounts() {
                 </Text>
                 
                 <Text variant="bodyMd">
-                  Consistent discount rate of {discount?.discountPercentage}% of profit was applied to each product,
-                  with prices calculated individually based on each product's cost and selling price.
+                  Varied discount rates (between 10-25% of profit) were applied to each product,
+                  with prices calculated individually based on each product's cost, profit margin, and a unique
+                  discount percentage.
                 </Text>
               </BlockStack>
               
@@ -1888,6 +1922,14 @@ export default function DailyDiscounts() {
                             <BlockStack gap="200">
                               <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
                               <Text variant="bodySm">Variant ID: {product.variantId.split('/').pop()}</Text>
+                              {product.discountPercentage && (
+                                <Text variant="bodySm">
+                                  Discount: {product.discountPercentage}% of profit 
+                                  ({product.originalPrice && product.discountedPrice ? 
+                                    `${formatCurrency(product.originalPrice)} → ${formatCurrency(product.discountedPrice)}` : 
+                                    ''})
+                                </Text>
+                              )}
                               <Text variant="bodyMd" tone="critical">Error: {product.error}</Text>
                             </BlockStack>
                           </Box>
