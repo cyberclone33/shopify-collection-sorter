@@ -837,16 +837,52 @@ export default function DailyDiscounts() {
     setTimeout(() => setIsGeneratingDiscount(false), 800);
   };
   
+  // Helper function to calculate a discount for a specific product
+  const calculateDiscountForProduct = (product, discountPercentage) => {
+    // Calculate product-specific profit margin
+    const profit = product.sellingPrice - product.cost;
+    const profitMargin = profit / product.sellingPrice * 100;
+    
+    // Calculate discounted profit (applying discount to the profit)
+    const discountFactor = 1 - (discountPercentage / 100);
+    const discountedProfit = profit * discountFactor;
+    
+    // Calculate new price (cost + discounted profit)
+    const newPrice = product.cost + discountedProfit;
+    const roundedPrice = Math.ceil(newPrice * 100) / 100; // Round up to nearest cent
+    
+    // Calculate savings
+    const savingsAmount = product.sellingPrice - roundedPrice;
+    const savingsPercentage = (savingsAmount / product.sellingPrice) * 100;
+    
+    return {
+      profitMargin,
+      discountPercentage,
+      originalPrice: product.sellingPrice,
+      discountedPrice: roundedPrice,
+      savingsAmount,
+      savingsPercentage
+    };
+  };
+
   // Helper function to prepare form data for a product
   const prepareProductFormData = (productIndex: number) => {
-    if (!multipleRandomProducts || !discount) return null;
+    if (!multipleRandomProducts) return null;
     
     const product = multipleRandomProducts[productIndex];
     if (!product) return null;
     
+    // For batch operations, calculate a product-specific discount
+    // For single operations, use the global discount
+    const productDiscount = applyingMultiple
+      ? calculateDiscountForProduct(product, discount.discountPercentage)
+      : discount;
+      
+    if (!productDiscount) return null;
+    
     const formData = new FormData();
     formData.append("variantId", product.variantId);
-    formData.append("newPrice", discount.discountedPrice.toString());
+    formData.append("newPrice", productDiscount.discountedPrice.toString());
     
     // Get product ID from the product's full ID
     let productId = product.id;
@@ -871,10 +907,10 @@ export default function DailyDiscounts() {
     }
     formData.append("originalPrice", product.sellingPrice.toString());
     formData.append("costPrice", product.cost.toString());
-    formData.append("profitMargin", discount.profitMargin.toString());
-    formData.append("discountPercentage", discount.discountPercentage.toString());
-    formData.append("savingsAmount", discount.savingsAmount.toString());
-    formData.append("savingsPercentage", discount.savingsPercentage.toString());
+    formData.append("profitMargin", productDiscount.profitMargin.toString());
+    formData.append("discountPercentage", productDiscount.discountPercentage.toString());
+    formData.append("savingsAmount", productDiscount.savingsAmount.toString());
+    formData.append("savingsPercentage", productDiscount.savingsPercentage.toString());
     formData.append("currencyCode", product.currencyCode);
     formData.append("imageUrl", product.imageUrl);
     formData.append("inventoryQuantity", product.inventoryQuantity.toString());
@@ -945,7 +981,11 @@ export default function DailyDiscounts() {
         }
         
         try {
+          // Calculate product-specific discount
+          const productDiscount = calculateDiscountForProduct(product, discount.discountPercentage);
+          
           console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
+          console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${productDiscount.discountedPrice}`);
           
           // We'll create and submit a fetch request manually instead of using submit()
           // This allows us to track individual successes/failures
@@ -1811,7 +1851,7 @@ export default function DailyDiscounts() {
         <Modal
           open={!!batchResults}
           onClose={() => setBatchResults(null)}
-          title="Batch Discount Results"
+          title={`Batch Discount Results (${discount?.discountPercentage}% Profit Discount)`}
           primaryAction={{
             content: "OK",
             onAction: () => setBatchResults(null)
@@ -1820,11 +1860,18 @@ export default function DailyDiscounts() {
         >
           <Modal.Section>
             <BlockStack gap="400">
-              <Text variant="bodyLg">
-                {batchResults.success > 0 ? (
-                  <span style={{ color: 'var(--p-text-success)' }}>✓ Successfully applied discounts to {batchResults.success} products</span>
-                ) : null}
-              </Text>
+              <BlockStack gap="300">
+                <Text variant="bodyLg">
+                  {batchResults.success > 0 ? (
+                    <span style={{ color: 'var(--p-text-success)' }}>✓ Successfully applied discounts to {batchResults.success} products</span>
+                  ) : null}
+                </Text>
+                
+                <Text variant="bodyMd">
+                  Consistent discount rate of {discount?.discountPercentage}% of profit was applied to each product,
+                  with prices calculated individually based on each product's cost and selling price.
+                </Text>
+              </BlockStack>
               
               {batchResults.failed > 0 && (
                 <BlockStack gap="400">
