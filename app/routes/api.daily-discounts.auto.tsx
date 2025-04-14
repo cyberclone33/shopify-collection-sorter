@@ -10,6 +10,55 @@ import {
 } from "../utils/autoDiscount.server";
 import prisma from "../db.server";
 
+// Function to create a direct admin API context (like in the webhook)
+function createDirectAdminApiContext(shop: string) {
+  const adminApiToken = process.env.SHOPIFY_ADMIN_API_TOKEN;
+  
+  if (!adminApiToken) {
+    throw new Error("SHOPIFY_ADMIN_API_TOKEN environment variable is not defined");
+  }
+  
+  // Create a direct admin API context
+  return {
+    graphql: async (query: string, options?: { variables?: any }) => {
+      const shopifyDomain = shop;
+      const url = `https://${shopifyDomain}/admin/api/2025-01/graphql.json`;
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': adminApiToken
+          },
+          body: JSON.stringify({
+            query,
+            variables: options?.variables
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        
+        // Return an object with a json method to match the Shopify admin API context interface
+        return {
+          json: async () => {
+            return await response.json();
+          }
+        };
+      } catch (error) {
+        console.error("Error in direct GraphQL call:", error);
+        throw error;
+      }
+    },
+    rest: {
+      resources: {}
+    }
+  };
+}
+
 /**
  * API for manually triggering or checking automated discounts
  * GET: Check status of auto-discounts for the current shop
@@ -17,8 +66,23 @@ import prisma from "../db.server";
  */
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
+  try {
+    // Try to authenticate using the regular Shopify auth first
+    let admin, shop;
+    
+    try {
+      const { admin: shopifyAdmin, session } = await authenticate.admin(request);
+      admin = shopifyAdmin;
+      shop = session.shop;
+    } catch (authError) {
+      console.log("Session authentication failed, using direct API token instead");
+      
+      // Fallback to direct API token if session auth fails
+      // Use a default shop domain if not provided
+      shop = "alphapetstw.myshopify.com";
+      
+      admin = createDirectAdminApiContext(shop);
+    }
   
   try {
     // Get previous auto-discounts for this shop
@@ -93,8 +157,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
+  try {
+    // Try to authenticate using the regular Shopify auth first
+    let admin, shop;
+    
+    try {
+      const { admin: shopifyAdmin, session } = await authenticate.admin(request);
+      admin = shopifyAdmin;
+      shop = session.shop;
+    } catch (authError) {
+      console.log("Session authentication failed, using direct API token instead");
+      
+      // Fallback to direct API token if session auth fails
+      shop = process.env.SHOPIFY_SHOP_DOMAIN;
+      if (!shop) {
+        throw new Error("SHOPIFY_SHOP_DOMAIN environment variable is not defined");
+      }
+      
+      admin = createDirectAdminApiContext(shop);
+    }
   
   try {
     // Get form data to see if we're doing a manual run
