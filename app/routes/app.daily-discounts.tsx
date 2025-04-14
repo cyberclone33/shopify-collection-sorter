@@ -64,29 +64,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const debugVariantId = url.searchParams.get("debugVariantId");
   const forceRefresh = url.searchParams.get("refresh") === "true";
   
-  // Fetch recent discount logs (limited to 5)
-  // Fetch recent manual discount logs (limited to 5)
+  // Fetch recent manual discount logs
   const recentManualDiscountLogs = await prisma.dailyDiscountLog.findMany({
     where: {
       shop: session.shop,
-      isRandomDiscount: true // Manual discounts set through UI
+      isRandomDiscount: true, // This was previously true for both
+      notes: {
+        not: {
+          contains: "Auto Discount"
+        }
+      }
     },
     orderBy: {
       appliedAt: 'desc'
     },
-    take: 5
+    take: 20
   });
   
-  // Fetch recent API discount logs (limited to 5)
+  // Fetch recent API discount logs
   const recentApiDiscountLogs = await prisma.dailyDiscountLog.findMany({
     where: {
       shop: session.shop,
-      isRandomDiscount: false // API-set discounts
+      isRandomDiscount: true, // Both use isRandomDiscount: true
+      notes: {
+        contains: "Auto Discount"
+      }
     },
     orderBy: {
       appliedAt: 'desc'
     },
-    take: 5
+    take: 20
   });
   
   // If a specific variant ID is provided for debugging
@@ -523,7 +530,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           imageUrl: imageUrl || null,
           inventoryQuantity: inventoryQuantity ? parseInt(inventoryQuantity) : null,
           isRandomDiscount: true,
-          notes: notes || null
+          notes: notes || "Manual UI Discount"
         }
       });
       console.log(`Discount logged for product ${productTitle} (${variantId})`);
@@ -616,6 +623,10 @@ export default function DailyDiscounts() {
       savingsPercentage: string
     }>
   } | null>(null);
+  const [manualLogCount, setManualLogCount] = useState(20);
+  const [apiLogCount, setApiLogCount] = useState(20);
+  const [isLoadingMoreManual, setIsLoadingMoreManual] = useState(false);
+  const [isLoadingMoreApi, setIsLoadingMoreApi] = useState(false);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -1713,13 +1724,13 @@ export default function DailyDiscounts() {
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
-                Recent Discount History - Manual vs API
+                Recent Discount History
               </Text>
               
               <Layout>
                 {/* Manual Discounts Column */}
                 <Layout.Section oneHalf>
-                  <Text variant="headingMd" as="h3">Manual Discounts</Text>
+                  <Text variant="headingMd" as="h3">Manual UI Discounts</Text>
                   
                   {(!recentManualDiscountLogs || recentManualDiscountLogs.length === 0) ? (
                     <Banner tone="info">
@@ -1783,17 +1794,57 @@ export default function DailyDiscounts() {
                           </BlockStack>
                         </Box>
                       ))}
+                      
+                      {recentManualDiscountLogs.length === manualLogCount && (
+                        <Box padding="300" textAlign="center">
+                          <Button 
+                            onClick={async () => {
+                              setIsLoadingMoreManual(true);
+                              
+                              try {
+                                // Fetch more manual logs
+                                const response = await fetch(`/api/daily-discounts/logs?type=manual&skip=${manualLogCount}&take=20`);
+                                const data = await response.json();
+                                
+                                if (data.status === "success" && data.logs && data.logs.length > 0) {
+                                  // Add the new logs to the existing ones
+                                  const newLogs = [...recentManualDiscountLogs, ...data.logs];
+                                  // Replace recentManualDiscountLogs in loaderData
+                                  loaderData.recentManualDiscountLogs = newLogs;
+                                  setManualLogCount(prev => prev + data.logs.length);
+                                }
+                              } catch (error) {
+                                console.error("Error loading more logs:", error);
+                                // Show error toast
+                                setSuccessToast({
+                                  active: true,
+                                  message: "Failed to load more logs. Please try again."
+                                });
+                                setTimeout(() => {
+                                  setSuccessToast(prev => ({ ...prev, active: false }));
+                                }, 3000);
+                              } finally {
+                                setIsLoadingMoreManual(false);
+                              }
+                            }}
+                            loading={isLoadingMoreManual}
+                            size="slim"
+                          >
+                            Load More History
+                          </Button>
+                        </Box>
+                      )}
                     </BlockStack>
                   )}
                 </Layout.Section>
                 
                 {/* API Discounts Column */}
                 <Layout.Section oneHalf>
-                  <Text variant="headingMd" as="h3">API Discounts</Text>
+                  <Text variant="headingMd" as="h3">Automated Webhook Discounts</Text>
                   
                   {(!recentApiDiscountLogs || recentApiDiscountLogs.length === 0) ? (
                     <Banner tone="info">
-                      <p>No API discount logs found. Products discounted via API will appear here.</p>
+                      <p>No automated webhook discount logs found. Products discounted via the automatic webhook will appear here.</p>
                     </Banner>
                   ) : (
                     <BlockStack gap="400">
@@ -1858,6 +1909,46 @@ export default function DailyDiscounts() {
                           </BlockStack>
                         </Box>
                       ))}
+                      
+                      {recentApiDiscountLogs.length === apiLogCount && (
+                        <Box padding="300" textAlign="center">
+                          <Button 
+                            onClick={async () => {
+                              setIsLoadingMoreApi(true);
+                              
+                              try {
+                                // Fetch more API logs
+                                const response = await fetch(`/api/daily-discounts/logs?type=api&skip=${apiLogCount}&take=20`);
+                                const data = await response.json();
+                                
+                                if (data.status === "success" && data.logs && data.logs.length > 0) {
+                                  // Add the new logs to the existing ones
+                                  const newLogs = [...recentApiDiscountLogs, ...data.logs];
+                                  // Replace recentApiDiscountLogs in loaderData
+                                  loaderData.recentApiDiscountLogs = newLogs;
+                                  setApiLogCount(prev => prev + data.logs.length);
+                                }
+                              } catch (error) {
+                                console.error("Error loading more logs:", error);
+                                // Show error toast
+                                setSuccessToast({
+                                  active: true,
+                                  message: "Failed to load more logs. Please try again."
+                                });
+                                setTimeout(() => {
+                                  setSuccessToast(prev => ({ ...prev, active: false }));
+                                }, 3000);
+                              } finally {
+                                setIsLoadingMoreApi(false);
+                              }
+                            }}
+                            loading={isLoadingMoreApi}
+                            size="slim"
+                          >
+                            Load More History
+                          </Button>
+                        </Box>
+                      )}
                     </BlockStack>
                   )}
                 </Layout.Section>
@@ -1878,6 +1969,28 @@ export default function DailyDiscounts() {
                 based on the product's profit margin. The discounts range from 10% to 25% of the product's profit,
                 ensuring you maintain profitability while offering attractive discounts to your customers.
               </Text>
+              
+              <Text as="p">
+                <strong>Two discount methods are available:</strong>
+              </Text>
+              
+              <BlockStack gap="300">
+                <InlineStack gap="400" align="start" blockAlign="start">
+                  <div style={{ width: '24px', textAlign: 'center', marginTop: '2px' }}>1.</div>
+                  <div>
+                    <Text as="p" fontWeight="bold">Manual UI Discounts</Text>
+                    <Text as="p">Select and apply discounts manually through this interface. Perfect for curating specific featured products or testing the discount tool.</Text>
+                  </div>
+                </InlineStack>
+                
+                <InlineStack gap="400" align="start" blockAlign="start">
+                  <div style={{ width: '24px', textAlign: 'center', marginTop: '2px' }}>2.</div>
+                  <div>
+                    <Text as="p" fontWeight="bold">Automated Webhook Discounts</Text>
+                    <Text as="p">Let the system automatically select and discount products on a regular schedule. This creates rotating flash sales without any manual intervention.</Text>
+                  </div>
+                </InlineStack>
+              </BlockStack>
               
               <Text as="p">
                 When applying discounts to multiple products at once, each product receives its own unique random
