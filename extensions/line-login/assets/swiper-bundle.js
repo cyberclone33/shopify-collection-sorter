@@ -1,0 +1,1 @@
+Redirecting to /swiper@11.2.6/swiper-bundle.min.js
