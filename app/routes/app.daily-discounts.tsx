@@ -65,9 +65,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const forceRefresh = url.searchParams.get("refresh") === "true";
   
   // Fetch recent discount logs (limited to 5)
-  const recentDiscountLogs = await prisma.dailyDiscountLog.findMany({
+  // Fetch recent manual discount logs (limited to 5)
+  const recentManualDiscountLogs = await prisma.dailyDiscountLog.findMany({
     where: {
-      shop: session.shop
+      shop: session.shop,
+      isRandomDiscount: true // Manual discounts set through UI
+    },
+    orderBy: {
+      appliedAt: 'desc'
+    },
+    take: 5
+  });
+  
+  // Fetch recent API discount logs (limited to 5)
+  const recentApiDiscountLogs = await prisma.dailyDiscountLog.findMany({
+    where: {
+      shop: session.shop,
+      isRandomDiscount: false // API-set discounts
     },
     orderBy: {
       appliedAt: 'desc'
@@ -185,7 +199,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         status: "error",
         message: "No products found meeting minimum requirements (image and positive inventory).",
         randomProduct: null,
-        recentDiscountLogs
+        recentManualDiscountLogs,
+        recentApiDiscountLogs
       });
     }
     
@@ -288,7 +303,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       taggedProducts,
       randomProduct,
       multipleRandomProducts: products,
-      recentDiscountLogs,
+      recentManualDiscountLogs,
+      recentApiDiscountLogs,
       tagName: DAILY_DISCOUNT_TAG,
       productStats: stats,
       totalProductsScanned: stats.total,
@@ -301,7 +317,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       status: "error",
       message: error instanceof Error ? error.message : "An unknown error occurred",
       randomProduct: null,
-      recentDiscountLogs
+      recentManualDiscountLogs: [],
+      recentApiDiscountLogs: []
     });
   }
 };
@@ -565,7 +582,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const { randomProduct, multipleRandomProducts, status, message, recentDiscountLogs, taggedProducts, tagName } = loaderData;
+  const { randomProduct, multipleRandomProducts, status, message, recentManualDiscountLogs, recentApiDiscountLogs, taggedProducts, tagName } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -1696,73 +1713,155 @@ export default function DailyDiscounts() {
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
-                Recent Discount History
+                Recent Discount History - Manual vs API
               </Text>
               
-              {(!recentDiscountLogs || recentDiscountLogs.length === 0) ? (
-                <Banner tone="info">
-                  <p>No daily discount logs found. Apply discounts to products to see them here.</p>
-                </Banner>
-              ) : (
-                <BlockStack gap="400">
-                  {recentDiscountLogs.map((log) => (
-                    <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
-                      <BlockStack gap="200">
-                        <InlineStack gap="300" align="start" blockAlign="center">
-                          {log.imageUrl && (
-                            <Box>
-                              <Thumbnail
-                                source={log.imageUrl}
-                                alt={log.productTitle}
-                                size="small"
-                              />
-                            </Box>
-                          )}
-                          <BlockStack gap="100">
-                            <InlineStack gap="200" align="space-between">
-                              <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+              <Layout>
+                {/* Manual Discounts Column */}
+                <Layout.Section oneHalf>
+                  <Text variant="headingMd" as="h3">Manual Discounts</Text>
+                  
+                  {(!recentManualDiscountLogs || recentManualDiscountLogs.length === 0) ? (
+                    <Banner tone="info">
+                      <p>No manual discount logs found. Apply discounts to products to see them here.</p>
+                    </Banner>
+                  ) : (
+                    <BlockStack gap="400">
+                      {recentManualDiscountLogs.map((log) => (
+                        <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
+                          <BlockStack gap="200">
+                            <InlineStack gap="300" align="start" blockAlign="center">
+                              {log.imageUrl && (
+                                <Box>
+                                  <Thumbnail
+                                    source={log.imageUrl}
+                                    alt={log.productTitle}
+                                    size="small"
+                                  />
+                                </Box>
+                              )}
+                              <BlockStack gap="100">
+                                <InlineStack gap="200" align="space-between">
+                                  <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                  <Text variant="bodySm" as="span">
+                                    {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
+                                  </Text>
+                                </InlineStack>
+                                {log.variantTitle && (
+                                  <Text variant="bodySm" as="p">
+                                    Variant: {log.variantTitle}
+                                  </Text>
+                                )}
+                                <Text variant="bodySm" as="p" tone="subdued">
+                                  Variant ID: {log.variantId.split("/").pop()}
+                                </Text>
+                              </BlockStack>
+                            </InlineStack>
+                            
+                            <InlineStack gap="200" wrap={true}>
                               <Text variant="bodySm" as="span">
-                                {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
+                                Original: {formatCurrency(log.originalPrice, log.currencyCode)}
+                              </Text>
+                              <Text variant="bodySm" as="span">
+                                Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
+                              </Text>
+                              <Text variant="bodySm" as="span" tone="success">
+                                Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
                               </Text>
                             </InlineStack>
-                            {log.variantTitle && (
-                              <Text variant="bodySm" as="p">
-                                Variant: {log.variantTitle}
-                              </Text>
-                            )}
-                            <Text variant="bodySm" as="p" tone="subdued">
-                              Variant ID: {log.variantId.split("/").pop()}
-                            </Text>
+                            
+                            <InlineStack align="end">
+                              <Button 
+                                size="micro" 
+                                tone="critical"
+                                onClick={() => handleRevertDiscount(log)}
+                                disabled={isReverting === log.id}
+                              >
+                                {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
+                              </Button>
+                            </InlineStack>
                           </BlockStack>
-                        </InlineStack>
-                        
-                        <InlineStack gap="200" wrap={true}>
-                          <Text variant="bodySm" as="span">
-                            Original: {formatCurrency(log.originalPrice, log.currencyCode)}
-                          </Text>
-                          <Text variant="bodySm" as="span">
-                            Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
-                          </Text>
-                          <Text variant="bodySm" as="span" tone="success">
-                            Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
-                          </Text>
-                        </InlineStack>
-                        
-                        <InlineStack align="end">
-                          <Button 
-                            size="micro" 
-                            tone="critical"
-                            onClick={() => handleRevertDiscount(log)}
-                            disabled={isReverting === log.id}
-                          >
-                            {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
-                          </Button>
-                        </InlineStack>
-                      </BlockStack>
-                    </Box>
-                  ))}
-                </BlockStack>
-              )}
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  )}
+                </Layout.Section>
+                
+                {/* API Discounts Column */}
+                <Layout.Section oneHalf>
+                  <Text variant="headingMd" as="h3">API Discounts</Text>
+                  
+                  {(!recentApiDiscountLogs || recentApiDiscountLogs.length === 0) ? (
+                    <Banner tone="info">
+                      <p>No API discount logs found. Products discounted via API will appear here.</p>
+                    </Banner>
+                  ) : (
+                    <BlockStack gap="400">
+                      {recentApiDiscountLogs.map((log) => (
+                        <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
+                          <BlockStack gap="200">
+                            <InlineStack gap="300" align="start" blockAlign="center">
+                              {log.imageUrl && (
+                                <Box>
+                                  <Thumbnail
+                                    source={log.imageUrl}
+                                    alt={log.productTitle}
+                                    size="small"
+                                  />
+                                </Box>
+                              )}
+                              <BlockStack gap="100">
+                                <InlineStack gap="200" align="space-between">
+                                  <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                  <Text variant="bodySm" as="span">
+                                    {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
+                                  </Text>
+                                </InlineStack>
+                                {log.variantTitle && (
+                                  <Text variant="bodySm" as="p">
+                                    Variant: {log.variantTitle}
+                                  </Text>
+                                )}
+                                <Text variant="bodySm" as="p" tone="subdued">
+                                  Variant ID: {log.variantId.split("/").pop()}
+                                </Text>
+                                {log.notes && (
+                                  <Text variant="bodySm" as="p" tone="subdued">
+                                    Notes: {log.notes}
+                                  </Text>
+                                )}
+                              </BlockStack>
+                            </InlineStack>
+                            
+                            <InlineStack gap="200" wrap={true}>
+                              <Text variant="bodySm" as="span">
+                                Original: {formatCurrency(log.originalPrice, log.currencyCode)}
+                              </Text>
+                              <Text variant="bodySm" as="span">
+                                Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
+                              </Text>
+                              <Text variant="bodySm" as="span" tone="success">
+                                Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
+                              </Text>
+                            </InlineStack>
+                            
+                            <InlineStack align="end">
+                              <Button 
+                                size="micro" 
+                                tone="critical"
+                                onClick={() => handleRevertDiscount(log)}
+                                disabled={isReverting === log.id}
+                              >
+                                {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  )}
+                </Layout.Section>
+              </Layout>
             </BlockStack>
           </Card>
         
