@@ -740,6 +740,14 @@ export default function DailyDiscounts() {
       discountPercentage?: number,
       originalPrice?: number,
       discountedPrice?: number
+    }>,
+    processedProducts?: Array<{
+      title: string,
+      originalPrice: number,
+      discountedPrice: number,
+      discountPercentage: number,
+      savingsAmount: number,
+      savingsPercentage: string
     }>
   } | null>(null);
   const submit = useSubmit();
@@ -966,7 +974,8 @@ export default function DailyDiscounts() {
     });
   };
   
-  // Apply discounts to multiple selected products in a simpler, more efficient way
+  // Apply discounts to multiple selected products using direct API calls
+  // This ensures each product gets a unique randomized discount
   const applyMultipleDiscounts = async () => {
     if (!multipleRandomProducts || !discount || selectedProducts.size === 0) return;
     
@@ -977,40 +986,46 @@ export default function DailyDiscounts() {
     let successCount = 0;
     let failedCount = 0;
     let failedProducts = [];
+    let processedProducts = [];
     
     // Convert set to array and sort for predictable processing order
     const selectedIndices = Array.from(selectedProducts).sort();
     console.log(`Starting batch application of discounts to ${selectedIndices.length} products`);
     
-    // Process products one at a time to prevent server overload
-    const DELAY_BETWEEN_REQUESTS = 3000; // 3 second delay between requests
-    
-    for (const index of selectedIndices) {
+    // Process one product at a time with sufficient delay
+    const DELAY_BETWEEN_REQUESTS = 2000; // 2 second delay
+
+    for (let i = 0; i < selectedIndices.length; i++) {
+      const index = selectedIndices[i];
       const product = multipleRandomProducts[index];
       
-      // Calculate a unique random discount for this product
-      // Completely independent of the main discount
-      const randomDiscountPercent = Math.floor(Math.random() * 16) + 10; // 10-25%
+      // Fully randomize discount for each product (10-25% range)
+      const randomDiscountPercent = Math.floor(Math.random() * 16) + 10;
       
-      // Calculate product-specific profit margin and discount
+      // Calculate discount based on product's specific details
       const profit = product.sellingPrice - product.cost;
       const profitMargin = profit / product.sellingPrice * 100;
       
-      // Calculate discounted profit
+      // Calculate the discounted profit amount
       const discountFactor = 1 - (randomDiscountPercent / 100);
       const discountedProfit = profit * discountFactor;
       
-      // Calculate new price with .99 ending
+      // Calculate new price with attractive .99 ending
       const newPrice = product.cost + discountedProfit;
       const roundedPrice = Math.floor(newPrice * 100) / 100;
       const discountedPrice = Math.floor(roundedPrice) + 0.99;
       
-      // Calculate savings
+      // Calculate savings amount and percentage
       const savingsAmount = product.sellingPrice - discountedPrice;
       const savingsPercentage = (savingsAmount / product.sellingPrice) * 100;
       
-      // Create form data manually rather than using helper function
-      // This ensures we're using fresh calculations for each product
+      // Log what we're about to process
+      console.log(`Processing product ${i+1}/${selectedIndices.length}: ${product.title}`);
+      console.log(`  Original: ${formatCurrency(product.sellingPrice, product.currencyCode)} → Discounted: ${formatCurrency(discountedPrice, product.currencyCode)}`);
+      console.log(`  Discount: ${randomDiscountPercent}% of profit margin (${profitMargin.toFixed(1)}%)`);
+      console.log(`  Savings: ${formatCurrency(savingsAmount, product.currencyCode)} (${savingsPercentage.toFixed(1)}%)`);
+      
+      // Prepare form data with all required fields
       const formData = new FormData();
       formData.append("variantId", product.variantId);
       formData.append("newPrice", discountedPrice.toString());
@@ -1022,6 +1037,7 @@ export default function DailyDiscounts() {
         formData.append("variantTitle", product.variantTitle);
       }
       
+      // Include all metadata for logging and calculations
       formData.append("originalPrice", product.sellingPrice.toString());
       formData.append("costPrice", product.cost.toString());
       formData.append("profitMargin", profitMargin.toString());
@@ -1033,20 +1049,60 @@ export default function DailyDiscounts() {
       formData.append("inventoryQuantity", product.inventoryQuantity.toString());
       formData.append("notes", `Randomized ${randomDiscountPercent}% profit discount (${product.hasCostData ? "actual cost" : "estimated cost"})`);
       
-      console.log(`Processing product ${index + 1}/${selectedIndices.length}: ${product.title}`);
-      console.log(`  Original price: ${product.sellingPrice}, Discounted price: ${discountedPrice}, Discount: ${randomDiscountPercent}% of profit`);
-      
       try {
-        // Use a direct form submission instead of fetch to avoid JSON/HTML parsing issues
-        submit(formData, { method: "post", replace: false });
+        // Use fetch directly instead of submit() for better control
+        const response = await fetch('/app/daily-discounts', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            // Include CSRF token if available
+            ...(document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
+               ? {'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')} 
+               : {})
+          }
+        });
         
-        // Track success
-        successCount++;
+        if (response.ok) {
+          successCount++;
+          processedProducts.push({
+            title: product.title,
+            originalPrice: product.sellingPrice,
+            discountedPrice: discountedPrice,
+            discountPercentage: randomDiscountPercent,
+            savingsAmount: savingsAmount,
+            savingsPercentage: savingsPercentage.toFixed(1)
+          });
+          console.log(`✓ Successfully applied discount to ${product.title}`);
+        } else {
+          failedCount++;
+          let errorText = await response.text();
+          let errorMessage = "Server returned an error response";
+          
+          try {
+            // Try to parse error as JSON
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch (e) {
+            // If not JSON, use text snippet
+            errorMessage = errorText.length > 100 ? 
+              `${errorText.substring(0, 100)}...` : errorText;
+          }
+          
+          failedProducts.push({
+            title: product.title,
+            variantId: product.variantId,
+            error: errorMessage,
+            discountPercentage: randomDiscountPercent,
+            originalPrice: product.sellingPrice,
+            discountedPrice: discountedPrice
+          });
+          console.error(`✗ Failed to apply discount to ${product.title}: ${errorMessage}`);
+        }
         
-        // Wait between requests to avoid server overload
+        // Wait between requests to avoid overwhelming the server
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
       } catch (error) {
-        // Track any failures
+        // Handle network or other errors
         failedCount++;
         failedProducts.push({
           title: product.title,
@@ -1056,15 +1112,18 @@ export default function DailyDiscounts() {
           originalPrice: product.sellingPrice,
           discountedPrice: discountedPrice
         });
+        console.error(`✗ Error applying discount to ${product.title}:`, error);
       }
     }
     
     console.log(`Batch discount application completed: ${successCount} succeeded, ${failedCount} failed`);
     
+    // Store results for display in the modal
     setBatchResults({
       success: successCount,
       failed: failedCount,
-      failedProducts: failedProducts
+      failedProducts: failedProducts,
+      processedProducts: processedProducts
     });
     
     setApplyingMultiple(false);
@@ -1074,10 +1133,20 @@ export default function DailyDiscounts() {
     if (successCount > 0) {
       setSuccessToast({
         active: true,
-        message: `Started applying ${successCount} unique discounts - check results after refreshing`
+        message: `Successfully applied ${successCount} unique discounts${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
       });
       
       // Auto-hide toast after 5 seconds
+      setTimeout(() => {
+        setSuccessToast(prev => ({ ...prev, active: false }));
+      }, 5000);
+    } else if (failedCount > 0) {
+      // Show error toast if all failed
+      setSuccessToast({
+        active: true,
+        message: `Failed to apply discounts to ${failedCount} products. See details for more information.`
+      });
+      
       setTimeout(() => {
         setSuccessToast(prev => ({ ...prev, active: false }));
       }, 5000);
@@ -1903,15 +1972,39 @@ export default function DailyDiscounts() {
               <BlockStack gap="400">
                 {batchResults.success > 0 && (
                   <Box background="bg-surface-success" padding="400" borderRadius="200">
-                    <BlockStack gap="300">
+                    <BlockStack gap="400">
                       <Text variant="headingSm">Successfully updated products:</Text>
-                      <InlineStack wrap={true} gap="200">
-                        <Text variant="bodySm">
-                          Each product received a unique randomized discount between 10-25% of their profit margin.
-                          This creates an engaging variety of savings for your customers while ensuring all products
-                          remain profitable.
-                        </Text>
-                      </InlineStack>
+                      <Text variant="bodySm">
+                        Each product received a unique randomized discount between 10-25% of their profit margin.
+                        This creates an engaging variety of savings for your customers while ensuring all products
+                        remain profitable.
+                      </Text>
+                      
+                      {batchResults.processedProducts && batchResults.processedProducts.length > 0 && (
+                        <BlockStack gap="300">
+                          {batchResults.processedProducts.map((product, index) => (
+                            <Box key={index} padding="300" background="bg-surface" borderRadius="200">
+                              <BlockStack gap="200">
+                                <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
+                                <InlineStack wrap={true} gap="200">
+                                  <Text variant="bodySm">
+                                    Original: {formatCurrency(product.originalPrice)}
+                                  </Text>
+                                  <Text variant="bodySm" tone="success">
+                                    Discounted: {formatCurrency(product.discountedPrice)}
+                                  </Text>
+                                  <Text variant="bodySm" tone="success">
+                                    Savings: {formatCurrency(product.savingsAmount)} ({product.savingsPercentage}%)
+                                  </Text>
+                                  <Text variant="bodySm">
+                                    Discount: {product.discountPercentage}% of profit
+                                  </Text>
+                                </InlineStack>
+                              </BlockStack>
+                            </Box>
+                          ))}
+                        </BlockStack>
+                      )}
                     </BlockStack>
                   </Box>
                 )}
