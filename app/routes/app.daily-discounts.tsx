@@ -728,6 +728,9 @@ export default function DailyDiscounts() {
   });
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
+  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [applyingMultiple, setApplyingMultiple] = useState(false);
+  const [batchResults, setBatchResults] = useState<{success: number, failed: number} | null>(null);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -834,19 +837,19 @@ export default function DailyDiscounts() {
     setTimeout(() => setIsGeneratingDiscount(false), 800);
   };
   
-  // Apply the discount to the product
-  const applyDiscount = () => {
-    if (!multipleRandomProducts || multipleRandomProducts.length === 0 || !discount) return;
+  // Helper function to prepare form data for a product
+  const prepareProductFormData = (productIndex: number) => {
+    if (!multipleRandomProducts || !discount) return null;
     
-    const selectedProduct = multipleRandomProducts[selectedProductIndex];
+    const product = multipleRandomProducts[productIndex];
+    if (!product) return null;
     
     const formData = new FormData();
-    formData.append("variantId", selectedProduct.variantId);
+    formData.append("variantId", product.variantId);
     formData.append("newPrice", discount.discountedPrice.toString());
     
     // Get product ID from the product's full ID
-    // Product ID should be in the format "gid://shopify/Product/123456789"
-    let productId = selectedProduct.id;
+    let productId = product.id;
     
     // If for some reason we need to fix the format of the product ID
     if (!productId.includes("gid://shopify/Product/")) {
@@ -859,34 +862,115 @@ export default function DailyDiscounts() {
     formData.append("productId", productId);
     
     // Always set compareAtPrice to original price to ensure it appears as a sale
-    formData.append("compareAtPrice", selectedProduct.sellingPrice.toString());
+    formData.append("compareAtPrice", product.sellingPrice.toString());
     
     // Add all the fields needed for logging to the database
-    formData.append("productTitle", selectedProduct.title);
-    if (selectedProduct.variantTitle) {
-      formData.append("variantTitle", selectedProduct.variantTitle);
+    formData.append("productTitle", product.title);
+    if (product.variantTitle) {
+      formData.append("variantTitle", product.variantTitle);
     }
-    formData.append("originalPrice", selectedProduct.sellingPrice.toString());
-    formData.append("costPrice", selectedProduct.cost.toString());
+    formData.append("originalPrice", product.sellingPrice.toString());
+    formData.append("costPrice", product.cost.toString());
     formData.append("profitMargin", discount.profitMargin.toString());
     formData.append("discountPercentage", discount.discountPercentage.toString());
     formData.append("savingsAmount", discount.savingsAmount.toString());
     formData.append("savingsPercentage", discount.savingsPercentage.toString());
-    formData.append("currencyCode", selectedProduct.currencyCode);
-    formData.append("imageUrl", selectedProduct.imageUrl);
-    formData.append("inventoryQuantity", selectedProduct.inventoryQuantity.toString());
-    formData.append("notes", selectedProduct.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
+    formData.append("currencyCode", product.currencyCode);
+    formData.append("imageUrl", product.imageUrl);
+    formData.append("inventoryQuantity", product.inventoryQuantity.toString());
+    formData.append("notes", product.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
+    
+    return formData;
+  };
+  
+  // Apply the discount to the selected product
+  const applyDiscount = () => {
+    if (!multipleRandomProducts || multipleRandomProducts.length === 0 || !discount) return;
+    
+    const formData = prepareProductFormData(selectedProductIndex);
+    if (!formData) return;
     
     submit(formData, { method: "post" });
     setIsPriceUpdated(true);
     
     // Log the form data being sent
-    console.log("Submitting discount with data:", {
-      variantId: selectedProduct.variantId,
-      productId: productId,
-      newPrice: discount.discountedPrice.toString(),
-      compareAtPrice: selectedProduct.sellingPrice.toString()
+    console.log("Submitting discount for single product:", {
+      variantId: multipleRandomProducts[selectedProductIndex].variantId,
+      productId: multipleRandomProducts[selectedProductIndex].id,
+      newPrice: discount.discountedPrice.toString()
     });
+  };
+  
+  // Apply discounts to multiple selected products
+  const applyMultipleDiscounts = async () => {
+    if (!multipleRandomProducts || !discount || selectedProducts.size === 0) return;
+    
+    setApplyingMultiple(true);
+    setBatchResults(null);
+    
+    let successCount = 0;
+    let failedCount = 0;
+    
+    // Convert set to array and sort for predictable processing order
+    const selectedIndices = Array.from(selectedProducts).sort();
+    
+    for (const index of selectedIndices) {
+      const formData = prepareProductFormData(index);
+      if (!formData) {
+        failedCount++;
+        continue;
+      }
+      
+      try {
+        // We'll create and submit a fetch request manually instead of using submit()
+        // This allows us to track individual successes/failures
+        const response = await fetch('/app/daily-discounts', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === "success") {
+            successCount++;
+          } else {
+            failedCount++;
+            console.error("Error applying discount to product:", multipleRandomProducts[index].title, data.message);
+          }
+        } else {
+          failedCount++;
+          console.error("Failed to apply discount to product:", multipleRandomProducts[index].title);
+        }
+      } catch (error) {
+        failedCount++;
+        console.error("Exception applying discount to product:", multipleRandomProducts[index].title, error);
+      }
+    }
+    
+    setBatchResults({
+      success: successCount,
+      failed: failedCount
+    });
+    
+    setApplyingMultiple(false);
+    
+    // Show success toast
+    if (successCount > 0) {
+      setSuccessToast({
+        active: true,
+        message: `Successfully applied discounts to ${successCount} products${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
+      });
+      
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => {
+        setSuccessToast(prev => ({ ...prev, active: false }));
+      }, 5000);
+      
+      // Refresh the page after a short delay to update the discount logs
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    }
   };
   
   // Format currency
@@ -1228,37 +1312,112 @@ export default function DailyDiscounts() {
               {multipleRandomProducts && multipleRandomProducts.length > 0 && (
                 <Box padding="400">
                   <BlockStack gap="400">
-                    <Text variant="headingSm">Click a product to select it for discount:</Text>
+                    <InlineStack gap="200" align="space-between" blockAlign="center">
+                      <Text variant="headingSm">Select products for discount:</Text>
+                      
+                      <Button 
+                        disabled={selectedProducts.size === 0 || isGeneratingDiscount || isPriceUpdated}
+                        onClick={() => {
+                          if (selectedProducts.size > 0) {
+                            setSelectedProducts(new Set());
+                          } else {
+                            // Select all products
+                            const allIndices = new Set(multipleRandomProducts.map((_, i) => i));
+                            setSelectedProducts(allIndices);
+                          }
+                        }}
+                        size="slim"
+                      >
+                        {selectedProducts.size > 0 ? "Deselect All" : "Select All"}
+                      </Button>
+                    </InlineStack>
                     
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                       {multipleRandomProducts.map((product, index) => (
                         <div 
                           key={product.id} 
-                          onClick={() => setSelectedProductIndex(index)}
                           style={{ 
-                            cursor: 'pointer', 
                             padding: '8px',
                             border: selectedProductIndex === index ? '2px solid #2C6ECB' : '1px solid #ddd',
                             borderRadius: '8px',
                             backgroundColor: selectedProductIndex === index ? '#F4F6F8' : 'white',
+                            position: 'relative'
                           }}
                         >
-                          <BlockStack gap="200" alignment="center">
-                            <Thumbnail
-                              source={product.imageUrl}
-                              alt={product.title}
-                              size="medium"
-                            />
-                            <Text variant="bodySm" fontWeight={selectedProductIndex === index ? "bold" : "regular"}>
-                              {product.title.length > 20 ? product.title.substring(0, 20) + '...' : product.title}
-                            </Text>
-                            <Text variant="bodySm" tone="subdued">
-                              {formatCurrency(product.sellingPrice, product.currencyCode)}
-                            </Text>
-                          </BlockStack>
+                          <div 
+                            style={{ 
+                              position: 'absolute',
+                              top: '8px',
+                              right: '8px',
+                              zIndex: 10
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent triggering the parent's onClick
+                              
+                              // Toggle this product's selection
+                              const newSelection = new Set(selectedProducts);
+                              if (newSelection.has(index)) {
+                                newSelection.delete(index);
+                              } else {
+                                newSelection.add(index);
+                              }
+                              setSelectedProducts(newSelection);
+                            }}
+                          >
+                            <div style={{ 
+                              width: '24px', 
+                              height: '24px', 
+                              border: '2px solid #637381',
+                              borderRadius: '4px',
+                              backgroundColor: selectedProducts.has(index) ? '#2C6ECB' : 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer'
+                            }}>
+                              {selectedProducts.has(index) && (
+                                <span style={{ color: 'white' }}>✓</span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div onClick={() => setSelectedProductIndex(index)} style={{ cursor: 'pointer' }}>
+                            <BlockStack gap="200" alignment="center">
+                              <Thumbnail
+                                source={product.imageUrl}
+                                alt={product.title}
+                                size="medium"
+                              />
+                              <Text variant="bodySm" fontWeight={selectedProductIndex === index ? "bold" : "regular"}>
+                                {product.title.length > 20 ? product.title.substring(0, 20) + '...' : product.title}
+                              </Text>
+                              <Text variant="bodySm" tone="subdued">
+                                {formatCurrency(product.sellingPrice, product.currencyCode)}
+                              </Text>
+                            </BlockStack>
+                          </div>
                         </div>
                       ))}
                     </div>
+                    
+                    {selectedProducts.size > 1 && (
+                      <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                        <InlineStack gap="400" align="space-between" blockAlign="center">
+                          <Text variant="bodyMd">
+                            <strong>{selectedProducts.size}</strong> products selected for batch discount
+                          </Text>
+                          
+                          <Button 
+                            onClick={() => applyMultipleDiscounts()}
+                            primary
+                            loading={applyingMultiple}
+                            disabled={isPriceUpdated || isGeneratingDiscount || !discount}
+                          >
+                            Apply Discount to All Selected
+                          </Button>
+                        </InlineStack>
+                      </Box>
+                    )}
                   </BlockStack>
                 </Box>
               )}
@@ -1567,6 +1726,39 @@ export default function DailyDiscounts() {
           duration={4000}
           tone="success"
         />
+      )}
+      
+      {/* Batch results modal */}
+      {batchResults && (
+        <Modal
+          open={!!batchResults}
+          onClose={() => setBatchResults(null)}
+          title="Batch Discount Results"
+          primaryAction={{
+            content: "OK",
+            onAction: () => setBatchResults(null)
+          }}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Text variant="bodyLg">
+                {batchResults.success > 0 ? (
+                  <span style={{ color: 'var(--p-text-success)' }}>✓ Successfully applied discounts to {batchResults.success} products</span>
+                ) : null}
+              </Text>
+              
+              {batchResults.failed > 0 && (
+                <Text variant="bodyLg" tone="critical">
+                  ✗ Failed to apply discounts to {batchResults.failed} products
+                </Text>
+              )}
+              
+              <Text variant="bodyMd">
+                The page will refresh in a moment to update the discount history.
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
       )}
       
       {/* Revert confirmation modal */}
