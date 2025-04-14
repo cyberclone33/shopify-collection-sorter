@@ -14,31 +14,36 @@ export async function getEligibleProducts(
   count: number = 6
 ) {
   try {
+    console.log(`[getEligibleProducts] Fetching products for shop: ${shop}`);
     // Fetch products with inventory, cost, and price data
     // We're getting up to 50 products to have a good pool for random selection
-    const response = await admin.graphql(`
-      query GetProductsWithInventory {
-        products(first: 50) {
-          edges {
-            node {
-              id
-              title
-              featuredImage {
-                url
-                altText
-              }
-              variants(first: 1) {
-                edges {
-                  node {
-                    id
-                    title
-                    price
-                    compareAtPrice
-                    inventoryQuantity
-                    inventoryItem {
-                      unitCost {
-                        amount
-                        currencyCode
+    console.log(`[getEligibleProducts] Executing GraphQL query for shop: ${shop}`);
+    let response;
+    try {
+      response = await admin.graphql(`
+        query GetProductsWithInventory {
+          products(first: 50) {
+            edges {
+              node {
+                id
+                title
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price
+                      compareAtPrice
+                      inventoryQuantity
+                      inventoryItem {
+                        unitCost {
+                          amount
+                          currencyCode
+                        }
                       }
                     }
                   }
@@ -47,10 +52,15 @@ export async function getEligibleProducts(
             }
           }
         }
-      }
-    `);
+      `);
+    } catch (graphqlError) {
+      console.error(`[getEligibleProducts] GraphQL error:`, graphqlError);
+      throw new Error(`GraphQL query failed: ${graphqlError.message || 'Unknown GraphQL error'}`);
+    }
 
+    console.log(`[getEligibleProducts] Got GraphQL response for shop: ${shop}`);
     const responseJson = await response.json();
+    console.log(`[getEligibleProducts] Response structure:`, JSON.stringify(responseJson).substring(0, 200) + '...');
     
     // First, check if we received any products at all
     if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {

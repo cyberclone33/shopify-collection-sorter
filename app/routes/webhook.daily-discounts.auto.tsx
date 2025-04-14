@@ -57,15 +57,32 @@ export async function action({ request }: ActionFunctionArgs) {
         
         // Get the admin API context for this shop
         console.log(`[Auto-Discount] Getting admin API context for shop: ${shop}`);
-        const { admin } = await authenticate.admin(request, shop);
+        try {
+          const { admin } = await authenticate.admin(request, shop);
+          console.log(`[Auto-Discount] Successfully got admin API context for shop: ${shop}`);
         
         // Step 1: Find and revert previous auto-discounts
-        const previousDiscounts = await getPreviousAutoDiscounts(shop);
-        const revertResults = await revertPreviousDiscounts(admin, shop, previousDiscounts);
+        try {
+          console.log(`[Auto-Discount] Finding previous auto-discounts for shop: ${shop}`);
+          const previousDiscounts = await getPreviousAutoDiscounts(shop);
+          console.log(`[Auto-Discount] Found ${previousDiscounts.length} previous auto-discounts for shop: ${shop}`);
+          
+          console.log(`[Auto-Discount] Reverting previous discounts for shop: ${shop}`);
+          const revertResults = await revertPreviousDiscounts(admin, shop, previousDiscounts);
+          console.log(`[Auto-Discount] Revert results:`, JSON.stringify(revertResults));
+        } catch (revertError) {
+          console.error(`[Auto-Discount] Error reverting discounts:`, revertError);
+        }
         
         // Step 2: Get eligible products
         console.log(`[Auto-Discount] Getting eligible products for shop: ${shop}`);
-        const eligibleProductsResult = await getEligibleProducts(admin, shop, 6); // Get 6 products
+        let eligibleProductsResult;
+        try {
+          eligibleProductsResult = await getEligibleProducts(admin, shop, 6); // Get 6 products
+        } catch (productsError) {
+          console.error(`[Auto-Discount] Error getting eligible products:`, productsError);
+          throw new Error(`Failed to get eligible products: ${productsError.message || 'Unknown error'}`);
+        }
         
         console.log(`[Auto-Discount] Eligible products result:`, JSON.stringify(eligibleProductsResult));
         
@@ -121,6 +138,11 @@ export async function action({ request }: ActionFunctionArgs) {
           revertResults,
           discountResults
         });
+        
+        } catch (adminError) {
+          console.error(`[Auto-Discount] Error with admin API for shop ${shop}:`, adminError);
+          throw adminError;
+        }
         
       } catch (shopError) {
         results.failed++;
