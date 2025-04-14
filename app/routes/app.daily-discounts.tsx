@@ -1183,10 +1183,20 @@ export default function DailyDiscounts() {
               
               {loaderData.totalProductsScanned && (
                 <Banner tone="info">
-                  <Text variant="bodyMd">
-                    Randomly selected from {loaderData.totalProductsScanned} products in your store
-                    ({loaderData.productStats?.eligible || 0} eligible with images and inventory)
-                  </Text>
+                  <BlockStack gap="200">
+                    <Text variant="bodyMd">
+                      Randomly selected from {loaderData.totalProductsScanned} products in your store
+                      ({loaderData.productStats?.eligible || 0} eligible with images and inventory)
+                    </Text>
+                    
+                    {loaderData.productStats && (
+                      <Text variant="bodySm" tone="subdued">
+                        Products not eligible: {loaderData.totalProductsScanned - (loaderData.productStats.eligible || 0)} 
+                        ({loaderData.totalProductsScanned - (loaderData.productStats.withImage || 0)} missing images, 
+                        {loaderData.totalProductsScanned - (loaderData.productStats.withInventory || 0)} out of stock)
+                      </Text>
+                    )}
+                  </BlockStack>
                 </Banner>
               )}
               
