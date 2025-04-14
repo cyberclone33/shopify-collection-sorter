@@ -404,7 +404,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       eligible: productStats.eligible
     });
     
+    // Select multiple random products to suggest
     let randomProduct = null;
+    let multipleRandomProducts = [];
+    const NUM_RANDOM_PRODUCTS = 6; // Number of random products to select
+    
     if (eligibleRandomProducts.length > 0) {
       console.log(`Found ${eligibleRandomProducts.length} eligible products for random selection`);
       
@@ -417,9 +421,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.log(`${index + 1}. ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
       });
       
-      // Take the first product after shuffling
-      randomProduct = shuffledProducts[0];
-      console.log(`Selected random product: ${randomProduct.title} (Variant ID: ${randomProduct.variantId.split('/').pop()})`);
+      // Take the first N products after shuffling (or all if less than N)
+      multipleRandomProducts = shuffledProducts.slice(0, NUM_RANDOM_PRODUCTS);
+      
+      // Set the first one as the primary random product (for backward compatibility)
+      randomProduct = multipleRandomProducts[0];
+      
+      // Log the selected products
+      console.log(`Selected ${multipleRandomProducts.length} random products for display`);
+      multipleRandomProducts.forEach((product, index) => {
+        console.log(`Selected random product ${index + 1}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
+      });
     } else {
       console.log("No eligible products found for random selection");
     }
@@ -428,6 +440,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       status: "success",
       taggedProducts,
       randomProduct,
+      multipleRandomProducts,
       recentDiscountLogs,
       tagName: TAG_NAME,
       productStats: productStats,
@@ -703,7 +716,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const { randomProduct, status, message, recentDiscountLogs, taggedProducts, tagName } = loaderData;
+  const { randomProduct, multipleRandomProducts, status, message, recentDiscountLogs, taggedProducts, tagName } = loaderData;
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -714,6 +727,7 @@ export default function DailyDiscounts() {
     message: ""
   });
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
+  const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const submit = useSubmit();
   
   // Store authentication info in localStorage when the component loads
@@ -781,14 +795,16 @@ export default function DailyDiscounts() {
   
   // Function to generate a random discount
   const generateRandomDiscount = () => {
-    if (!randomProduct) return;
+    if (!multipleRandomProducts || multipleRandomProducts.length === 0) return;
+    
+    const selectedProduct = multipleRandomProducts[selectedProductIndex];
     
     setIsGeneratingDiscount(true);
     setIsPriceUpdated(false);
     
     // Calculate profit margin
-    const profit = randomProduct.sellingPrice - randomProduct.cost;
-    const profitMargin = profit / randomProduct.sellingPrice * 100;
+    const profit = selectedProduct.sellingPrice - selectedProduct.cost;
+    const profitMargin = profit / selectedProduct.sellingPrice * 100;
     
     // Generate random discount percentage between 10% and 25%
     const discountPercentage = Math.floor(Math.random() * 16) + 10; // 10 to 25
@@ -798,18 +814,18 @@ export default function DailyDiscounts() {
     const discountedProfit = profit * discountFactor;
     
     // Calculate new price (cost + discounted profit)
-    const newPrice = randomProduct.cost + discountedProfit;
+    const newPrice = selectedProduct.cost + discountedProfit;
     const roundedPrice = Math.ceil(newPrice * 100) / 100; // Round up to nearest cent
     
     // Calculate savings
-    const savingsAmount = randomProduct.sellingPrice - roundedPrice;
-    const savingsPercentage = (savingsAmount / randomProduct.sellingPrice) * 100;
+    const savingsAmount = selectedProduct.sellingPrice - roundedPrice;
+    const savingsPercentage = (savingsAmount / selectedProduct.sellingPrice) * 100;
     
     // Set discount data
     setDiscount({
       profitMargin: profitMargin,
       discountPercentage: discountPercentage,
-      originalPrice: randomProduct.sellingPrice,
+      originalPrice: selectedProduct.sellingPrice,
       discountedPrice: roundedPrice,
       savingsAmount: savingsAmount,
       savingsPercentage: savingsPercentage
@@ -820,15 +836,17 @@ export default function DailyDiscounts() {
   
   // Apply the discount to the product
   const applyDiscount = () => {
-    if (!randomProduct || !discount) return;
+    if (!multipleRandomProducts || multipleRandomProducts.length === 0 || !discount) return;
+    
+    const selectedProduct = multipleRandomProducts[selectedProductIndex];
     
     const formData = new FormData();
-    formData.append("variantId", randomProduct.variantId);
+    formData.append("variantId", selectedProduct.variantId);
     formData.append("newPrice", discount.discountedPrice.toString());
     
     // Get product ID from the product's full ID
     // Product ID should be in the format "gid://shopify/Product/123456789"
-    let productId = randomProduct.id;
+    let productId = selectedProduct.id;
     
     // If for some reason we need to fix the format of the product ID
     if (!productId.includes("gid://shopify/Product/")) {
@@ -841,33 +859,33 @@ export default function DailyDiscounts() {
     formData.append("productId", productId);
     
     // Always set compareAtPrice to original price to ensure it appears as a sale
-    formData.append("compareAtPrice", randomProduct.sellingPrice.toString());
+    formData.append("compareAtPrice", selectedProduct.sellingPrice.toString());
     
     // Add all the fields needed for logging to the database
-    formData.append("productTitle", randomProduct.title);
-    if (randomProduct.variantTitle) {
-      formData.append("variantTitle", randomProduct.variantTitle);
+    formData.append("productTitle", selectedProduct.title);
+    if (selectedProduct.variantTitle) {
+      formData.append("variantTitle", selectedProduct.variantTitle);
     }
-    formData.append("originalPrice", randomProduct.sellingPrice.toString());
-    formData.append("costPrice", randomProduct.cost.toString());
+    formData.append("originalPrice", selectedProduct.sellingPrice.toString());
+    formData.append("costPrice", selectedProduct.cost.toString());
     formData.append("profitMargin", discount.profitMargin.toString());
     formData.append("discountPercentage", discount.discountPercentage.toString());
     formData.append("savingsAmount", discount.savingsAmount.toString());
     formData.append("savingsPercentage", discount.savingsPercentage.toString());
-    formData.append("currencyCode", randomProduct.currencyCode);
-    formData.append("imageUrl", randomProduct.imageUrl);
-    formData.append("inventoryQuantity", randomProduct.inventoryQuantity.toString());
-    formData.append("notes", randomProduct.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
+    formData.append("currencyCode", selectedProduct.currencyCode);
+    formData.append("imageUrl", selectedProduct.imageUrl);
+    formData.append("inventoryQuantity", selectedProduct.inventoryQuantity.toString());
+    formData.append("notes", selectedProduct.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
     
     submit(formData, { method: "post" });
     setIsPriceUpdated(true);
     
     // Log the form data being sent
     console.log("Submitting discount with data:", {
-      variantId: randomProduct.variantId,
+      variantId: selectedProduct.variantId,
       productId: productId,
       newPrice: discount.discountedPrice.toString(),
-      compareAtPrice: randomProduct.sellingPrice.toString()
+      compareAtPrice: selectedProduct.sellingPrice.toString()
     });
   };
   
@@ -881,6 +899,13 @@ export default function DailyDiscounts() {
   };
   
   // Check for action data updates
+  // Make sure the selected product index is valid
+  useEffect(() => {
+    if (multipleRandomProducts && selectedProductIndex >= multipleRandomProducts.length) {
+      setSelectedProductIndex(0);
+    }
+  }, [multipleRandomProducts]);
+
   useEffect(() => {
     // Check for errors from the action
     if (actionData && actionData.status === "error") {
@@ -921,12 +946,12 @@ export default function DailyDiscounts() {
     }
   }, [actionData]);
 
-  // Generate a discount when the component loads
+  // Generate a discount when the component loads or when the selected product changes
   useEffect(() => {
-    if (randomProduct) {
+    if (multipleRandomProducts && multipleRandomProducts.length > 0) {
       generateRandomDiscount();
     }
-  }, [randomProduct]);
+  }, [multipleRandomProducts, selectedProductIndex]);
   
   // Show confirmation dialog for reverting a discount
   const handleRevertDiscount = (log: any) => {
@@ -1178,7 +1203,7 @@ export default function DailyDiscounts() {
           <Card>
             <BlockStack gap="600">
               <Text as="h2" variant="headingMd" alignment="center">
-                Today's Featured Product
+                Random Products for Discount
               </Text>
               
               {loaderData.totalProductsScanned && (
@@ -1200,7 +1225,45 @@ export default function DailyDiscounts() {
                 </Banner>
               )}
               
-              {!randomProduct ? (
+              {multipleRandomProducts && multipleRandomProducts.length > 0 && (
+                <Box padding="400">
+                  <BlockStack gap="400">
+                    <Text variant="headingSm">Click a product to select it for discount:</Text>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                      {multipleRandomProducts.map((product, index) => (
+                        <div 
+                          key={product.id} 
+                          onClick={() => setSelectedProductIndex(index)}
+                          style={{ 
+                            cursor: 'pointer', 
+                            padding: '8px',
+                            border: selectedProductIndex === index ? '2px solid #2C6ECB' : '1px solid #ddd',
+                            borderRadius: '8px',
+                            backgroundColor: selectedProductIndex === index ? '#F4F6F8' : 'white',
+                          }}
+                        >
+                          <BlockStack gap="200" alignment="center">
+                            <Thumbnail
+                              source={product.imageUrl}
+                              alt={product.title}
+                              size="medium"
+                            />
+                            <Text variant="bodySm" fontWeight={selectedProductIndex === index ? "bold" : "regular"}>
+                              {product.title.length > 20 ? product.title.substring(0, 20) + '...' : product.title}
+                            </Text>
+                            <Text variant="bodySm" tone="subdued">
+                              {formatCurrency(product.sellingPrice, product.currencyCode)}
+                            </Text>
+                          </BlockStack>
+                        </div>
+                      ))}
+                    </div>
+                  </BlockStack>
+                </Box>
+              )}
+              
+              {!multipleRandomProducts || multipleRandomProducts.length === 0 ? (
                 <BlockStack gap="400">
                   <Box padding="400" style={{ textAlign: "center" }}>
                     <SkeletonDisplayText size="large" />
@@ -1213,22 +1276,24 @@ export default function DailyDiscounts() {
               ) : (
                 <BlockStack gap="400">
                   <TextContainer spacing="tight">
-                    <Text as="h3" variant="headingLg" alignment="center">{randomProduct.title}</Text>
-                    {randomProduct.variantTitle && (
+                    <Text as="h3" variant="headingLg" alignment="center">
+                      {multipleRandomProducts[selectedProductIndex].title}
+                    </Text>
+                    {multipleRandomProducts[selectedProductIndex].variantTitle && (
                       <Text as="p" variant="bodyMd" alignment="center">
-                        Variant: {randomProduct.variantTitle}
+                        Variant: {multipleRandomProducts[selectedProductIndex].variantTitle}
                       </Text>
                     )}
                     <Text as="p" variant="bodySm" alignment="center" tone="subdued">
-                      Variant ID: {randomProduct.variantId.split("/").pop()}
+                      Variant ID: {multipleRandomProducts[selectedProductIndex].variantId.split("/").pop()}
                     </Text>
                   </TextContainer>
                   
                   <Box padding="400" style={{ textAlign: "center" }}>
                     <div style={{ margin: "0 auto", maxWidth: "300px" }}>
                       <Thumbnail
-                        source={randomProduct.imageUrl}
-                        alt={randomProduct.title}
+                        source={multipleRandomProducts[selectedProductIndex].imageUrl}
+                        alt={multipleRandomProducts[selectedProductIndex].title}
                         size="large"
                       />
                     </div>
@@ -1239,10 +1304,10 @@ export default function DailyDiscounts() {
                       <Box style={{ flex: 1 }}>
                         <BlockStack gap="100">
                           <Text variant="bodyMd" as="span">
-                            Cost {!randomProduct.hasCostData && <span style={{ color: '#bf0711', fontSize: '0.8em' }}>(Estimated)</span>}
+                            Cost {!multipleRandomProducts[selectedProductIndex].hasCostData && <span style={{ color: '#bf0711', fontSize: '0.8em' }}>(Estimated)</span>}
                           </Text>
                           <Text variant="headingMd" as="span" fontWeight="bold">
-                            {formatCurrency(randomProduct.cost, randomProduct.currencyCode)}
+                            {formatCurrency(multipleRandomProducts[selectedProductIndex].cost, multipleRandomProducts[selectedProductIndex].currencyCode)}
                           </Text>
                         </BlockStack>
                       </Box>
@@ -1251,7 +1316,7 @@ export default function DailyDiscounts() {
                         <BlockStack gap="100">
                           <Text variant="bodyMd" as="span">Selling Price</Text>
                           <Text variant="headingMd" as="span" fontWeight="bold">
-                            {formatCurrency(randomProduct.sellingPrice, randomProduct.currencyCode)}
+                            {formatCurrency(multipleRandomProducts[selectedProductIndex].sellingPrice, multipleRandomProducts[selectedProductIndex].currencyCode)}
                           </Text>
                         </BlockStack>
                       </Box>
@@ -1260,8 +1325,8 @@ export default function DailyDiscounts() {
                         <BlockStack gap="100">
                           <Text variant="bodyMd" as="span">Compare At</Text>
                           <Text variant="headingMd" as="span" fontWeight="bold">
-                            {randomProduct.compareAtPrice 
-                              ? formatCurrency(randomProduct.compareAtPrice, randomProduct.currencyCode) 
+                            {multipleRandomProducts[selectedProductIndex].compareAtPrice 
+                              ? formatCurrency(multipleRandomProducts[selectedProductIndex].compareAtPrice, multipleRandomProducts[selectedProductIndex].currencyCode) 
                               : "-"
                             }
                           </Text>
@@ -1272,7 +1337,7 @@ export default function DailyDiscounts() {
                         <BlockStack gap="100">
                           <Text variant="bodyMd" as="span">Inventory</Text>
                           <Text variant="headingMd" as="span" fontWeight="bold">
-                            {randomProduct.inventoryQuantity}
+                            {multipleRandomProducts[selectedProductIndex].inventoryQuantity}
                           </Text>
                         </BlockStack>
                       </Box>
@@ -1346,7 +1411,7 @@ export default function DailyDiscounts() {
                                   onClick={getNewRandomProduct}
                                   tone="critical"
                                 >
-                                  New Random Product
+                                  New Product Selection
                                 </Button>
                                 
                                 <Button 
