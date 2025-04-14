@@ -1978,38 +1978,37 @@ export default function DailyDiscounts() {
                     ✗ Failed to apply discounts to {batchResults.failed} products
                   </Text>
                 )}
-                  
-                  {batchResults.failedProducts && batchResults.failedProducts.length > 0 && (
-                    <Box background="bg-surface-secondary" padding="400" borderRadius="200">
-                      <BlockStack gap="300">
-                        <Text variant="headingSm">Error details:</Text>
-                        {batchResults.failedProducts.map((product, index) => (
-                          <Box key={index} padding="300" background="bg-surface" borderRadius="200">
-                            <BlockStack gap="200">
-                              <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
-                              <Text variant="bodySm">Variant ID: {product.variantId.split('/').pop()}</Text>
-                              {product.discountPercentage && (
-                                <Text variant="bodySm">
-                                  Discount: {product.discountPercentage}% of profit 
-                                  ({product.originalPrice && product.discountedPrice ? 
-                                    `${formatCurrency(product.originalPrice)} → ${formatCurrency(product.discountedPrice)}` : 
-                                    ''})
-                                </Text>
-                              )}
-                              <Text variant="bodyMd" tone="critical">Error: {product.error}</Text>
-                              {product.responsePreview && (
-                                <Text variant="bodySm" tone="subdued">
-                                  Response preview: {product.responsePreview}...
-                                </Text>
-                              )}
-                            </BlockStack>
-                          </Box>
-                        ))}
-                      </BlockStack>
-                    </Box>
-                  )}
-                </BlockStack>
-              )}
+                
+                {batchResults.failedProducts && batchResults.failedProducts.length > 0 && (
+                  <Box background="bg-surface-secondary" padding="400" borderRadius="200">
+                    <BlockStack gap="300">
+                      <Text variant="headingSm">Error details:</Text>
+                      {batchResults.failedProducts.map((product, index) => (
+                        <Box key={index} padding="300" background="bg-surface" borderRadius="200">
+                          <BlockStack gap="200">
+                            <Text variant="bodyMd" fontWeight="bold">{product.title}</Text>
+                            <Text variant="bodySm">Variant ID: {product.variantId.split('/').pop()}</Text>
+                            {product.discountPercentage && (
+                              <Text variant="bodySm">
+                                Discount: {product.discountPercentage}% of profit 
+                                ({product.originalPrice && product.discountedPrice ? 
+                                  `${formatCurrency(product.originalPrice)} → ${formatCurrency(product.discountedPrice)}` : 
+                                  ''})
+                              </Text>
+                            )}
+                            <Text variant="bodyMd" tone="critical">Error: {product.error}</Text>
+                            {product.responsePreview && (
+                              <Text variant="bodySm" tone="subdued">
+                                Response preview: {product.responsePreview}...
+                              </Text>
+                            )}
+                          </BlockStack>
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  </Box>
+                )}
+              </BlockStack>
               
               <Box paddingBlock="400">
                 <Divider />
