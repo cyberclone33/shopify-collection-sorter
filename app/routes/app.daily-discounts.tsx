@@ -52,8 +52,6 @@ interface DiscountData {
   savingsPercentage: number;
 }
 
-import { getRandomProducts } from '../utils/productFetcher';
-
 // Constants
 const DAILY_DISCOUNT_TAG = "DailyDiscount_每日優惠";
 const NUM_RANDOM_PRODUCTS = 6; // How many products to show in UI
@@ -631,4 +629,213 @@ export default function DailyDiscounts() {
   const [isResettingHistory, setIsResettingHistory] = useState(false);
   const submit = useSubmit();
   
-  // Store authentication info in localStorage when the component loads
+  // Function to generate a random discount
+  const generateRandomDiscount = () => {
+    if (!multipleRandomProducts || multipleRandomProducts.length === 0) return;
+    
+    const selectedProduct = multipleRandomProducts[selectedProductIndex];
+    
+    setIsGeneratingDiscount(true);
+    setIsPriceUpdated(false);
+    
+    // Calculate profit margin
+    const profit = selectedProduct.sellingPrice - selectedProduct.cost;
+    const profitMargin = profit / selectedProduct.sellingPrice * 100;
+    
+    // Generate random discount percentage between 10% and 25%
+    const discountPercentage = Math.floor(Math.random() * 16) + 10; // 10 to 25
+    
+    // Calculate discounted profit (applying discount to the profit)
+    const discountFactor = 1 - (discountPercentage / 100);
+    const discountedProfit = profit * discountFactor;
+    
+    // Calculate new price (cost + discounted profit)
+    const newPrice = selectedProduct.cost + discountedProfit;
+    
+    // Make the price end in .99 for more attractive pricing
+    const roundedPrice = Math.floor(newPrice * 100) / 100;
+    const marketingPrice = Math.floor(roundedPrice) + 0.99;
+    
+    // Calculate savings
+    const savingsAmount = selectedProduct.sellingPrice - marketingPrice;
+    const savingsPercentage = (savingsAmount / selectedProduct.sellingPrice) * 100;
+    
+    // Set discount data
+    setDiscount({
+      profitMargin: profitMargin,
+      discountPercentage: discountPercentage,
+      originalPrice: selectedProduct.sellingPrice,
+      discountedPrice: marketingPrice,
+      savingsAmount: savingsAmount,
+      savingsPercentage: savingsPercentage
+    });
+    
+    setTimeout(() => setIsGeneratingDiscount(false), 800);
+  };
+  
+  // Actually perform the revert after confirmation
+  const confirmRevertDiscount = () => {
+    if (!confirmRevert) return;
+    
+    const log = confirmRevert;
+    setIsReverting(log.id);
+    
+    const formData = new FormData();
+    formData.append("variantId", log.variantId);
+    formData.append("newPrice", log.originalPrice.toString());
+    
+    // Set compareAtPrice to null to remove the sale price effect
+    formData.append("compareAtPrice", "");
+    
+    // We need the product ID for the bulk update mutation
+    if (log.productId) {
+      formData.append("productId", log.productId);
+    }
+    
+    // Add additional fields for logging
+    formData.append("productTitle", log.productTitle);
+    if (log.variantTitle) {
+      formData.append("variantTitle", log.variantTitle);
+    }
+    formData.append("originalPrice", log.discountedPrice.toString());
+    formData.append("costPrice", log.costPrice?.toString() || "0");
+    formData.append("currencyCode", log.currencyCode || "USD");
+    
+    // For reversions, savings should be zero (no savings on a reverted price)
+    formData.append("savingsAmount", "0");
+    formData.append("savingsPercentage", "0");
+    formData.append("discountPercentage", "0");
+    
+    // Check if this is from an automated discount and preserve the type in notes
+    // This will ensure reversion logs appear in the same section as the original discount
+    if (log.notes && log.notes.includes("Auto Discount")) {
+      formData.append("notes", "Auto Discount Reverted");
+    } else {
+      formData.append("notes", "Manual UI Discount Reverted");
+    }
+    
+    // Close the confirmation dialog
+    setConfirmRevert(null);
+    
+    // The revert action is just a regular price update back to the original price
+    submit(formData, { method: "post" });
+  };
+  
+  // Apply the discount to a single product
+  const applyDiscount = () => {
+    if (!multipleRandomProducts || multipleRandomProducts.length === 0 || !discount) return;
+    
+    const selectedProduct = multipleRandomProducts[selectedProductIndex];
+    
+    const formData = new FormData();
+    formData.append("variantId", selectedProduct.variantId);
+    formData.append("newPrice", discount.discountedPrice.toString());
+    
+    // Get product ID from the product's full ID
+    let productId = selectedProduct.id;
+    
+    // If for some reason we need to fix the format of the product ID
+    if (!productId.includes("gid://shopify/Product/")) {
+      // If the ID is just a number or has a different format, try to fix it
+      if (/^\d+$/.test(productId)) {
+        productId = `gid://shopify/Product/${productId}`;
+      }
+    }
+    
+    formData.append("productId", productId);
+    
+    // Always set compareAtPrice to original price to ensure it appears as a sale
+    formData.append("compareAtPrice", selectedProduct.sellingPrice.toString());
+    
+    // Add all the fields needed for logging to the database
+    formData.append("productTitle", selectedProduct.title);
+    if (selectedProduct.variantTitle) {
+      formData.append("variantTitle", selectedProduct.variantTitle);
+    }
+    formData.append("originalPrice", selectedProduct.sellingPrice.toString());
+    formData.append("costPrice", selectedProduct.cost.toString());
+    formData.append("profitMargin", discount.profitMargin.toString());
+    formData.append("discountPercentage", discount.discountPercentage.toString());
+    formData.append("savingsAmount", discount.savingsAmount.toString());
+    formData.append("savingsPercentage", discount.savingsPercentage.toString());
+    formData.append("currencyCode", selectedProduct.currencyCode);
+    formData.append("imageUrl", selectedProduct.imageUrl);
+    formData.append("inventoryQuantity", selectedProduct.inventoryQuantity.toString());
+    formData.append("notes", selectedProduct.hasCostData ? "Based on actual cost data" : "Based on estimated cost (50% of price)");
+    
+    submit(formData, { method: "post" });
+    setIsPriceUpdated(true);
+  };
+  
+  // Format currency
+  const formatCurrency = (amount: number, currencyCode: string = "USD") => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+  
+  // Check for action data updates
+  useEffect(() => {
+    // Check for errors from the action
+    if (actionData && actionData.status === "error") {
+      setDiscountError(actionData.message || "Error applying discount");
+      setIsPriceUpdated(false);
+      setIsReverting(null);
+    }
+    
+    // Handle successful action
+    if (actionData && actionData.status === "success") {
+      // Clear any reverting state
+      setIsReverting(null);
+      
+      // If we just reverted a price, show a success message
+      if (actionData.isRevert) {
+        setDiscountError(null);
+        setSuccessToast({
+          active: true,
+          message: "Price successfully reverted to original value"
+        });
+      } else {
+        // If we applied a discount, show a success message about the tag being added
+        setSuccessToast({
+          active: true,
+          message: "Price updated successfully and DailyDiscount_每日優惠 tag added to product"
+        });
+      }
+      
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => {
+        setSuccessToast(prev => ({ ...prev, active: false }));
+      }, 5000);
+    }
+  }, [actionData]);
+
+  // Generate a discount when the component loads or when the selected product changes
+  useEffect(() => {
+    if (multipleRandomProducts && multipleRandomProducts.length > 0) {
+      generateRandomDiscount();
+    }
+  }, [multipleRandomProducts, selectedProductIndex]);
+  
+  // Simple empty component for a simplified build
+  return (
+    <Frame>
+      <Page title="Daily Discounts">
+        <TitleBar title="Daily Discounts" />
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">Daily Discounts</Text>
+                <Text as="p">The file was truncated during a previous operation. Please refresh the page to see the full interface.</Text>
+                <Button url="/app/daily-discounts">Refresh Page</Button>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    </Frame>
+  );
+}
