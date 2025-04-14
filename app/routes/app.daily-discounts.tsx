@@ -259,47 +259,87 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     }).filter(Boolean); // Remove null entries
     
-    // Now, also fetch a random product that doesn't have the tag yet - for suggesting new discounts
-    const randomProductResponse = await admin.graphql(`
-      query GetRandomProduct($first: Int!) {
-        products(first: $first, query: "NOT tag:${TAG_NAME}") {
-          edges {
-            node {
-              id
-              title
-              featuredImage {
-                url
-                altText
-              }
-              variants(first: 1) {
-                edges {
-                  node {
-                    id
-                    title
-                    price
-                    compareAtPrice
-                    inventoryQuantity
-                    inventoryItem {
-                      unitCost {
-                        amount
-                        currencyCode
+    // Now, fetch ALL products that don't have the tag yet using pagination
+    console.log("Fetching ALL products without the DailyDiscount tag (paginated)...");
+    
+    let allRandomProducts = [];
+    let hasNextPage = true;
+    let cursor = null;
+    
+    // Use pagination to fetch all products
+    while (hasNextPage) {
+      const paginationQuery = cursor ? 
+        `after: "${cursor}", first: 100, query: "NOT tag:${TAG_NAME}"` :
+        `first: 100, query: "NOT tag:${TAG_NAME}"`;
+      
+      const randomProductResponse = await admin.graphql(`
+        query GetRandomProductPaginated {
+          products(${paginationQuery}) {
+            edges {
+              cursor
+              node {
+                id
+                title
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price
+                      compareAtPrice
+                      inventoryQuantity
+                      inventoryItem {
+                        unitCost {
+                          amount
+                          currencyCode
+                        }
                       }
                     }
                   }
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
         }
+      `);
+      
+      const pageData = await randomProductResponse.json();
+      const pageEdges = pageData.data?.products?.edges || [];
+      const pageInfo = pageData.data?.products?.pageInfo;
+      
+      // Append this page's products to our collection
+      allRandomProducts = [...allRandomProducts, ...pageEdges];
+      
+      // Check if there are more pages
+      hasNextPage = pageInfo?.hasNextPage || false;
+      
+      // Update cursor for next page if needed
+      if (hasNextPage) {
+        cursor = pageInfo.endCursor;
+        console.log(`Fetched ${allRandomProducts.length} products so far, getting next page...`);
       }
-    `, {
-      variables: {
-        first: 50
-      }
-    });
+    }
     
-    const randomJson = await randomProductResponse.json();
-    const randomProducts = randomJson.data?.products?.edges || [];
+    console.log(`Finished fetching all products. Total: ${allRandomProducts.length}`);
+    const randomProducts = allRandomProducts;
+    
+    // Count products with various attributes for debugging
+    const productStats = {
+      total: randomProducts.length,
+      withImage: 0,
+      withVariant: 0,
+      withInventory: 0,
+      withCost: 0,
+      eligible: 0
+    };
     
     // Filter to products with images and inventory
     const eligibleRandomProducts = randomProducts
@@ -307,9 +347,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const product = edge.node;
         const variant = product.variants.edges[0]?.node;
         
+        // Count for debugging
+        if (product.featuredImage) productStats.withImage++;
+        if (variant) productStats.withVariant++;
+        if (variant && variant.inventoryQuantity > 0) productStats.withInventory++;
+        if (variant && variant.inventoryItem?.unitCost?.amount) productStats.withCost++;
+        
         if (!product.featuredImage || !variant || variant.inventoryQuantity <= 0) {
           return null;
         }
+        
+        productStats.eligible++;
         
         const price = parseFloat(variant.price);
         const hasCost = variant.inventoryItem?.unitCost?.amount;
@@ -336,11 +384,44 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
       .filter(Boolean);
     
+    // Fisher-Yates shuffle algorithm to truly randomize the product array
+    const shuffleArray = (array) => {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    };
+    
     // Select a random product to suggest
+    // Log product statistics
+    console.log("Product statistics:", {
+      total: productStats.total,
+      withImage: productStats.withImage,
+      withVariant: productStats.withVariant,
+      withInventory: productStats.withInventory,
+      withCost: productStats.withCost,
+      eligible: productStats.eligible
+    });
+    
     let randomProduct = null;
     if (eligibleRandomProducts.length > 0) {
-      const randomIndex = Math.floor(Math.random() * eligibleRandomProducts.length);
-      randomProduct = eligibleRandomProducts[randomIndex];
+      console.log(`Found ${eligibleRandomProducts.length} eligible products for random selection`);
+      
+      // Shuffle the array for true randomization
+      const shuffledProducts = shuffleArray([...eligibleRandomProducts]);
+      
+      // Log the first few products to help with debugging
+      console.log("Sample of eligible products (after shuffle):");
+      shuffledProducts.slice(0, 5).forEach((product, index) => {
+        console.log(`${index + 1}. ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
+      });
+      
+      // Take the first product after shuffling
+      randomProduct = shuffledProducts[0];
+      console.log(`Selected random product: ${randomProduct.title} (Variant ID: ${randomProduct.variantId.split('/').pop()})`);
+    } else {
+      console.log("No eligible products found for random selection");
     }
     
     return json({
@@ -348,7 +429,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       taggedProducts,
       randomProduct,
       recentDiscountLogs,
-      tagName: TAG_NAME
+      tagName: TAG_NAME,
+      productStats: productStats,
+      totalProductsScanned: randomProducts.length
     });
     
   } catch (error) {
@@ -1098,6 +1181,15 @@ export default function DailyDiscounts() {
                 Today's Featured Product
               </Text>
               
+              {loaderData.totalProductsScanned && (
+                <Banner tone="info">
+                  <Text variant="bodyMd">
+                    Randomly selected from {loaderData.totalProductsScanned} products in your store
+                    ({loaderData.productStats?.eligible || 0} eligible with images and inventory)
+                  </Text>
+                </Banner>
+              )}
+              
               {!randomProduct ? (
                 <BlockStack gap="400">
                   <Box padding="400" style={{ textAlign: "center" }}>
@@ -1359,9 +1451,15 @@ export default function DailyDiscounts() {
               </Text>
               
               <Text as="p">
-                This tool automatically selects a random product from your inventory and generates a discount
+                This tool automatically selects a random product from your entire inventory and generates a discount
                 based on the product's profit margin. The discounts range from 10% to 25% of the product's profit,
                 ensuring you maintain profitability while offering attractive discounts to your customers.
+              </Text>
+              
+              <Text as="p">
+                The randomization process scans through all products in your store (not just the first batch)
+                and uses a thorough shuffling algorithm to ensure truly random selection. Only products with
+                images and positive inventory are eligible for selection.
               </Text>
               
               <Banner tone="info">
