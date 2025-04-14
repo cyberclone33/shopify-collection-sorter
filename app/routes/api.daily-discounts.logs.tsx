@@ -32,20 +32,75 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (type === "manual") {
       whereClause = {
         shop,
-        isRandomDiscount: true,
-        notes: {
-          not: {
-            contains: "Auto Discount"
+        OR: [
+          {
+            notes: {
+              contains: "Manual UI Discount",
+              mode: 'insensitive'
+            }
+          },
+          {
+            notes: {
+              contains: "Manual UI Discount Reverted",
+              mode: 'insensitive'
+            }
           }
-        }
+        ]
       };
     } else if (type === "api") {
       whereClause = {
         shop,
-        isRandomDiscount: true,
-        notes: {
-          contains: "Auto Discount"
-        }
+        OR: [
+          {
+            notes: {
+              contains: "Auto Discount",
+              mode: 'insensitive'
+            }
+          },
+          {
+            notes: {
+              contains: "Auto Discount Reverted",
+              mode: 'insensitive'
+            }
+          }
+        ]
+      };
+=======
+    if (type === "manual") {
+      whereClause = {
+        shop,
+        OR: [
+          {
+            notes: {
+              contains: "Manual UI Discount",
+              mode: 'insensitive'
+            }
+          },
+          {
+            notes: {
+              contains: "Manual UI Discount Reverted",
+              mode: 'insensitive'
+            }
+          }
+        ]
+      };
+    } else if (type === "api") {
+      whereClause = {
+        shop,
+        OR: [
+          {
+            notes: {
+              contains: "Auto Discount",
+              mode: 'insensitive'
+            }
+          },
+          {
+            notes: {
+              contains: "Auto Discount Reverted",
+              mode: 'insensitive'
+            }
+          }
+        ]
       };
     } else {
       return json({

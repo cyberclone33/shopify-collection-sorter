@@ -1151,7 +1151,19 @@ export default function DailyDiscounts() {
     formData.append("originalPrice", log.discountedPrice.toString());
     formData.append("costPrice", log.costPrice?.toString() || "0");
     formData.append("currencyCode", log.currencyCode || "USD");
-    formData.append("notes", "Reverted discount");
+    
+    // For reversions, savings should be zero (no savings on a reverted price)
+    formData.append("savingsAmount", "0");
+    formData.append("savingsPercentage", "0");
+    formData.append("discountPercentage", "0");
+    
+    // Check if this is from an automated discount and preserve the type in notes
+    // This will ensure reversion logs appear in the same section as the original discount
+    if (log.notes && log.notes.includes("Auto Discount")) {
+      formData.append("notes", "Auto Discount Reverted");
+    } else {
+      formData.append("notes", "Manual UI Discount Reverted");
+    }
     
     // Close the confirmation dialog
     setConfirmRevert(null);
@@ -1739,7 +1751,9 @@ export default function DailyDiscounts() {
                   ) : (
                     <BlockStack gap="400">
                       {recentManualDiscountLogs.map((log) => (
-                        <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
+                        <Box key={log.id} padding="300" 
+                          background={log.notes && log.notes.includes("Reverted") ? "bg-surface-secondary" : "bg-subdued"} 
+                          borderRadius="200">
                           <BlockStack gap="200">
                             <InlineStack gap="300" align="start" blockAlign="center">
                               {log.imageUrl && (
@@ -1753,7 +1767,12 @@ export default function DailyDiscounts() {
                               )}
                               <BlockStack gap="100">
                                 <InlineStack gap="200" align="space-between">
-                                  <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                  <InlineStack gap="200" align="start" blockAlign="center">
+                                    <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                    {log.notes && log.notes.includes("Reverted") && (
+                                      <Badge tone="info">Reverted</Badge>
+                                    )}
+                                  </InlineStack>
                                   <Text variant="bodySm" as="span">
                                     {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
                                   </Text>
@@ -1776,9 +1795,15 @@ export default function DailyDiscounts() {
                               <Text variant="bodySm" as="span">
                                 Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
                               </Text>
-                              <Text variant="bodySm" as="span" tone="success">
-                                Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
-                              </Text>
+                              {log.notes && log.notes.includes("Reverted") ? (
+                                <Text variant="bodySm" as="span">
+                                  Savings: {formatCurrency(0, log.currencyCode)} (0.0%)
+                                </Text>
+                              ) : (
+                                <Text variant="bodySm" as="span" tone="success">
+                                  Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
+                                </Text>
+                              )}
                             </InlineStack>
                             
                             <InlineStack align="end">
@@ -1849,7 +1874,9 @@ export default function DailyDiscounts() {
                   ) : (
                     <BlockStack gap="400">
                       {recentApiDiscountLogs.map((log) => (
-                        <Box key={log.id} padding="300" background="bg-subdued" borderRadius="200">
+                        <Box key={log.id} padding="300" 
+                          background={log.notes && log.notes.includes("Reverted") ? "bg-surface-secondary" : "bg-subdued"} 
+                          borderRadius="200">
                           <BlockStack gap="200">
                             <InlineStack gap="300" align="start" blockAlign="center">
                               {log.imageUrl && (
@@ -1863,7 +1890,12 @@ export default function DailyDiscounts() {
                               )}
                               <BlockStack gap="100">
                                 <InlineStack gap="200" align="space-between">
-                                  <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                  <InlineStack gap="200" align="start" blockAlign="center">
+                                    <Text variant="headingSm" as="h3">{log.productTitle}</Text>
+                                    {log.notes && log.notes.includes("Reverted") && (
+                                      <Badge tone="info">Reverted</Badge>
+                                    )}
+                                  </InlineStack>
                                   <Text variant="bodySm" as="span">
                                     {new Date(log.appliedAt).toLocaleDateString()} {new Date(log.appliedAt).toLocaleTimeString()}
                                   </Text>
@@ -1891,9 +1923,15 @@ export default function DailyDiscounts() {
                               <Text variant="bodySm" as="span">
                                 Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
                               </Text>
-                              <Text variant="bodySm" as="span" tone="success">
-                                Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
-                              </Text>
+                              {log.notes && log.notes.includes("Reverted") ? (
+                                <Text variant="bodySm" as="span">
+                                  Savings: {formatCurrency(0, log.currencyCode)} (0.0%)
+                                </Text>
+                              ) : (
+                                <Text variant="bodySm" as="span" tone="success">
+                                  Savings: {formatCurrency(log.savingsAmount, log.currencyCode)} ({log.savingsPercentage.toFixed(1)}%)
+                                </Text>
+                              )}
                             </InlineStack>
                             
                             <InlineStack align="end">
