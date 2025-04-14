@@ -66,24 +66,23 @@ function createDirectAdminApiContext(shop: string) {
  */
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  try {
-    // Try to authenticate using the regular Shopify auth first
-    let admin, shop;
-    
-    try {
-      const { admin: shopifyAdmin, session } = await authenticate.admin(request);
-      admin = shopifyAdmin;
-      shop = session.shop;
-    } catch (authError) {
-      console.log("Session authentication failed, using direct API token instead");
-      
-      // Fallback to direct API token if session auth fails
-      // Use a default shop domain if not provided
-      shop = "alphapetstw.myshopify.com";
-      
-      admin = createDirectAdminApiContext(shop);
-    }
+  // Try to authenticate using the regular Shopify auth first
+  let admin, shop;
   
+  try {
+    const { admin: shopifyAdmin, session } = await authenticate.admin(request);
+    admin = shopifyAdmin;
+    shop = session.shop;
+  } catch (authError) {
+    console.log("Session authentication failed, using direct API token instead");
+    
+    // Fallback to direct API token if session auth fails
+    // Use a default shop domain if not provided
+    shop = "alphapetstw.myshopify.com";
+    
+    admin = createDirectAdminApiContext(shop);
+  }
+
   try {
     // Get previous auto-discounts for this shop
     const previousDiscounts = await getPreviousAutoDiscounts(shop);
@@ -157,26 +156,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  try {
-    // Try to authenticate using the regular Shopify auth first
-    let admin, shop;
-    
-    try {
-      const { admin: shopifyAdmin, session } = await authenticate.admin(request);
-      admin = shopifyAdmin;
-      shop = session.shop;
-    } catch (authError) {
-      console.log("Session authentication failed, using direct API token instead");
-      
-      // Fallback to direct API token if session auth fails
-      shop = process.env.SHOPIFY_SHOP_DOMAIN;
-      if (!shop) {
-        throw new Error("SHOPIFY_SHOP_DOMAIN environment variable is not defined");
-      }
-      
-      admin = createDirectAdminApiContext(shop);
-    }
+  // Try to authenticate using the regular Shopify auth first
+  let admin, shop;
   
+  try {
+    const { admin: shopifyAdmin, session } = await authenticate.admin(request);
+    admin = shopifyAdmin;
+    shop = session.shop;
+  } catch (authError) {
+    console.log("Session authentication failed, using direct API token instead");
+    
+    // Fallback to direct API token if session auth fails
+    // Use a default shop domain if not provided
+    shop = "alphapetstw.myshopify.com";
+    
+    admin = createDirectAdminApiContext(shop);
+  }
+
   try {
     // Get form data to see if we're doing a manual run
     const formData = await request.formData();
