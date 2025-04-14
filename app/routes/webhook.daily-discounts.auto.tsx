@@ -52,9 +52,11 @@ export async function action({ request }: ActionFunctionArgs) {
     // Process each shop
     for (const { shop } of shops) {
       try {
+        console.log(`[Auto-Discount] Processing shop: ${shop}`);
         results.processed++;
         
         // Get the admin API context for this shop
+        console.log(`[Auto-Discount] Getting admin API context for shop: ${shop}`);
         const { admin } = await authenticate.admin(request, shop);
         
         // Step 1: Find and revert previous auto-discounts
@@ -62,7 +64,10 @@ export async function action({ request }: ActionFunctionArgs) {
         const revertResults = await revertPreviousDiscounts(admin, shop, previousDiscounts);
         
         // Step 2: Get eligible products
+        console.log(`[Auto-Discount] Getting eligible products for shop: ${shop}`);
         const eligibleProductsResult = await getEligibleProducts(admin, shop, 6); // Get 6 products
+        
+        console.log(`[Auto-Discount] Eligible products result:`, JSON.stringify(eligibleProductsResult));
         
         if (eligibleProductsResult.status === "error" || eligibleProductsResult.products.length === 0) {
           results.failed++;
@@ -123,6 +128,7 @@ export async function action({ request }: ActionFunctionArgs) {
           shop,
           status: "error",
           message: shopError instanceof Error ? shopError.message : "Unknown error processing shop",
+          details: JSON.stringify(shopError)
         });
       }
     }
