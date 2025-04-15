@@ -8,323 +8,53 @@
 <div id="alpha-dog-carousel" class="alpha-dog-carousel">
   <div class="carousel-container">
     <style>
-      /* Premium Pet Products Carousel */
-      .alpha-dog-carousel {
-        margin: 40px 0;
-        overflow: hidden;
-        position: relative;
-        padding: 10px 5px 30px;
-        max-width: 100%;
-      }
+      /* Main carousel container - optimized */
+      .alpha-dog-carousel{margin:40px 0;overflow:hidden;position:relative;padding:10px 5px 30px;max-width:100%}
       
-      /* Elegant Header styling */
-      .carousel-header {
-        text-align: center;
-        margin-bottom: 35px;
-        position: relative;
-        z-index: 2;
-      }
+      /* Header styling - optimized */
+      .carousel-header{text-align:center;margin-bottom:35px;position:relative;z-index:2}
+      .carousel-header h2{color:{{ block.settings.heading_color }};font-size:28px;margin-bottom:12px;font-weight:600;letter-spacing:0.02em;position:relative;display:inline-block}
+      .carousel-header h2::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:50px;height:2px;background-color:{{ block.settings.heading_color }}}
+      .carousel-header p{color:{{ block.settings.subtitle_color }};font-size:15px;max-width:700px;margin:0 auto;line-height:1.5;font-weight:300}
       
-      .carousel-header h2 {
-        color: {{ block.settings.heading_color }};
-        font-size: 28px;
-        margin-bottom: 12px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        position: relative;
-        display: inline-block;
-      }
+      /* Product card design - absolutely uniform sizing */
+      .product-card,.alpha-dog-product-card{position:relative;width:100%;height:{{ block.settings.card_height }}px;min-height:{{ block.settings.card_height }}px;max-height:{{ block.settings.card_height }}px;background-color:{{ block.settings.card_bg_color }};border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06);overflow:hidden;transition:all 0.4s cubic-bezier(0.22,1,0.36,1);cursor:pointer;display:flex;flex-direction:column;border:1px solid rgba(240,240,240,0.8);margin:0 auto;box-sizing:border-box}
       
-      .carousel-header h2::after {
-        content: '';
-        position: absolute;
-        bottom: -8px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 50px;
-        height: 2px;
-        background-color: {{ block.settings.heading_color }};
-      }
+      /* Product image container - optimized */
+      .product-image-container{width:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:{{ block.settings.image_bg_color }};flex:0;margin:0;border-radius:8px 8px 0 0;height:{{ block.settings.image_height }}px !important;min-height:{{ block.settings.image_height }}px !important;max-height:{{ block.settings.image_height }}px !important}
       
-      .carousel-header p {
-        color: {{ block.settings.subtitle_color }};
-        font-size: 15px;
-        max-width: 700px;
-        margin: 0 auto;
-        line-height: 1.5;
-        font-weight: 300;
-      }
+      .product-card:hover,.alpha-dog-product-card:hover{transform:translateY(-6px);box-shadow:0 12px 24px rgba(0,0,0,0.08);border-color:rgba(220,220,220,0.8)}
+      .product-card:active,.alpha-dog-product-card:active{transform:translateY(-2px);transition:all 0.2s}
       
-      /* Premium product card design - absolutely uniform size */
-      .product-card, 
-      .alpha-dog-product-card {
-        position: relative;
-        width: 100%;
-        height: {{ block.settings.card_height }}px;
-        min-height: {{ block.settings.card_height }}px;
-        max-height: {{ block.settings.card_height }}px;
-        background-color: {{ block.settings.card_bg_color }};
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-        overflow: hidden;
-        transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        border: 1px solid rgba(240, 240, 240, 0.8);
-        margin: 0 auto; /* Center the cards */
-      }
+      .product-image{width:100%;height:{{ block.settings.image_height }}px;position:relative;overflow:hidden;background-color:{{ block.settings.image_bg_color }};flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:10px;transition:all 0.4s ease}
+      .product-image img{width:100%;height:100%;object-fit:contain;display:block;transition:transform 0.7s cubic-bezier(0.22,1,0.36,1);max-height:{{ block.settings.image_height }}px}
+      .product-card:hover .product-image img{transform:scale(1.08)}
+      .product-image::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.02);opacity:0;transition:opacity 0.5s ease}
+      .product-card:hover .product-image::after{opacity:1}
       
-      /* Product image container - standardized size with better badge positioning */
-      .product-image-container {
-        width: 100%;
-        position: relative; /* For badge positioning */
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: {{ block.settings.image_bg_color }};
-        flex-grow: 0;
-        flex-shrink: 0;
-        margin: 0;
-        border-radius: 8px 8px 0 0;
-        height: {{ block.settings.image_height }}px !important;
-        min-height: {{ block.settings.image_height }}px !important;
-        max-height: {{ block.settings.image_height }}px !important;
-      }
-      
-      .product-card:hover,
-      .alpha-dog-product-card:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
-        border-color: rgba(220, 220, 220, 0.8);
-      }
-      
-      .product-card:active,
-      .alpha-dog-product-card:active {
-        transform: translateY(-2px);
-        transition: all 0.2s;
-      }
-      
-      .product-image {
-        width: 100%;
-        height: {{ block.settings.image_height }}px;
-        position: relative;
-        overflow: hidden;
-        background-color: {{ block.settings.image_bg_color }};
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 10px;
-        transition: all 0.4s ease;
-      }
-      
-      /* Removed red line behind product image */
-      
-      .product-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-        transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-        max-height: {{ block.settings.image_height }}px;
-      }
-      
-      .product-card:hover .product-image img {
-        transform: scale(1.08);
-      }
-      
-      /* Elegant hover overlay */
-      .product-image::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.02);
-        opacity: 0;
-        transition: opacity 0.5s ease;
-      }
-      
-      .product-card:hover .product-image::after {
-        opacity: 1;
-      }
-      
-      /* Premium info section with soft gradient */
-      .product-info {
-        position: relative;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        padding: 18px 18px 60px; /* Increased padding at bottom to make room for button */
-        background: white;
-        color: #333;
-        z-index: 1;
-        overflow: visible; /* Changed to visible to ensure button shows */
-        border-top: 1px solid rgba(240, 240, 240, 0.8);
-        transition: all 0.3s ease;
-      }
-      
-      .product-card:hover .product-info {
-        background: linear-gradient(to bottom, #ffffff, #f9f9f9);
-      }
-      
-      .product-title {
-        font-size: 15px;
-        font-weight: 500;
-        margin-bottom: 6px;
-        color: #333333;
-        display: -webkit-box;
-        -webkit-line-clamp: 1;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        letter-spacing: 0.01em;
-      }
-      
-      /* Premium price display */
-      .price-container {
-        display: flex;
-        align-items: baseline;
-        margin-top: 6px;
-        flex-wrap: wrap;
-      }
-      
-      .current-price {
-        font-weight: 600;
-        color: {{ block.settings.badge_bg_color }};
-        font-size: 16px;
-        margin-right: 10px;
-        letter-spacing: 0;
-      }
-      
-      .original-price {
-        text-decoration: line-through;
-        color: #999;
-        font-size: 13px;
-        font-weight: 400;
-      }
-      
-      /* Description text */
-      .product-bio {
-        font-size: 13px;
-        color: #777;
-        margin: 8px 0 6px;
-        line-height: 1.4;
-        max-height: 36px;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 1;
-        -webkit-box-orient: vertical;
-      }
+      /* Product info section - optimized */
+      .product-info{position:relative;bottom:0;left:0;width:100%;padding:18px 18px 60px;background:white;color:#333;z-index:1;overflow:visible;border-top:1px solid rgba(240,240,240,0.8);transition:all 0.3s ease}
+      .product-card:hover .product-info{background:linear-gradient(to bottom,#fff,#f9f9f9)}
+      .product-title{font-size:15px;font-weight:500;margin-bottom:6px;color:#333;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;letter-spacing:0.01em}
+      .price-container{display:flex;align-items:baseline;margin-top:6px;flex-wrap:wrap}
+      .current-price{font-weight:600;color:{{ block.settings.badge_bg_color }};font-size:16px;margin-right:10px}
+      .original-price{text-decoration:line-through;color:#999;font-size:13px;font-weight:400}
+      .product-bio{font-size:13px;color:#777;margin:8px 0 6px;line-height:1.4;max-height:36px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
       
       /* Remove Tinder-style action buttons */
       
-      /* Premium savings badge */
-      .savings-badge {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        z-index: 10;
-        background-color: {{ block.settings.badge_bg_color }};
-        color: white;
-        padding: 5px 12px;
-        font-size: 11px;
-        font-weight: 500;
-        border-radius: 4px;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-      }
+      /* Badges and indicators - optimized */
+      .savings-badge{position:absolute;top:12px;right:12px;z-index:10;background-color:{{ block.settings.badge_bg_color }};color:white;padding:5px 12px;font-size:11px;font-weight:500;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,0.1);letter-spacing:0.5px;text-transform:uppercase}
+      .photo-indicator{position:absolute;top:12px;left:12px;z-index:10;background-color:rgba(255,255,255,0.9);color:#333;padding:5px 12px;font-size:10px;font-weight:600;border-radius:4px;letter-spacing:0.5px;text-transform:uppercase;box-shadow:0 2px 6px rgba(0,0,0,0.05)}
+      @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
       
-      /* Elegant sale label */
-      .photo-indicator {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        z-index: 10;
-        background-color: rgba(255, 255, 255, 0.9);
-        color: #333;
-        padding: 5px 12px;
-        font-size: 10px;
-        font-weight: 600;
-        border-radius: 4px;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-      }
-      
-      /* Elegant slide transitions */
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      
-      /* Removed all class-based button styles in favor of inline styles */
-      
-      .add-to-cart:hover {
-        background-color: {{ block.settings.badge_bg_color }};
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-      }
-      
-      /* Enhanced add to cart button position & style */
-      .add-to-cart {
-        position: relative;
-        bottom: auto;
-        left: auto;
-        right: auto;
-        padding: 8px 12px;
-        color: white;
-        background-color: {{ block.settings.button_bg_color }};
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: 500;
-        font-size: 12px;
-        transition: all 0.3s ease;
-        z-index: 3;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin: 8px 0 10px;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-      }
-      
-      /* Override any theme styling that adds "Shop now to" text */
-      .alpha-dog-carousel .product-card::before,
-      .alpha-dog-carousel .product-card::after,
-      .alpha-dog-carousel .add-to-cart::before,
-      .alpha-dog-product-card::before,
-      .alpha-dog-product-card::after,
-      .alpha-dog-product-card .add-to-cart::before {
-        content: none !important;
-        display: none !important;
-      }
-      
-      /* Additional overrides to prevent theme interference */
-      .alpha-dog-carousel .add-to-cart,
-      .alpha-dog-product-card .add-to-cart {
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-        width: auto !important;
-        text-align: center !important;
-      }
-      
-      /* Extra specificity for the .alpha-dog-product-card */
-      .alpha-dog-product-card {
-        position: relative !important;
-        overflow: hidden !important;
-      }
-      
-      /* Enhanced button styling with !important to override theme styles */
-      .alpha-dog-product-card .add-to-cart {
-        position: absolute !important;
-        bottom: 10px !important;
-        left: 10px !important;
-        color: {{ block.settings.button_text_color }} !important;
-        background-color: {{ block.settings.button_bg_color }} !important;
-        text-decoration: none !important;
-      }
+      /* Button styles - optimized */
+      .add-to-cart{position:relative;padding:8px 12px;color:white;background-color:{{ block.settings.button_bg_color }};border:none;border-radius:4px;cursor:pointer;font-weight:500;font-size:12px;transition:all 0.3s ease;z-index:3;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 10px;box-shadow:0 2px 6px rgba(0,0,0,0.1)}
+      .add-to-cart:hover{background-color:{{ block.settings.badge_bg_color }};box-shadow:0 3px 10px rgba(0,0,0,0.1)}
+      .alpha-dog-carousel .product-card::before,.alpha-dog-carousel .product-card::after,.alpha-dog-carousel .add-to-cart::before,.alpha-dog-product-card::before,.alpha-dog-product-card::after,.alpha-dog-product-card .add-to-cart::before{content:none !important;display:none !important}
+      .alpha-dog-carousel .add-to-cart,.alpha-dog-product-card .add-to-cart{margin:0 !important;width:auto !important;text-align:center !important}
+      .alpha-dog-product-card{position:relative !important;overflow:hidden !important}
+      .alpha-dog-product-card .add-to-cart{position:absolute !important;bottom:10px !important;left:10px !important;color:{{ block.settings.button_text_color }} !important;background-color:{{ block.settings.button_bg_color }} !important;text-decoration:none !important}
       
       /* Make sure there's no "Shop now" text before the button */
       .alpha-dog-product-card .add-to-cart::before,
@@ -333,213 +63,47 @@
         display: none !important;
       }
       
-      /* We can't use :contains() as it's not widely supported */
+      /* Hide shop-now elements */
+      .alpha-dog-product-card [class*="shop-now"],.alpha-dog-product-card [class*="shopnow"],.alpha-dog-product-card .shop-now-text,.alpha-dog-product-card .shop-text,.alpha-dog-product-card .product-shop-now{display:none !important}
       
-      /* Hide any element with class names that might contain "shop-now" */
-      .alpha-dog-product-card [class*="shop-now"],
-      .alpha-dog-product-card [class*="shopnow"],
-      .alpha-dog-product-card .shop-now-text,
-      .alpha-dog-product-card .shop-text,
-      .alpha-dog-product-card .product-shop-now {
-        display: none !important;
-      }
+      /* Button active state */
+      .add-to-cart:active{transform:translateY(0);box-shadow:0 2px 4px rgba(0,0,0,0.1)}
       
-      /* Override the second hover style to match the first one */
+      /* Enhanced carousel & container - optimized */
+      .alpha-dog-carousel{margin:40px auto;padding:10px 0 30px;position:relative;-webkit-overflow-scrolling:touch;width:100%;max-width:1200px;box-sizing:border-box}
+      .products-container{width:100%;max-width:1200px;position:relative;margin:0 auto;display:flex;flex-direction:column;align-items:center}
       
-      .add-to-cart:active {
-        transform: translateY(0);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
+      /* Mobile slider - optimized */
+      .products-scroll{width:100%;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:10px 0 25px;position:relative}
+      .products-scroll::-webkit-scrollbar{display:none}
+      .scroll-indicators{display:none;text-align:center;margin-top:15px}
+      .scroll-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background-color:#ddd;margin:0 4px;transition:background-color 0.3s ease}
+      .scroll-dot.active{background-color:{{ block.settings.badge_bg_color }}}
+      .swipe-instruction{display:none;text-align:center;font-size:12px;color:#888;margin-top:10px;padding:5px}
+      .product-slide{display:inline-block;vertical-align:top;white-space:normal;height:auto;width:280px;padding:4px;margin-right:10px;scroll-snap-align:start;position:relative}
       
-      /* Enhanced carousel styling with mobile slider and grid for large screens - properly centered */
-      .alpha-dog-carousel {
-        margin: 40px auto;
-        background-color: transparent;
-        padding: 10px 0 30px;
-        position: relative;
-        -webkit-overflow-scrolling: touch;
-        width: 100%;
-        max-width: 1200px;
-        box-sizing: border-box;
-      }
+      /* Desktop layout */
+      @media (min-width:1024px){.alpha-dog-carousel .carousel-container{padding:0 20px}}
       
-      /* Products container for better organization - centered structure */
-      .products-container {
-        width: 100%;
-        max-width: 1200px;
-        position: relative;
-        margin: 0 auto;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
+      /* Slider controls - optimized */
+      .slider-controls{display:none;position:absolute;top:50%;width:100%;transform:translateY(-50%);z-index:5;pointer-events:none}
+      .slider-control{position:absolute;width:40px;height:40px;background:rgba(255,255,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,0.1);pointer-events:auto}
+      .slider-prev{left:10px}
+      .slider-next{right:10px}
       
-      /* Mobile slider with touch controls */
-      .products-scroll {
-        width: 100%;
-        overflow-x: auto;
-        overflow-y: hidden;
-        white-space: nowrap;
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE and Edge */
-        scroll-snap-type: x mandatory;
-        -webkit-overflow-scrolling: touch;
-        padding: 10px 0 25px;
-        position: relative;
-      }
-      
-      .products-scroll::-webkit-scrollbar {
-        display: none; /* Chrome, Safari and Opera */
-      }
-      
-      /* Mobile slider indicators */
-      .scroll-indicators {
-        display: none;
-        text-align: center;
-        margin-top: 15px;
-      }
-      
-      .scroll-dot {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background-color: #ddd;
-        margin: 0 4px;
-        transition: background-color 0.3s ease;
-      }
-      
-      .scroll-dot.active {
-        background-color: {{ block.settings.badge_bg_color }};
-      }
-      
-      /* Swipe instruction for mobile */
-      .swipe-instruction {
-        display: none;
-        text-align: center;
-        font-size: 12px;
-        color: #888;
-        margin-top: 10px;
-        padding: 5px;
-      }
-      
-      /* Product slide styling */
-      .product-slide {
-        display: inline-block;
-        vertical-align: top;
-        white-space: normal;
-        height: auto;
-        width: 280px;
-        padding: 4px;
-        margin-right: 10px;
-        scroll-snap-align: start;
-        position: relative;
-      }
-      
-      /* Ensure proper width and layout on desktop */
-      @media (min-width: 1024px) {
-        .alpha-dog-carousel .carousel-container {
-          padding: 0 20px; 
-        }
-      }
-      
-      /* Left and right slider controls for mobile */
-      .slider-controls {
-        display: none;
-        position: absolute;
-        top: 50%;
-        width: 100%;
-        transform: translateY(-50%);
-        z-index: 5;
-        pointer-events: none;
-      }
-      
-      .slider-control {
-        position: absolute;
-        width: 40px;
-        height: 40px;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        pointer-events: auto;
-      }
-      
-      .slider-prev {
-        left: 10px;
-      }
-      
-      .slider-next {
-        right: 10px;
-      }
-      
-      /* Large screen grid layout - fixed for desktop display with consistent sizes */
-      @media (min-width: 1024px) {
-        .alpha-dog-carousel {
-          overflow: visible;
-          margin: 40px auto;
-          width: 100%;
-          max-width: 1200px;
-        }
-        
-        .carousel-container {
-          width: 100%;
-          padding: 0;
-        }
-        
-        .products-container {
-          max-width: 1200px;
-          width: 100%;
-          margin: 0 auto;
-          padding: 0 15px;
-        }
-        
-        .products-scroll {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          grid-template-rows: repeat(2, {{ block.settings.card_height }}px);
-          grid-gap: 20px;
-          white-space: normal;
-          overflow: visible;
-          padding: 0;
-          height: auto;
-          max-height: none;
-          width: 100%;
-        }
-        
-        .product-slide {
-          width: 100%;
-          margin-right: 0;
-          display: block;
-          white-space: normal;
-          padding: 0;
-          height: {{ block.settings.card_height }}px;
-          aspect-ratio: auto;
-        }
-        
-        /* Limit to 2 rows x 4 columns (8 items) */
-        .product-slide:nth-child(n+9) {
-          display: none;
-        }
-        
-        /* Ensure all items are properly positioned with fixed dimensions */
-        .alpha-dog-product-card,
-        .product-card {
-          height: {{ block.settings.card_height }}px;
-          width: 100%;
-          min-height: {{ block.settings.card_height }}px;
-          max-height: {{ block.settings.card_height }}px;
-        }
-        
-        /* Ensure consistent product card heights */
-        .product-image-container {
-          height: {{ block.settings.image_height }}px !important;
-          min-height: {{ block.settings.image_height }}px !important;
-          max-height: {{ block.settings.image_height }}px !important;
-        }
+      /* Desktop grid layout - fixed for exact 4x2 layout */
+      @media (min-width:1024px){
+        .alpha-dog-carousel{overflow:visible;margin:40px auto;width:100%;max-width:1200px}
+        .carousel-container{width:100%;padding:0}
+        .products-container{max-width:1200px;width:100%;margin:0 auto;padding:0 15px}
+        .products-scroll{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,1fr);grid-gap:20px;white-space:normal;overflow:visible;padding:0;width:100%}
+        .product-slide{width:100%;margin:0;display:block;padding:0;height:{{ block.settings.card_height }}px}
+        /* Force 8 cards to be visible, hide any beyond that */
+        .product-slide:nth-child(-n+8){display:block !important}
+        .product-slide:nth-child(n+9){display:none !important}
+        /* Ensure all cards are exactly the same size */
+        .alpha-dog-product-card,.product-card{height:{{ block.settings.card_height }}px !important;width:100% !important;min-height:{{ block.settings.card_height }}px !important;max-height:{{ block.settings.card_height }}px !important}
+        .product-image-container{height:{{ block.settings.image_height }}px !important;min-height:{{ block.settings.image_height }}px !important;max-height:{{ block.settings.image_height }}px !important}
       }
       
       @media (hover: hover) {
@@ -553,252 +117,47 @@
         padding: 0 5px;
       }
       
-      /* Enhanced responsive adjustments */
-      @media (min-width: 1024px) {
-        /* Desktop grid layout - 4 products per row, 2 rows */
-        .products-container {
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-        
-        .products-scroll {
-          overflow: visible;
-        }
-        
-        .slider-controls,
-        .scroll-indicators,
-        .swipe-instruction {
-          display: none !important;
-        }
+      /* Responsive styles - compressed */
+      @media (min-width:1024px){
+        .products-container{max-width:1200px;margin:0 auto}
+        .products-scroll{overflow:visible}
+        .slider-controls,.scroll-indicators,.swipe-instruction{display:none !important}
+      }
+      @media (min-width:768px) and (max-width:1023px){
+        .products-scroll{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;white-space:normal;overflow:visible}
+        .product-slide{width:100%;margin-right:0}
+        .product-card{min-height:340px}
+        .product-image{height:200px}
+        .slider-controls,.scroll-indicators,.swipe-instruction{display:none !important}
+      }
+      @media (max-width:767px){
+        .slider-controls,.scroll-indicators,.swipe-instruction{display:block}
+        .product-slide{width:240px}
+        .product-card{min-height:300px}
+        .product-image{height:160px}
+      }
+      @media (max-width:480px){
+        .alpha-dog-carousel{padding:5px}
+        .product-slide{padding:4px;width:180px;margin-right:8px}
+        .product-card{min-height:280px;border-radius:6px}
+        .product-image-container{height:160px !important}
+        .product-info{padding:8px}
+        .product-title{font-size:12px;-webkit-line-clamp:1;margin-bottom:2px}
+        .current-price{font-size:11px;margin-right:4px}
+        .original-price{font-size:10px}
+        .product-bio{font-size:10px;margin:4px 0}
+        .photo-indicator,.savings-badge{font-size:9px;padding:2px 4px}
+        .slider-control{width:30px;height:30px}
       }
       
-      /* Tablet styles */
-      @media (min-width: 768px) and (max-width: 1023px) {
-        .products-scroll {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 15px;
-          white-space: normal;
-          overflow: visible;
-        }
-        
-        .product-slide {
-          width: 100%;
-          margin-right: 0;
-        }
-        
-        .product-card {
-          min-height: 340px;
-        }
-        
-        .product-image {
-          height: 200px;
-        }
-        
-        .slider-controls,
-        .scroll-indicators,
-        .swipe-instruction {
-          display: none !important;
-        }
-      }
+      /* Minimal custom scrollbar */
+      .custom-scrollbar::-webkit-scrollbar{width:8px;height:8px}
+      .custom-scrollbar::-webkit-scrollbar-track{background:#f1f1f1;border-radius:10px}
+      .custom-scrollbar::-webkit-scrollbar-thumb{background:#ccc;border-radius:10px}
       
-      /* Mobile styles with enhanced slider */
-      @media (max-width: 767px) {
-        .slider-controls {
-          display: block;
-        }
-        
-        .scroll-indicators {
-          display: block;
-        }
-        
-        .swipe-instruction {
-          display: block;
-        }
-        
-        .product-slide {
-          width: 240px;
-        }
-        
-        .product-card {
-          min-height: 300px;
-        }
-        
-        .product-image {
-          height: 160px;
-        }
-      }
-      
-      /* Small mobile devices */
-      @media (max-width: 480px) {
-        .alpha-dog-carousel {
-          padding: 5px;
-        }
-        
-        .product-slide {
-          padding: 4px;
-          width: 180px;
-          margin-right: 8px;
-        }
-        
-        .product-card {
-          min-height: 280px;
-          border-radius: 6px;
-        }
-        
-        .product-image-container {
-          height: 160px !important;
-        }
-        
-        .product-info {
-          padding: 8px;
-        }
-        
-        .product-title {
-          font-size: 12px;
-          -webkit-line-clamp: 1;
-          margin-bottom: 2px;
-        }
-        
-        .current-price {
-          font-size: 11px;
-          margin-right: 4px;
-        }
-        
-        .original-price {
-          font-size: 10px;
-        }
-        
-        .product-bio {
-          font-size: 10px;
-          margin: 4px 0;
-        }
-        
-        .photo-indicator, .savings-badge {
-          font-size: 9px;
-          padding: 2px 4px;
-        }
-        
-        .slider-control {
-          width: 30px;
-          height: 30px;
-        }
-      }
-      
-      /* Pagination and navigation styles removed */
-      /* Custom scrollbar */
-      .custom-scrollbar::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 10px;
-      }
-      
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #cccccc;
-        border-radius: 10px;
-      }
-      
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: {{ block.settings.pagination_active_color }};
-      }
-      
-      /* Additional features */
-      .product-rating {
-        display: flex;
-        align-items: center;
-        margin-top: 8px;
-      }
-      
-      .rating-stars {
-        display: flex;
-        color: #ffcc00;
-        margin-right: 5px;
-      }
-      
-      .availability {
-        color: #22c55e;
-        font-size: 12px;
-        margin-top: 5px;
-        font-weight: 500;
-      }
-      
-      .product-meta {
-        display: flex;
-        margin-top: 8px;
-        font-size: 12px;
-        opacity: 0.8;
-      }
-      
-      .product-meta span {
-        margin-right: 15px;
-      }
-      
-      /* Quick view features */
-      .quick-view {
-        opacity: 0;
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 50%;
-        text-align: center;
-        transform: translateY(-50%);
-        transition: opacity 0.3s ease;
-        pointer-events: none;
-        z-index: 2;
-      }
-      
-      .quick-view-btn {
-        background: {{ block.settings.button_bg_color }};
-        color: {{ block.settings.button_text_color }};
-        border: none;
-        padding: 8px 15px;
-        font-weight: 600;
-        border-radius: 4px;
-        cursor: pointer;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        pointer-events: auto;
-      }
-      
-      .product-card:hover .quick-view {
-        opacity: 1;
-      }
-      
-      /* Responsive design */
-      @media screen and (max-width: 767px) {
-        .swiper-button-next,
-        .swiper-button-prev {
-          display: flex;
-        }
-        
-        .product-title {
-          font-size: 16px;
-        }
-        
-        .current-price {
-          font-size: 14px;
-        }
-      }
-      
-      /* Debug styling */
-      .debug-info {
-        margin-top: 20px;
-        padding: 15px;
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 12px;
-        display: none;
-      }
-      
-      {% if block.settings.show_debug %}
-      .debug-info {
-        display: block;
-      }
-      {% endif %}
+      /* Debug styling - optimized */
+      .debug-info{margin-top:20px;padding:15px;background-color:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:12px;display:none}
+      {% if block.settings.show_debug %}.debug-info{display:block}{% endif %}
     </style>
 
     <div class="carousel-header">
@@ -834,7 +193,7 @@
       <div class="products-scroll" id="products-scroll">
         {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
         {% assign max_products = block.settings.max_products | default: 12 %}
-        {% assign max_desktop_products = 8 %}
+        {% assign desktop_limit = 8 %} {% comment %}Always show exactly 8 products on desktop{% endcomment %}
         {% assign counter = 0 %}
         {% assign total_products = 0 %}
         {% assign discounted_products = 0 %}
@@ -861,6 +220,9 @@
           </div>
         {% endif %}
         
+        {% comment %} Ensure we get exactly 8 products for desktop display {% endcomment %}
+        {% assign display_limit = 8 %}
+        
         {% for product in products_to_check %}
           {% assign should_display = false %}
           
@@ -877,9 +239,9 @@
           {% endif %}
           
           {% if should_display or block.settings.show_all_products %}
-            {% if counter < max_products %}
+            {% if counter < desktop_limit %}
               {% assign current_variant = product.selected_or_first_available_variant %}
-              {% if current_variant.compare_at_price > current_variant.price or block.settings.show_non_discounted %}
+              {% if current_variant.compare_at_price > current_variant.price or block.settings.show_non_discounted or counter < 8 %}
                 {% assign discounted_products = discounted_products | plus: 1 %}
                 {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
                 {% assign savings_percentage = savings_amount | times: 100 | divided_by: current_variant.compare_at_price | round | at_least: 1 %}
@@ -964,6 +326,32 @@
             {% endif %}
           {% endif %}
         {% endfor %}
+        
+        {% comment %} Add placeholders if fewer than 8 products are found {% endcomment %}
+        {% if counter < desktop_limit %}
+          {% assign placeholders_needed = desktop_limit | minus: counter %}
+          {% for i in (1..placeholders_needed) %}
+            <div class="product-slide">
+              <div class="product-card" style="position: relative; background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); overflow: hidden; height: 100%; display: flex; flex-direction: column;">
+                <!-- Product Image Section -->
+                <div style="height: {{ block.settings.image_height }}px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: {{ block.settings.image_bg_color }};">
+                  <img src="{{ 'product-placeholder.png' | asset_url | default: '' }}" 
+                       alt="Product Placeholder" 
+                       style="width: 100%; height: 100%; object-fit: contain; opacity: 0.5;" 
+                       loading="lazy">
+                </div>
+                
+                <!-- Product Info Section -->
+                <div style="padding: 12px 12px 60px; border-top: 1px solid #f0f0f0;">
+                  <div style="font-size: 15px; font-weight: 500; margin-bottom: 6px; color: #333;">Coming Soon</div>
+                  <div style="display: flex; align-items: baseline; margin-top: 4px;">
+                    <div style="font-weight: 600; color: {{ block.settings.badge_bg_color }}; font-size: 16px;">Stay Tuned</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
       </div>
       
       <!-- Scroll Indicators for Mobile -->
@@ -972,7 +360,7 @@
       </div>
     </div>
     
-    {% if counter == 0 %}
+    {% if counter == 0 and placeholders_needed != desktop_limit %}
       <p style="text-align: center; margin: 50px 0; color: #666;">
         No discounted products available with the selected tag.
       </p>
@@ -1027,260 +415,139 @@
   
   <!-- Simple "Add to cart" functionality -->
   <script>
-    // Mobile Slider Functions
     document.addEventListener('DOMContentLoaded', function() {
-      const productsScroll = document.getElementById('products-scroll');
-      const scrollIndicators = document.getElementById('scroll-indicators');
-      
-      if (!productsScroll || !scrollIndicators) return;
-      
-      // Get all product slides
-      const slides = productsScroll.querySelectorAll('.product-slide');
-      const slideCount = slides.length;
-      
-      // Only initialize mobile slider if we have slides and we're on mobile
-      if (slideCount > 0 && window.innerWidth < 768) {
-        initMobileSlider(productsScroll, scrollIndicators, slides, slideCount);
-      }
-      
-      // Update on window resize
+      const ps = document.getElementById('products-scroll');
+      const si = document.getElementById('scroll-indicators');
+      if (!ps || !si) return;
+      const slides = ps.querySelectorAll('.product-slide');
+      const sc = slides.length;
+      if (sc > 0 && window.innerWidth < 768) initMobileSlider(ps, si, slides, sc);
       window.addEventListener('resize', function() {
-        if (window.innerWidth < 768) {
-          // Mobile view
-          if (scrollIndicators.children.length === 0 && slideCount > 0) {
-            initMobileSlider(productsScroll, scrollIndicators, slides, slideCount);
-          }
-        } else {
-          // Desktop/Tablet view - clear indicators
-          scrollIndicators.innerHTML = '';
-        }
+        if (window.innerWidth < 768) {if (si.children.length === 0 && sc > 0) initMobileSlider(ps, si, slides, sc);
+        } else {si.innerHTML = '';}
       });
     });
     
-    // Initialize the mobile slider
-    function initMobileSlider(productsScroll, scrollIndicators, slides, slideCount) {
-      // Create scroll indicators (dots)
-      scrollIndicators.innerHTML = '';
-      for (let i = 0; i < slideCount; i++) {
+    function initMobileSlider(ps, si, slides, sc) {
+      si.innerHTML = '';
+      for (let i = 0; i < sc; i++) {
         const dot = document.createElement('span');
         dot.className = 'scroll-dot';
         if (i === 0) dot.classList.add('active');
         dot.dataset.index = i;
         dot.addEventListener('click', function() {
           const index = parseInt(this.dataset.index);
-          const slideElement = slides[index];
-          if (slideElement) {
-            slideElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
-          }
+          if (slides[index]) slides[index].scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});
         });
-        scrollIndicators.appendChild(dot);
+        si.appendChild(dot);
       }
       
-      // Update active dot on scroll
-      let scrollTimeout;
-      productsScroll.addEventListener('scroll', function() {
-        if (scrollTimeout) {
-          clearTimeout(scrollTimeout);
-        }
-        
-        scrollTimeout = setTimeout(function() {
-          updateActiveDot(productsScroll, slides);
-        }, 50);
+      let st;
+      ps.addEventListener('scroll', function() {
+        if (st) clearTimeout(st);
+        st = setTimeout(function() {updateActiveDot(ps, slides);}, 50);
       });
       
-      // Initial dot update
-      updateActiveDot(productsScroll, slides);
+      updateActiveDot(ps, slides);
       
-      // Add touch tracking for swipe gestures
-      let touchStartX = 0;
-      let touchEndX = 0;
-      
-      productsScroll.addEventListener('touchstart', function(e) {
-        touchStartX = e.touches[0].clientX;
+      let tsx = 0, tex = 0;
+      ps.addEventListener('touchstart', function(e) {tsx = e.touches[0].clientX;}, false);
+      ps.addEventListener('touchend', function(e) {
+        tex = e.changedTouches[0].clientX;
+        if (tex < tsx - 50) slideCarousel('next');
+        else if (tex > tsx + 50) slideCarousel('prev');
       }, false);
-      
-      productsScroll.addEventListener('touchend', function(e) {
-        touchEndX = e.changedTouches[0].clientX;
-        handleSwipe();
-      }, false);
-      
-      function handleSwipe() {
-        const threshold = 50; // Minimum distance required for a swipe
-        
-        // Calculate direction
-        if (touchEndX < touchStartX - threshold) {
-          // Swipe left (next)
-          slideCarousel('next');
-        } else if (touchEndX > touchStartX + threshold) {
-          // Swipe right (prev)
-          slideCarousel('prev');
-        }
-      }
     }
     
-    // Update the active scroll indicator dot
-    function updateActiveDot(productsScroll, slides) {
+    function updateActiveDot(ps, slides) {
       const dots = document.querySelectorAll('.scroll-dot');
       if (!dots.length) return;
+      const sl = ps.scrollLeft;
+      const cw = ps.clientWidth;
+      let ai = 0, bv = 0;
       
-      const scrollLeft = productsScroll.scrollLeft;
-      const containerWidth = productsScroll.clientWidth;
-      
-      // Find the slide that is most visible
-      let activeIndex = 0;
-      let bestVisibility = 0;
-      
-      slides.forEach((slide, index) => {
-        const slideLeft = slide.offsetLeft - productsScroll.offsetLeft;
-        const slideRight = slideLeft + slide.offsetWidth;
-        
-        // Calculate how much of the slide is visible in the container
-        const visibleLeft = Math.max(0, slideLeft);
-        const visibleRight = Math.min(slideRight, scrollLeft + containerWidth);
-        const visibleWidth = Math.max(0, visibleRight - visibleLeft);
-        
-        // Update if this slide is more visible than the previous best
-        if (visibleWidth > bestVisibility) {
-          bestVisibility = visibleWidth;
-          activeIndex = index;
-        }
+      slides.forEach((slide, i) => {
+        const slf = slide.offsetLeft - ps.offsetLeft;
+        const sr = slf + slide.offsetWidth;
+        const vl = Math.max(0, slf);
+        const vr = Math.min(sr, sl + cw);
+        const vw = Math.max(0, vr - vl);
+        if (vw > bv) {bv = vw; ai = i;}
       });
       
-      // Update active dot
-      dots.forEach((dot, index) => {
-        if (index === activeIndex) {
-          dot.classList.add('active');
-        } else {
-          dot.classList.remove('active');
-        }
+      dots.forEach((dot, i) => {
+        if (i === ai) dot.classList.add('active');
+        else dot.classList.remove('active');
       });
     }
     
-    // Handle slider control clicks
-    function slideCarousel(direction) {
-      const productsScroll = document.getElementById('products-scroll');
-      if (!productsScroll) return;
-      
-      const slideWidth = productsScroll.querySelector('.product-slide')?.offsetWidth || 240;
-      const scrollAmount = direction === 'next' ? slideWidth : -slideWidth;
-      
-      productsScroll.scrollBy({
-        left: scrollAmount,
-        behavior: 'smooth'
-      });
+    function slideCarousel(d) {
+      const ps = document.getElementById('products-scroll');
+      if (!ps) return;
+      const sw = ps.querySelector('.product-slide')?.offsetWidth || 240;
+      ps.scrollBy({left: d === 'next' ? sw : -sw, behavior: 'smooth'});
     }
     
-    // Function to add product to cart
-    function addToCart(variantId) {
-      // Change button text to indicate loading
-      const button = event.target;
-      const originalText = button.textContent;
-      button.textContent = 'ADDING...';
-      button.disabled = true;
+    function addToCart(vid) {
+      const btn = event.target;
+      const ot = btn.textContent;
+      btn.textContent = 'ADDING...';
+      btn.disabled = true;
       
-      // Add to cart using Shopify AJAX API
       fetch('/cart/add.js', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          id: variantId,
-          quantity: 1
-        })
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: JSON.stringify({id: vid, quantity: 1})
       })
-      .then(response => response.json())
-      .then(data => {
-        // Success - update the cart count and notify the user
-        button.textContent = 'ADDED!';
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.disabled = false;
-        }, 2000);
-        
-        // Refresh cart drawer/count if applicable
-        if (typeof window.refreshCart === 'function') {
-          window.refreshCart();
-        }
+      .then(r => r.json())
+      .then(d => {
+        btn.textContent = 'ADDED!';
+        setTimeout(() => {btn.textContent = ot; btn.disabled = false;}, 2000);
+        if (typeof window.refreshCart === 'function') window.refreshCart();
       })
-      .catch(error => {
-        // Error handling
-        console.error('Error adding product to cart:', error);
-        button.textContent = 'ERROR';
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.disabled = false;
-        }, 2000);
+      .catch(e => {
+        console.error('Error adding to cart:', e);
+        btn.textContent = 'ERROR';
+        setTimeout(() => {btn.textContent = ot; btn.disabled = false;}, 2000);
       });
     }
     
     {% if block.settings.autoplay %}
-    // Enhanced auto-scroll functionality for autoplay (mobile only)
     document.addEventListener('DOMContentLoaded', function() {
-      const productsScroll = document.getElementById('products-scroll');
-      if (productsScroll && window.innerWidth < 1024) { // Only autoplay on mobile and tablet
-        let currentIndex = 0;
-        const slides = productsScroll.querySelectorAll('.product-slide');
-        const slideCount = slides.length;
-        const scrollPause = {{ block.settings.autoplay_delay }};
+      const ps = document.getElementById('products-scroll');
+      if (ps && window.innerWidth < 1024) {
+        let ci = 0;
+        const slides = ps.querySelectorAll('.product-slide');
+        const sc = slides.length;
+        const sp = {{ block.settings.autoplay_delay }};
+        let at = null;
         
-        let autoplayTimer = null;
-        
-        function startAutoplay() {
-          if (autoplayTimer) return;
-          
-          autoplayTimer = setInterval(function() {
-            currentIndex = (currentIndex + 1) % slideCount;
-            const targetSlide = slides[currentIndex];
-            
-            if (targetSlide) {
-              targetSlide.scrollIntoView({
-                behavior: 'smooth',
-                block: 'nearest',
-                inline: 'start'
-              });
-              
-              // Update dots
+        function startAP() {
+          if (at) return;
+          at = setInterval(function() {
+            ci = (ci + 1) % sc;
+            const ts = slides[ci];
+            if (ts) {
+              ts.scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});
               const dots = document.querySelectorAll('.scroll-dot');
-              dots.forEach((dot, index) => {
-                if (index === currentIndex) {
-                  dot.classList.add('active');
-                } else {
-                  dot.classList.remove('active');
-                }
+              dots.forEach((dot, i) => {
+                if (i === ci) dot.classList.add('active');
+                else dot.classList.remove('active');
               });
             }
-          }, scrollPause);
+          }, sp);
         }
         
-        // Pause autoplay on user interaction
-        function pauseAutoplay() {
-          clearInterval(autoplayTimer);
-          autoplayTimer = null;
-        }
+        function pauseAP() {clearInterval(at); at = null;}
         
-        // Listeners for user interaction
-        productsScroll.addEventListener('mouseenter', pauseAutoplay);
-        productsScroll.addEventListener('touchstart', pauseAutoplay);
+        ps.addEventListener('mouseenter', pauseAP);
+        ps.addEventListener('touchstart', pauseAP);
+        if (window.innerWidth < 768) ps.addEventListener('mouseleave', startAP);
+        setTimeout(startAP, sp);
         
-        // Don't auto-restart on desktop
-        if (window.innerWidth < 768) {
-          productsScroll.addEventListener('mouseleave', startAutoplay);
-        }
-        
-        // Start autoplay after initial delay
-        setTimeout(startAutoplay, scrollPause);
-        
-        // Update behavior when window is resized
         window.addEventListener('resize', function() {
-          if (window.innerWidth >= 1024) {
-            // Stop autoplay on desktop
-            pauseAutoplay();
-          } else if (!autoplayTimer && window.innerWidth < 768) {
-            // Restart on mobile if stopped
-            startAutoplay();
-          }
+          if (window.innerWidth >= 1024) pauseAP();
+          else if (!at && window.innerWidth < 768) startAP();
         });
       }
     });
