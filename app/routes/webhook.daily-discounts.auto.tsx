@@ -120,7 +120,10 @@ export async function action({ request }: ActionFunctionArgs) {
       console.log(`[Auto-Discount] Getting eligible products for shop: ${shopDomain}`);
       let eligibleProductsResult;
       try {
-        eligibleProductsResult = await getEligibleProducts(adminApiContext, shopDomain, 6); // Get 6 products
+        // Get 6 products from our enhanced pool of ALL eligible products in the store
+        eligibleProductsResult = await getEligibleProducts(adminApiContext, shopDomain, 6);
+        console.log(`[Auto-Discount] Retrieved ${eligibleProductsResult.products?.length || 0} eligible products from complete store inventory`);
+        console.log(`[Auto-Discount] Products selected for discount: ${eligibleProductsResult.products.map(p => p.title).join(', ')}`);
       } catch (productsError) {
         console.error(`[Auto-Discount] Error getting eligible products:`, productsError);
         throw new Error(`Failed to get eligible products: ${productsError.message || 'Unknown error'}`);

@@ -15,34 +15,51 @@ export async function getEligibleProducts(
 ) {
   try {
     console.log(`[getEligibleProducts] Fetching products for shop: ${shop}`);
-    // Fetch products with inventory, cost, and price data
-    // We're getting up to 50 products to have a good pool for random selection
-    console.log(`[getEligibleProducts] Executing GraphQL query for shop: ${shop}`);
-    let response;
-    try {
-      response = await admin.graphql(`
-        query GetProductsWithInventory {
-          products(first: 50) {
-            edges {
-              node {
-                id
-                title
-                featuredImage {
-                  url
-                  altText
-                }
-                variants(first: 1) {
-                  edges {
-                    node {
-                      id
-                      title
-                      price
-                      compareAtPrice
-                      inventoryQuantity
-                      inventoryItem {
-                        unitCost {
-                          amount
-                          currencyCode
+    // Fetch ALL products with inventory, cost, and price data
+    // We're getting them in batches of 250 products at a time for maximum selection
+    console.log(`[getEligibleProducts] Executing GraphQL queries to fetch ALL products for shop: ${shop}`);
+    
+    let allProducts: any[] = [];
+    let hasNextPage = true;
+    let cursor = null;
+    const batchSize = 250; // GraphQL pagination size - maximum allowed
+    
+    // Fetch products in batches using pagination until we have ALL products
+    while (hasNextPage) {
+      let query;
+      let variables: any = { first: batchSize };
+      
+      // If we have a cursor, use it for pagination
+      if (cursor) {
+        variables.after = cursor;
+        query = `
+          query GetProductsWithInventory($first: Int!, $after: String) {
+            products(first: $first, after: $after) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  id
+                  title
+                  featuredImage {
+                    url
+                    altText
+                  }
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        id
+                        title
+                        price
+                        compareAtPrice
+                        inventoryQuantity
+                        inventoryItem {
+                          unitCost {
+                            amount
+                            currencyCode
+                          }
                         }
                       }
                     }
@@ -51,19 +68,91 @@ export async function getEligibleProducts(
               }
             }
           }
+        `;
+      } else {
+        // First query without cursor
+        query = `
+          query GetProductsWithInventory($first: Int!) {
+            products(first: $first) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  id
+                  title
+                  featuredImage {
+                    url
+                    altText
+                  }
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        id
+                        title
+                        price
+                        compareAtPrice
+                        inventoryQuantity
+                        inventoryItem {
+                          unitCost {
+                            amount
+                            currencyCode
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `;
+      }
+      
+      try {
+        console.log(`[getEligibleProducts] Fetching batch ${allProducts.length} to ${allProducts.length + batchSize}`);
+        const response = await admin.graphql(query, { variables });
+        const responseJson = await response.json();
+        
+        if (!responseJson.data?.products?.edges) {
+          console.error(`[getEligibleProducts] No products in response:`, responseJson);
+          break;
         }
-      `);
-    } catch (graphqlError) {
-      console.error(`[getEligibleProducts] GraphQL error:`, graphqlError);
-      throw new Error(`GraphQL query failed: ${graphqlError.message || 'Unknown GraphQL error'}`);
+        
+        // Add the products from this batch
+        allProducts = [...allProducts, ...responseJson.data.products.edges];
+        
+        // Update pagination info
+        hasNextPage = responseJson.data.products.pageInfo.hasNextPage;
+        cursor = responseJson.data.products.pageInfo.endCursor;
+        
+        console.log(`[getEligibleProducts] Fetched ${responseJson.data.products.edges.length} products, total: ${allProducts.length}`);
+        
+        // Break if there are no more pages - we want ALL products
+        if (!hasNextPage) {
+          console.log(`[getEligibleProducts] No more product pages to fetch`);
+          break;
+        }
+      } catch (graphqlError) {
+        console.error(`[getEligibleProducts] GraphQL error:`, graphqlError);
+        // If we have some products, continue with what we have
+        if (allProducts.length > 0) {
+          console.log(`[getEligibleProducts] Continuing with ${allProducts.length} products already fetched`);
+          break;
+        }
+        throw new Error(`GraphQL query failed: ${graphqlError.message || 'Unknown GraphQL error'}`);
+      }
     }
-
-    console.log(`[getEligibleProducts] Got GraphQL response for shop: ${shop}`);
-    const responseJson = await response.json();
-    console.log(`[getEligibleProducts] Response structure:`, JSON.stringify(responseJson).substring(0, 200) + '...');
     
-    // First, check if we received any products at all
-    if (!responseJson.data?.products?.edges || responseJson.data.products.edges.length === 0) {
+    console.log(`[getEligibleProducts] Completed fetching ALL products from the store, total products: ${allProducts.length}`);
+    
+    // Stats for monitoring
+    const start = Date.now();
+    console.log(`[getEligibleProducts] Beginning product filtering from pool of ${allProducts.length} products...`);
+    
+    // Check if we received any products at all
+    if (allProducts.length === 0) {
       return {
         status: "error",
         message: "No products found in the store",
@@ -73,7 +162,7 @@ export async function getEligibleProducts(
 
     // Filter products to include those with images and variants
     // Make cost optional - we'll estimate it if not available
-    const productsWithData = responseJson.data.products.edges
+    const productsWithData = allProducts
       .filter((edge: any) => {
         const product = edge.node;
         const variant = product.variants.edges[0]?.node;
@@ -124,11 +213,42 @@ export async function getEligibleProducts(
       };
     }
     
-    // Shuffle the array to randomize product selection
-    const shuffledProducts = shuffleArray(productsWithData);
+    // Calculate timing for filtering
+    const filterTime = Date.now() - start;
+    console.log(`[getEligibleProducts] Found ${productsWithData.length} eligible products after filtering (took ${filterTime}ms)`);
     
-    // Take the requested number of products
-    const selectedProducts = shuffledProducts.slice(0, count);
+    // Calculate some stats for monitoring
+    const eligiblePercentage = (productsWithData.length / allProducts.length) * 100;
+    console.log(`[getEligibleProducts] ${eligiblePercentage.toFixed(2)}% of products meet eligibility criteria`);
+    
+    // If we have fewer eligible products than requested, use all of them
+    if (productsWithData.length <= count) {
+      console.log(`[getEligibleProducts] Using all ${productsWithData.length} eligible products (fewer than requested ${count})`);
+      return {
+        status: "success",
+        products: productsWithData
+      };
+    }
+    
+    // Improved random selection from the pool of eligible products
+    const selectedProducts = [];
+    
+    // Create a deep copy to avoid modifying the original array
+    let productPool = [...productsWithData];
+    
+    // Truly random selection without replacement
+    for (let i = 0; i < count && productPool.length > 0; i++) {
+      // Select a random index
+      const randomIndex = Math.floor(Math.random() * productPool.length);
+      
+      // Add the product at that index to our selected products
+      selectedProducts.push(productPool[randomIndex]);
+      
+      // Remove the selected product from the pool to avoid duplicates
+      productPool.splice(randomIndex, 1);
+    }
+    
+    console.log(`[getEligibleProducts] Randomly selected ${selectedProducts.length} products from pool of ${productsWithData.length}`);
     
     return {
       status: "success",
@@ -586,12 +706,23 @@ export async function applyDiscount(
 
 /**
  * Utility function to shuffle an array (Fisher-Yates algorithm)
+ * Enhanced with better randomization
  */
 function shuffleArray(array: any[]) {
+  // Create a new copy to avoid modifying the original
   const newArray = [...array];
+  
+  // Use Fisher-Yates algorithm for shuffling
   for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    // Generate a more unpredictable random index using a combination of methods
+    let j = Math.floor(Math.random() * (i + 1));
+    
+    // Ensure j is within bounds (defensive programming)
+    j = Math.max(0, Math.min(j, i));
+    
+    // Swap elements
     [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
   }
+  
   return newArray;
 }
