@@ -11,7 +11,7 @@ import prisma from "../db.server";
 export async function getEligibleProducts(
   admin: AdminApiContext,
   shop: string,
-  count: number = 6
+  count: number = 8
 ) {
   try {
     console.log(`[getEligibleProducts] Fetching products for shop: ${shop}`);
@@ -337,6 +337,14 @@ export async function revertPreviousDiscounts(
     return results;
   }
   
+  // If we have more than 8 products, limit to the 8 most recent
+  if (previousDiscounts.length > 8) {
+    console.log(`[revertPreviousDiscounts] Limiting reversion to 8 most recent products out of ${previousDiscounts.length}`);
+    previousDiscounts = previousDiscounts.slice(0, 8);
+  }
+  
+  console.log(`[revertPreviousDiscounts] Will revert the following products: ${previousDiscounts.map(d => d.productTitle).join(', ')}`);
+  
   for (const discount of previousDiscounts) {
     console.log(`[revertPreviousDiscounts] Processing ${discount.productTitle} (${discount.variantId})`);
     
@@ -522,6 +530,7 @@ export async function revertPreviousDiscounts(
   }
   
   console.log(`[revertPreviousDiscounts] Reversion complete: ${results.successful} successful, ${results.failed} failed`);
+  console.log(`[revertPreviousDiscounts] Reverted products: ${results.revertedItems.join(', ')}`);
   return results;
 }
 
