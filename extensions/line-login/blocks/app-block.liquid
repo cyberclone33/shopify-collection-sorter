@@ -192,7 +192,6 @@
       <!-- Products Scroll Container -->
       <div class="products-scroll" id="products-scroll">
         {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
-        {% assign max_products = block.settings.max_products | default: 12 %}
         {% assign desktop_limit = 8 %} {% comment %}Always show exactly 8 products on desktop{% endcomment %}
         {% assign counter = 0 %}
         {% assign total_products = 0 %}
@@ -221,7 +220,6 @@
         {% endif %}
         
         {% comment %} Ensure we get exactly 8 products for desktop display {% endcomment %}
-        {% assign display_limit = 8 %}
         
         {% for product in products_to_check %}
           {% assign should_display = false %}
@@ -335,10 +333,9 @@
               <div class="product-card" style="position: relative; background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); overflow: hidden; height: 100%; display: flex; flex-direction: column;">
                 <!-- Product Image Section -->
                 <div style="height: {{ block.settings.image_height }}px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: {{ block.settings.image_bg_color }};">
-                  <img src="{{ 'product-placeholder.png' | asset_url | default: '' }}" 
-                       alt="Product Placeholder" 
-                       style="width: 100%; height: 100%; object-fit: contain; opacity: 0.5;" 
-                       loading="lazy">
+                  <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: 18px;">
+                    No Image
+                  </div>
                 </div>
                 
                 <!-- Product Info Section -->
