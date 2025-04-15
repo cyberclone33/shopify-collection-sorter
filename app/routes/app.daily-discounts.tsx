@@ -602,9 +602,6 @@ export default function DailyDiscounts() {
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
   // Track reverted items in state instead of creating new database entries
   const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
-  const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
-  // Track reverted items in state instead of creating new database entries
-  const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [applyingMultiple, setApplyingMultiple] = useState(false);
