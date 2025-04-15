@@ -277,7 +277,7 @@ export async function getPreviousAutoDiscounts(shop: string) {
     
     console.log(`[getPreviousAutoDiscounts] Fetching auto discounts for shop: ${shop} since ${oneDayAgo.toISOString()}`);
     
-    // Get only applied discounts (not reverted ones)
+    // Get only applied discounts that haven't been reverted yet using the isReverted field
     const previousDiscounts = await prisma.dailyDiscountLog.findMany({
       where: {
         shop,
@@ -286,15 +286,17 @@ export async function getPreviousAutoDiscounts(shop: string) {
           gte: oneDayAgo
         },
         notes: {
-          contains: "Auto Discount Applied"  // Specifically looking for applied discounts only
-        }
+          contains: "Auto Discount Applied"
+        },
+        // Directly check the isReverted flag
+        isReverted: false
       },
       orderBy: {
         appliedAt: 'desc'
       }
     });
     
-    console.log(`[getPreviousAutoDiscounts] Found ${previousDiscounts.length} active auto discounts`);
+    console.log(`[getPreviousAutoDiscounts] Found ${previousDiscounts.length} active auto discounts that need reverting`);
     
     // Print the first few discounts for debugging
     if (previousDiscounts.length > 0) {
@@ -339,21 +341,8 @@ export async function revertPreviousDiscounts(
     console.log(`[revertPreviousDiscounts] Processing ${discount.productTitle} (${discount.variantId})`);
     
     try {
-      // First check if this was already reverted
-      const alreadyReverted = await prisma.dailyDiscountLog.findFirst({
-        where: {
-          shop,
-          variantId: discount.variantId,
-          notes: {
-            contains: "Auto Discount Reverted"
-          },
-          appliedAt: {
-            gt: discount.appliedAt
-          }
-        }
-      });
-      
-      if (alreadyReverted) {
+      // Check if this discount is already marked as reverted
+      if (discount.isReverted) {
         console.log(`[revertPreviousDiscounts] Product ${discount.productTitle} already reverted - skipping`);
         continue;
       }
@@ -501,27 +490,19 @@ export async function revertPreviousDiscounts(
           // Continue anyway even if tag removal fails
         }
         
-        // Log the reversion
-        await prisma.dailyDiscountLog.create({
+        // Instead of creating a new record, update the existing one to show it's been reverted
+        await prisma.dailyDiscountLog.update({
+          where: {
+            id: discount.id
+          },
           data: {
-            shop,
-            productId: discount.productId,
-            productTitle: discount.productTitle,
-            variantId: discount.variantId,
-            variantTitle: discount.variantTitle || null,
-            originalPrice: discount.discountedPrice,
-            discountedPrice: discount.originalPrice,
-            compareAtPrice: null,
-            costPrice: discount.costPrice,
-            profitMargin: discount.profitMargin,
-            discountPercentage: discount.discountPercentage,
-            savingsAmount: 0, // Zero indicates it's a reversion
-            savingsPercentage: 0,
-            currencyCode: discount.currencyCode || 'USD',
-            imageUrl: discount.imageUrl,
-            inventoryQuantity: discount.inventoryQuantity,
-            isRandomDiscount: true,
-            notes: "Auto Discount Reverted"
+            notes: "Auto Discount Reverted",
+            isReverted: true,
+            revertedAt: new Date(),
+            revertOriginalPrice: discount.discountedPrice,
+            revertDiscountedPrice: discount.originalPrice,
+            revertCompareAtPrice: null,
+            revertNotes: "Price reverted to original value"
           }
         });
         
