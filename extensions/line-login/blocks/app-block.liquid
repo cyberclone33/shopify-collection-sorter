@@ -5,8 +5,8 @@
 
 <!-- No external CSS needed for simple scroll slider -->
 
-<div id="alpha-dog-carousel" class="alpha-dog-carousel" style="margin: 40px auto; max-width: 1200px; width: 100%;">
-  <div class="carousel-container" style="max-width: 1200px; margin: 0 auto; width: 100%;">
+<div id="alpha-dog-carousel" class="alpha-dog-carousel" style="margin: 40px auto; max-width: 1200px; width: 100%; display: flex; flex-direction: column; align-items: center;">
+  <div class="carousel-container" style="max-width: 1200px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center;">
     <style>
       /* Main carousel container - optimized and centered */
       .alpha-dog-carousel{margin:40px auto;overflow:hidden;position:relative;padding:10px 5px 30px;max-width:1200px;width:100%}
@@ -20,14 +20,14 @@
       /* Product card design - fixed dimensions for uniformity */
       .product-card,.alpha-dog-product-card{position:relative;width:100%;height:380px !important;min-height:380px !important;max-height:380px !important;background-color:{{ block.settings.card_bg_color }};border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06);overflow:hidden;transition:all 0.4s cubic-bezier(0.22,1,0.36,1);cursor:pointer;display:flex;flex-direction:column;border:1px solid rgba(240,240,240,0.8);margin:0 auto;box-sizing:border-box}
       
-      /* Product image container - enforced consistent sizing */
-      .product-image-container{width:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:{{ block.settings.image_bg_color }};flex:0;margin:0;border-radius:8px 8px 0 0;height:260px !important;min-height:260px !important;max-height:260px !important}
+      /* Product image container - square format with consistent sizing */
+      .product-image-container{width:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:{{ block.settings.image_bg_color }};flex:0;margin:0;border-radius:8px 8px 0 0;height:260px !important;min-height:260px !important;max-height:260px !important;aspect-ratio:1/1 !important}
       
       .product-card:hover,.alpha-dog-product-card:hover{transform:translateY(-6px);box-shadow:0 12px 24px rgba(0,0,0,0.08);border-color:rgba(220,220,220,0.8)}
       .product-card:active,.alpha-dog-product-card:active{transform:translateY(-2px);transition:all 0.2s}
       
-      .product-image{width:100%;height:260px;position:relative;overflow:hidden;background-color:{{ block.settings.image_bg_color }};flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:10px;transition:all 0.4s ease}
-      .product-image img{width:100%;height:100%;object-fit:contain;display:block;transition:transform 0.7s cubic-bezier(0.22,1,0.36,1);max-height:260px}
+      .product-image{width:100%;height:260px;position:relative;overflow:hidden;background-color:{{ block.settings.image_bg_color }};flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:10px;transition:all 0.4s ease;aspect-ratio:1/1}
+      .product-image img{width:100%;height:100%;object-fit:contain;display:block;transition:transform 0.7s cubic-bezier(0.22,1,0.36,1);max-height:260px;max-width:260px}
       .product-card:hover .product-image img{transform:scale(1.08)}
       .product-image::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.02);opacity:0;transition:opacity 0.5s ease}
       .product-card:hover .product-image::after{opacity:1}
@@ -91,19 +91,19 @@
       .slider-prev{left:10px}
       .slider-next{right:10px}
       
-      /* Desktop grid layout - centered with absolute dimensions */
+      /* Desktop grid layout - centered with square product images and uniform cards */
       @media (min-width:1024px){
         .alpha-dog-carousel{overflow:visible;margin:40px auto;width:100%;max-width:1200px}
         .carousel-container{width:100%;max-width:1200px;margin:0 auto;padding:0}
         .products-container{max-width:1200px;width:100%;margin:0 auto;padding:0 15px}
-        .products-scroll{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,380px);grid-gap:20px;white-space:normal;overflow:visible;padding:0;width:100%}
-        .product-slide{width:100%;margin:0;display:block;padding:0;height:380px}
+        .products-scroll{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,400px);grid-gap:20px;white-space:normal;overflow:visible;padding:0;width:100%}
+        .product-slide{width:100%;margin:0;display:block;padding:0;height:400px;aspect-ratio:auto}
         /* Force 8 cards to be visible, hide any beyond that */
         .product-slide:nth-child(-n+8){display:block !important}
         .product-slide:nth-child(n+9){display:none !important}
         /* Ensure all cards are exactly the same size */
-        .alpha-dog-product-card,.product-card{height:380px !important;width:100% !important;min-height:380px !important;max-height:380px !important}
-        .product-image-container{height:260px !important;min-height:260px !important;max-height:260px !important}
+        .alpha-dog-product-card,.product-card{height:400px !important;width:100% !important;min-height:400px !important;max-height:400px !important}
+        .product-image-container{height:260px !important;min-height:260px !important;max-height:260px !important;width:260px !important;min-width:260px !important;max-width:260px !important;margin:0 auto !important}
       }
       
       @media (hover: hover) {
@@ -248,7 +248,7 @@
                   <div class="product-card" style="position: relative; background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); overflow: hidden; height: 100%; display: flex; flex-direction: column;">
                     <!-- Product Image Section -->
                     <a href="{{ product.url }}" style="text-decoration: none; display: block;">
-                      <div class="product-image-container" style="height: 260px; padding: 0; object-fit: contain; display: flex; align-items: center; justify-content: center;">
+                      <div class="product-image-container" style="height: 260px; width: 260px; padding: 0; object-fit: contain; display: flex; align-items: center; justify-content: center; margin: 0 auto; aspect-ratio: 1/1;">
                         {% if product.featured_image %}
                           <img src="{{ product.featured_image | image_url: width: 400 }}" 
                                alt="{{ product.title }}" 
@@ -332,7 +332,7 @@
             <div class="product-slide">
               <div class="product-card" style="position: relative; background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); overflow: hidden; height: 100%; display: flex; flex-direction: column;">
                 <!-- Product Image Section -->
-                <div style="height: 260px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: {{ block.settings.image_bg_color }};">
+                <div style="height: 260px; width: 260px; padding: 0; display: flex; align-items: center; justify-content: center; background-color: {{ block.settings.image_bg_color }}; margin: 0 auto; aspect-ratio: 1/1;">
                   <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: 18px;">
                     No Image
                   </div>
