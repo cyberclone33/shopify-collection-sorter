@@ -133,7 +133,7 @@ model ShelfLifeItemPriceChange {
 }
 
 model DailyDiscountLog {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   shop               String
   productId          String
   productTitle       String
@@ -147,13 +147,20 @@ model DailyDiscountLog {
   discountPercentage Float
   savingsAmount      Float
   savingsPercentage  Float
-  currencyCode       String   @default("USD")
-  appliedAt          DateTime @default(now())
+  currencyCode       String    @default("USD")
+  appliedAt          DateTime  @default(now())
   appliedByUserId    String?
   imageUrl           String?
   inventoryQuantity  Int?
-  isRandomDiscount   Boolean  @default(true)
+  isRandomDiscount   Boolean   @default(true)
   notes              String?
+  // New fields for revert tracking
+  isReverted         Boolean   @default(false)
+  revertedAt         DateTime?
+  revertOriginalPrice Float?
+  revertDiscountedPrice Float?
+  revertCompareAtPrice Float?
+  revertNotes        String?
 
   @@index([shop])
   @@index([variantId])

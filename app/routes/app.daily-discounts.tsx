@@ -511,30 +511,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Log the discount to the database
     try {
-      await prisma.dailyDiscountLog.create({
-        data: {
-          shop: session.shop,
-          productId: productId || '',
-          productTitle: productTitle || 'Unknown Product',
-          variantId: variantId,
-          variantTitle: variantTitle || null,
-          originalPrice: parseFloat(originalPrice || '0'),
-          discountedPrice: parseFloat(newPrice),
-          compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-          costPrice: costPrice ? parseFloat(costPrice) : null,
-          profitMargin: profitMargin ? parseFloat(profitMargin) : null,
-          discountPercentage: parseFloat(discountPercentage || '0'),
-          savingsAmount: parseFloat(savingsAmount || '0'),
-          savingsPercentage: parseFloat(savingsPercentage || '0'),
-          currencyCode: currencyCode || 'USD',
-          imageUrl: imageUrl || null,
-          inventoryQuantity: inventoryQuantity ? parseInt(inventoryQuantity) : null,
-          isRandomDiscount: true,
-          notes: notes || "Manual UI Discount"
-        }
-      });
-      console.log(`Discount logged for product ${productTitle} (${variantId})`);
-    } catch (logError) {
+      // Check if this is a revert
+      const isRevert = formData.get("isRevert") === "true";
+      const originalLogId = formData.get("originalLogId")?.toString();
+      const revertedAt = formData.get("revertedAt")?.toString();
+      
+      if (isRevert && originalLogId) {
+        // For reverts, update the existing log entry instead of creating a new one
+        await prisma.dailyDiscountLog.update({
+          where: {
+            id: originalLogId
+          },
+          data: {
+            isReverted: true,
+            revertedAt: revertedAt ? new Date(revertedAt) : new Date(),
+            revertOriginalPrice: parseFloat(originalPrice || '0'),
+            revertDiscountedPrice: parseFloat(newPrice),
+            revertCompareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+            revertNotes: notes || "Reverted to original price"
+          }
+        });
+        console.log(`Updated discount log for reverted product ${productTitle} (${variantId})`);
+      } else {
+        // For new discounts, create a new log entry as before
+        await prisma.dailyDiscountLog.create({
+          data: {
+            shop: session.shop,
+            productId: productId || '',
+            productTitle: productTitle || 'Unknown Product',
+            variantId: variantId,
+            variantTitle: variantTitle || null,
+            originalPrice: parseFloat(originalPrice || '0'),
+            discountedPrice: parseFloat(newPrice),
+            compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+            costPrice: costPrice ? parseFloat(costPrice) : null,
+            profitMargin: profitMargin ? parseFloat(profitMargin) : null,
+            discountPercentage: parseFloat(discountPercentage || '0'),
+            savingsAmount: parseFloat(savingsAmount || '0'),
+            savingsPercentage: parseFloat(savingsPercentage || '0'),
+            currencyCode: currencyCode || 'USD',
+            imageUrl: imageUrl || null,
+            inventoryQuantity: inventoryQuantity ? parseInt(inventoryQuantity) : null,
+            isRandomDiscount: true,
+            isReverted: false,
+            notes: notes || "Manual UI Discount"
+          }
+        });
+        console.log(`Discount logged for product ${productTitle} (${variantId})`);
+      }} catch (logError) {
       console.error("Error logging discount:", logError);
       // Continue anyway even if logging fails
     }
@@ -1136,54 +1160,71 @@ export default function DailyDiscounts() {
   
   // Actually perform the revert after confirmation
   const confirmRevertDiscount = () => {
-    if (!confirmRevert) return;
-    
-    const log = confirmRevert;
-    setIsReverting(log.id);
-    
-    // Add this item to our reverted items set
-    setRevertedItems(prev => new Set([...prev, log.id]));
-    
-    const formData = new FormData();
-    formData.append('variantId', log.variantId);
-    formData.append('newPrice', log.originalPrice.toString());
-    
-    // Set compareAtPrice to null to remove the sale price effect
-    formData.append('compareAtPrice', '');
-    
-    // We need the product ID for the bulk update mutation
-    if (log.productId) {
-      formData.append('productId', log.productId);
-    }
-    
-    // Add additional fields for logging
-    formData.append('productTitle', log.productTitle);
-    if (log.variantTitle) {
-      formData.append('variantTitle', log.variantTitle);
-    }
-    formData.append('originalPrice', log.discountedPrice.toString());
-    formData.append('costPrice', log.costPrice?.toString() || '0');
-    formData.append('currencyCode', log.currencyCode || 'USD');
-    
-    // For reversions, savings should be zero (no savings on a reverted price)
-    formData.append('savingsAmount', '0');
-    formData.append('savingsPercentage', '0');
-    formData.append('discountPercentage', '0');
-    
-    // Check if this is from an automated discount and preserve the type in notes
-    // This will ensure reversion logs appear in the same section as the original discount
-    if (log.notes && log.notes.includes('Auto Discount')) {
-      formData.append('notes', 'Auto Discount Reverted');
-    } else {
-      formData.append('notes', 'Manual UI Discount Reverted');
-    }
-    
-    // Close the confirmation dialog
-    setConfirmRevert(null);
-    
-    // The revert action is just a regular price update back to the original price
-    submit(formData, { method: 'post' });
-  };
+  if (!confirmRevert) return;
+  
+  const log = confirmRevert;
+  setIsReverting(log.id);
+  
+  // Add to reverted items set
+  setRevertedItems(prev => new Set([...prev, log.id]));
+  
+  // Save to localStorage
+  try {
+    const storedItems = localStorage.getItem('revertedItems');
+    const revertedArr = storedItems ? JSON.parse(storedItems) : [];
+    revertedArr.push(log.id);
+    localStorage.setItem('revertedItems', JSON.stringify([...new Set(revertedArr)]));
+  } catch (e) {
+    console.error("Error saving reverted item:", e);
+  }
+  
+  const formData = new FormData();
+  formData.append("variantId", log.variantId);
+  formData.append("newPrice", log.originalPrice.toString());
+  
+  // Set compareAtPrice to null to remove the sale price effect
+  formData.append("compareAtPrice", "");
+  
+  // We need the product ID for the bulk update mutation
+  if (log.productId) {
+    formData.append("productId", log.productId);
+  }
+  
+  // Add additional fields for logging
+  formData.append("productTitle", log.productTitle);
+  if (log.variantTitle) {
+    formData.append("variantTitle", log.variantTitle);
+  }
+  formData.append("originalPrice", log.discountedPrice.toString());
+  formData.append("costPrice", log.costPrice?.toString() || "0");
+  formData.append("currencyCode", log.currencyCode || "USD");
+  
+  // For reversions, savings should be zero (no savings on a reverted price)
+  formData.append("savingsAmount", "0");
+  formData.append("savingsPercentage", "0");
+  formData.append("discountPercentage", "0");
+  
+  // Add original log ID for updating instead of creating new log
+  formData.append("originalLogId", log.id);
+  formData.append("isRevert", "true");
+  
+  // Check if this is from an automated discount and preserve the type in notes
+  // This will ensure reversion logs appear in the same section as the original discount
+  if (log.notes && log.notes.includes("Auto Discount")) {
+    formData.append("notes", "Auto Discount Reverted");
+  } else {
+    formData.append("notes", "Manual UI Discount Reverted");
+  }
+  
+  // Add revert timestamp
+  formData.append("revertedAt", new Date().toISOString());
+  
+  // Close the confirmation dialog
+  setConfirmRevert(null);
+  
+  // The revert action is just a regular price update back to the original price
+  submit(formData, { method: "post" });
+};
   
   // Get a new random product
   const getNewRandomProduct = () => {
