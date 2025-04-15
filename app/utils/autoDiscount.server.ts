@@ -155,6 +155,9 @@ export async function getPreviousAutoDiscounts(shop: string) {
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
     
+    console.log(`[getPreviousAutoDiscounts] Fetching auto discounts for shop: ${shop} since ${oneDayAgo.toISOString()}`);
+    
+    // Get only applied discounts (not reverted ones)
     const previousDiscounts = await prisma.dailyDiscountLog.findMany({
       where: {
         shop,
@@ -163,13 +166,21 @@ export async function getPreviousAutoDiscounts(shop: string) {
           gte: oneDayAgo
         },
         notes: {
-          contains: "Auto Discount"
+          contains: "Auto Discount Applied"  // Specifically looking for applied discounts only
         }
       },
       orderBy: {
         appliedAt: 'desc'
       }
     });
+    
+    console.log(`[getPreviousAutoDiscounts] Found ${previousDiscounts.length} active auto discounts`);
+    
+    // Print the first few discounts for debugging
+    if (previousDiscounts.length > 0) {
+      const sampleDiscount = previousDiscounts[0];
+      console.log(`[getPreviousAutoDiscounts] Sample discount: ${sampleDiscount.productTitle} (${sampleDiscount.variantId}), Original: ${sampleDiscount.originalPrice}, Discounted: ${sampleDiscount.discountedPrice}`);
+    }
     
     return previousDiscounts;
   } catch (error) {
@@ -193,110 +204,223 @@ export async function revertPreviousDiscounts(
   const results = {
     successful: 0,
     failed: 0,
-    errors: [] as string[]
+    errors: [] as string[],
+    revertedItems: [] as string[]
   };
   
+  console.log(`[revertPreviousDiscounts] Starting reversion for ${previousDiscounts.length} products`);
+  
+  if (previousDiscounts.length === 0) {
+    console.log(`[revertPreviousDiscounts] No products to revert - skipping`);
+    return results;
+  }
+  
   for (const discount of previousDiscounts) {
+    console.log(`[revertPreviousDiscounts] Processing ${discount.productTitle} (${discount.variantId})`);
+    
     try {
+      // First check if this was already reverted
+      const alreadyReverted = await prisma.dailyDiscountLog.findFirst({
+        where: {
+          shop,
+          variantId: discount.variantId,
+          notes: {
+            contains: "Auto Discount Reverted"
+          },
+          appliedAt: {
+            gt: discount.appliedAt
+          }
+        }
+      });
+      
+      if (alreadyReverted) {
+        console.log(`[revertPreviousDiscounts] Product ${discount.productTitle} already reverted - skipping`);
+        continue;
+      }
+      
       // Get the product ID from the variant ID
       // This assumes variant ID is in the format "gid://shopify/ProductVariant/123456789"
       const variantMatch = discount.variantId.match(/gid:\/\/shopify\/ProductVariant\/(\d+)/);
       if (!variantMatch || !variantMatch[1]) {
         results.failed++;
         results.errors.push(`Invalid variant ID format: ${discount.variantId}`);
+        console.error(`[revertPreviousDiscounts] Invalid variant ID format: ${discount.variantId}`);
         continue;
       }
       
       // Get the product ID using the variant
-      const variantResponse = await admin.graphql(`
-        query GetProductIdFromVariant($variantId: ID!) {
-          productVariant(id: $variantId) {
-            product {
-              id
+      console.log(`[revertPreviousDiscounts] Fetching product ID for variant: ${discount.variantId}`);
+      let productId;
+      
+      // First try using the stored productId if available
+      if (discount.productId && discount.productId.includes("gid://shopify/Product/")) {
+        productId = discount.productId;
+        console.log(`[revertPreviousDiscounts] Using stored productId: ${productId}`);
+      } else {
+        // If not available, fetch it from the API
+        try {
+          const variantResponse = await admin.graphql(`
+            query GetProductIdFromVariant($variantId: ID!) {
+              productVariant(id: $variantId) {
+                product {
+                  id
+                }
+              }
             }
+          `, {
+            variables: {
+              variantId: discount.variantId
+            }
+          });
+          
+          const variantData = await variantResponse.json();
+          productId = variantData.data?.productVariant?.product?.id;
+          
+          if (!productId) {
+            results.failed++;
+            results.errors.push(`Could not determine product ID for variant: ${discount.variantId}`);
+            console.error(`[revertPreviousDiscounts] Could not determine product ID for variant: ${discount.variantId}`);
+            continue;
           }
+          console.log(`[revertPreviousDiscounts] Fetched productId from API: ${productId}`);
+        } catch (variantError) {
+          results.failed++;
+          results.errors.push(`Error fetching product ID: ${variantError.message}`);
+          console.error(`[revertPreviousDiscounts] Error fetching product ID:`, variantError);
+          continue;
         }
-      `, {
-        variables: {
-          variantId: discount.variantId
-        }
-      });
-      
-      const variantData = await variantResponse.json();
-      const productId = variantData.data?.productVariant?.product?.id;
-      
-      if (!productId) {
-        results.failed++;
-        results.errors.push(`Could not determine product ID for variant: ${discount.variantId}`);
-        continue;
       }
       
       // Update the product variant to revert the price
-      const response = await admin.graphql(`
-        mutation updateProductVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-            productVariants {
-              id
-              price
-              compareAtPrice
-            }
-            userErrors {
-              field
-              message
+      console.log(`[revertPreviousDiscounts] Reverting price for ${discount.productTitle} to ${discount.originalPrice}`);
+      
+      try {
+        const response = await admin.graphql(`
+          mutation updateProductVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+              productVariants {
+                id
+                price
+                compareAtPrice
+              }
+              userErrors {
+                field
+                message
+              }
             }
           }
+        `, {
+          variables: {
+            productId,
+            variants: [{
+              id: discount.variantId,
+              price: discount.originalPrice.toString(),
+              compareAtPrice: null // Remove compare at price
+            }]
+          }
+        });
+        
+        const responseJson = await response.json();
+        
+        if (responseJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+          results.failed++;
+          const errors = responseJson.data.productVariantsBulkUpdate.userErrors.map((err: any) => err.message).join(", ");
+          results.errors.push(`Error reverting discount for ${discount.productTitle}: ${errors}`);
+          console.error(`[revertPreviousDiscounts] GraphQL error:`, responseJson.data.productVariantsBulkUpdate.userErrors);
+          continue;
         }
-      `, {
-        variables: {
-          productId,
-          variants: [{
-            id: discount.variantId,
-            price: discount.originalPrice.toString(),
-            compareAtPrice: null // Remove compare at price
-          }]
+        
+        // Try to remove the discount tag
+        try {
+          // First get current tags
+          const getTagsResponse = await admin.graphql(`
+            query getProductTags($id: ID!) {
+              product(id: $id) {
+                id
+                tags
+              }
+            }
+          `, {
+            variables: {
+              id: productId
+            }
+          });
+          
+          const tagsJson = await getTagsResponse.json();
+          const currentTags = tagsJson.data?.product?.tags || [];
+          
+          // Filter out the discount tag
+          const updatedTags = currentTags.filter((tag: string) => tag !== "DailyDiscount_每日優惠");
+          
+          // Only update if the tag was present
+          if (currentTags.length !== updatedTags.length) {
+            await admin.graphql(`
+              mutation updateProductTags($id: ID!, $tags: [String!]!) {
+                productUpdate(input: {id: $id, tags: $tags}) {
+                  product {
+                    id
+                    tags
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }
+            `, {
+              variables: {
+                id: productId,
+                tags: updatedTags
+              }
+            });
+            
+            console.log(`[revertPreviousDiscounts] Removed discount tag from ${discount.productTitle}`);
+          }
+        } catch (tagError) {
+          console.error(`[revertPreviousDiscounts] Error updating tags:`, tagError);
+          // Continue anyway even if tag removal fails
         }
-      });
-      
-      const responseJson = await response.json();
-      
-      if (responseJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+        
+        // Log the reversion
+        await prisma.dailyDiscountLog.create({
+          data: {
+            shop,
+            productId: discount.productId,
+            productTitle: discount.productTitle,
+            variantId: discount.variantId,
+            variantTitle: discount.variantTitle || null,
+            originalPrice: discount.discountedPrice,
+            discountedPrice: discount.originalPrice,
+            compareAtPrice: null,
+            costPrice: discount.costPrice,
+            profitMargin: discount.profitMargin,
+            discountPercentage: discount.discountPercentage,
+            savingsAmount: 0, // Zero indicates it's a reversion
+            savingsPercentage: 0,
+            currencyCode: discount.currencyCode || 'USD',
+            imageUrl: discount.imageUrl,
+            inventoryQuantity: discount.inventoryQuantity,
+            isRandomDiscount: true,
+            notes: "Auto Discount Reverted"
+          }
+        });
+        
+        results.successful++;
+        results.revertedItems.push(discount.productTitle);
+        console.log(`[revertPreviousDiscounts] Successfully reverted ${discount.productTitle}`);
+      } catch (updateError) {
         results.failed++;
-        const errors = responseJson.data.productVariantsBulkUpdate.userErrors.map((err: any) => err.message).join(", ");
-        results.errors.push(`Error reverting discount for ${discount.productTitle}: ${errors}`);
-        continue;
+        results.errors.push(`Error updating product: ${updateError.message}`);
+        console.error(`[revertPreviousDiscounts] Error updating product:`, updateError);
       }
-      
-      // Log the reversion
-      await prisma.dailyDiscountLog.create({
-        data: {
-          shop,
-          productId: discount.productId,
-          productTitle: discount.productTitle,
-          variantId: discount.variantId,
-          variantTitle: discount.variantTitle || null,
-          originalPrice: discount.discountedPrice,
-          discountedPrice: discount.originalPrice,
-          compareAtPrice: null,
-          costPrice: discount.costPrice,
-          profitMargin: discount.profitMargin,
-          discountPercentage: discount.discountPercentage,
-          savingsAmount: -discount.savingsAmount, // Negative to show it's a reversion
-          savingsPercentage: -discount.savingsPercentage,
-          currencyCode: discount.currencyCode || 'USD',
-          imageUrl: discount.imageUrl,
-          inventoryQuantity: discount.inventoryQuantity,
-          isRandomDiscount: true,
-          notes: "Auto Discount Reverted"
-        }
-      });
-      
-      results.successful++;
     } catch (error) {
       results.failed++;
       results.errors.push(`Error reverting discount for ${discount.productTitle}: ${error instanceof Error ? error.message : "Unknown error"}`);
+      console.error(`[revertPreviousDiscounts] Error processing discount:`, error);
     }
   }
   
+  console.log(`[revertPreviousDiscounts] Reversion complete: ${results.successful} successful, ${results.failed} failed`);
   return results;
 }
 

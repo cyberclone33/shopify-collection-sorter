@@ -80,7 +80,10 @@ export async function action({ request }: ActionFunctionArgs) {
     const url = new URL(request.url);
     const shopDomain = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "alphapetstw.myshopify.com";
     
-    console.log(`[Auto-Discount] Using shop domain: ${shopDomain}`);
+    console.log(`[Auto-Discount] Starting automatic discount run for shop domain: ${shopDomain}`);
+    console.log(`[Auto-Discount] Request URL: ${request.url}`);
+    console.log(`[Auto-Discount] Request method: ${request.method}`);
+    console.log(`[Auto-Discount] Using admin token: ${process.env.SHOPIFY_ADMIN_API_TOKEN ? "Yes (masked)" : "Not found"}`);
     
     // Set up admin API context using direct token approach
     console.log(`[Auto-Discount] Processing shop: ${shopDomain}`);
