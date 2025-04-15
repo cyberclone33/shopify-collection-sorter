@@ -1144,16 +1144,16 @@ export default function DailyDiscounts() {
   // Show confirmation dialog for reverting a discount
   const handleRevertDiscount = (log: any) => {
     if (!log.variantId || !log.originalPrice) {
-      setDiscountError('Cannot revert: Missing variant ID or original price');
+      setDiscountError("Cannot revert: Missing variant ID or original price");
       return;
     }
     
-    // Check if this item is already reverted 
-    if (revertedItems.has(log.id)) {
-      setDiscountError('This item has already been reverted.');
+    // Check if this item is already reverted
+    if (log.isReverted || revertedItems.has(log.id)) {
+      setDiscountError("This item has already been reverted.");
       return;
     }
-
+    
     // Set the log in state to show confirmation dialog
     setConfirmRevert(log);
   };
@@ -1876,9 +1876,9 @@ export default function DailyDiscounts() {
                                 size="micro"
                                 tone="critical"
                                 onClick={() => handleRevertDiscount(log)}
-                                disabled={isReverting === log.id || revertedItems.has(log.id)}
+                                disabled={isReverting === log.id || revertedItems.has(log.id) || log.isReverted}
                               >
-                                {isReverting === log.id ? "Reverting..." : revertedItems.has(log.id) ? "Reverted" : "Revert to Original Price"}
+                                {isReverting === log.id ? "Reverting..." : (log.isReverted || revertedItems.has(log.id)) ? "Reverted" : "Revert to Original Price"}
                               </Button>
                             </InlineStack>
                           </BlockStack>
@@ -2002,9 +2002,9 @@ export default function DailyDiscounts() {
                                 size="micro"
                                 tone="critical"
                                 onClick={() => handleRevertDiscount(log)}
-                                disabled={isReverting === log.id || revertedItems.has(log.id)}
+                                disabled={isReverting === log.id || revertedItems.has(log.id) || log.isReverted}
                               >
-                                {isReverting === log.id ? "Reverting..." : revertedItems.has(log.id) ? "Reverted" : "Revert to Original Price"}
+                                {isReverting === log.id ? "Reverting..." : (log.isReverted || revertedItems.has(log.id)) ? "Reverted" : "Revert to Original Price"}
                               </Button>
                             </InlineStack>
                           </BlockStack>
