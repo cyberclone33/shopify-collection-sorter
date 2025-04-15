@@ -55,12 +55,12 @@
         font-weight: 300;
       }
       
-      /* Premium product card design - uniform size */
+      /* Premium product card design - absolutely uniform size */
       .product-card, 
       .alpha-dog-product-card {
         position: relative;
         width: 100%;
-        height: 100%;
+        height: {{ block.settings.card_height }}px;
         min-height: {{ block.settings.card_height }}px;
         max-height: {{ block.settings.card_height }}px;
         background-color: {{ block.settings.card_bg_color }};
@@ -72,12 +72,13 @@
         display: flex;
         flex-direction: column;
         border: 1px solid rgba(240, 240, 240, 0.8);
+        margin: 0 auto; /* Center the cards */
       }
       
-      /* Product image container - standardized size */
+      /* Product image container - standardized size with better badge positioning */
       .product-image-container {
         width: 100%;
-        position: relative;
+        position: relative; /* For badge positioning */
         overflow: hidden;
         display: flex;
         align-items: center;
@@ -350,22 +351,27 @@
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       }
       
-      /* Enhanced carousel styling with mobile slider and grid for large screens */
+      /* Enhanced carousel styling with mobile slider and grid for large screens - properly centered */
       .alpha-dog-carousel {
-        margin: 40px 0;
+        margin: 40px auto;
         background-color: transparent;
         padding: 10px 0 30px;
         position: relative;
         -webkit-overflow-scrolling: touch;
         width: 100%;
+        max-width: 1200px;
         box-sizing: border-box;
       }
       
-      /* Products container for better organization */
+      /* Products container for better organization - centered structure */
       .products-container {
         width: 100%;
+        max-width: 1200px;
         position: relative;
         margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
       
       /* Mobile slider with touch controls */
@@ -470,14 +476,23 @@
         right: 10px;
       }
       
-      /* Large screen grid layout - fixed for desktop display */
+      /* Large screen grid layout - fixed for desktop display with consistent sizes */
       @media (min-width: 1024px) {
         .alpha-dog-carousel {
           overflow: visible;
+          margin: 40px auto;
+          width: 100%;
+          max-width: 1200px;
+        }
+        
+        .carousel-container {
+          width: 100%;
+          padding: 0;
         }
         
         .products-container {
           max-width: 1200px;
+          width: 100%;
           margin: 0 auto;
           padding: 0 15px;
         }
@@ -485,13 +500,14 @@
         .products-scroll {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          grid-template-rows: auto auto;
+          grid-template-rows: repeat(2, {{ block.settings.card_height }}px);
           grid-gap: 20px;
           white-space: normal;
           overflow: visible;
           padding: 0;
           height: auto;
           max-height: none;
+          width: 100%;
         }
         
         .product-slide {
@@ -500,7 +516,8 @@
           display: block;
           white-space: normal;
           padding: 0;
-          height: 100%;
+          height: {{ block.settings.card_height }}px;
+          aspect-ratio: auto;
         }
         
         /* Limit to 2 rows x 4 columns (8 items) */
@@ -508,18 +525,20 @@
           display: none;
         }
         
-        /* Ensure all items are properly positioned */
+        /* Ensure all items are properly positioned with fixed dimensions */
         .alpha-dog-product-card,
         .product-card {
-          height: 100%;
+          height: {{ block.settings.card_height }}px;
           width: 100%;
-          max-height: none;
           min-height: {{ block.settings.card_height }}px;
+          max-height: {{ block.settings.card_height }}px;
         }
         
         /* Ensure consistent product card heights */
         .product-image-container {
           height: {{ block.settings.image_height }}px !important;
+          min-height: {{ block.settings.image_height }}px !important;
+          max-height: {{ block.settings.image_height }}px !important;
         }
       }
       
@@ -886,7 +905,7 @@
                                height="{{ block.settings.image_height }}">
                         {% endif %}
                         
-                        <!-- Sale badge -->
+                        <!-- Sale badge overlaid directly on image -->
                         <div style="position: absolute; top: 8px; left: 8px; background-color: rgba(0,0,0,0.7); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; font-weight: 500; text-transform: uppercase; z-index: 5;">SALE</div>
                         
                         {% if current_variant.compare_at_price > current_variant.price %}
