@@ -600,6 +600,11 @@ export default function DailyDiscounts() {
     message: ""
   });
   const [confirmRevert, setConfirmRevert] = useState<any | null>(null);
+  // Track reverted items in state instead of creating new database entries
+  const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
+  const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
+  // Track reverted items in state instead of creating new database entries
+  const [revertedItems, setRevertedItems] = useState<Set<string>>(new Set());
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [applyingMultiple, setApplyingMultiple] = useState(false);
@@ -1118,10 +1123,16 @@ export default function DailyDiscounts() {
   // Show confirmation dialog for reverting a discount
   const handleRevertDiscount = (log: any) => {
     if (!log.variantId || !log.originalPrice) {
-      setDiscountError("Cannot revert: Missing variant ID or original price");
+      setDiscountError('Cannot revert: Missing variant ID or original price');
       return;
     }
     
+    // Check if this item is already reverted 
+    if (revertedItems.has(log.id)) {
+      setDiscountError('This item has already been reverted.');
+      return;
+    }
+
     // Set the log in state to show confirmation dialog
     setConfirmRevert(log);
   };
@@ -1133,45 +1144,48 @@ export default function DailyDiscounts() {
     const log = confirmRevert;
     setIsReverting(log.id);
     
+    // Add this item to our reverted items set
+    setRevertedItems(prev => new Set([...prev, log.id]));
+    
     const formData = new FormData();
-    formData.append("variantId", log.variantId);
-    formData.append("newPrice", log.originalPrice.toString());
+    formData.append('variantId', log.variantId);
+    formData.append('newPrice', log.originalPrice.toString());
     
     // Set compareAtPrice to null to remove the sale price effect
-    formData.append("compareAtPrice", "");
+    formData.append('compareAtPrice', '');
     
     // We need the product ID for the bulk update mutation
     if (log.productId) {
-      formData.append("productId", log.productId);
+      formData.append('productId', log.productId);
     }
     
     // Add additional fields for logging
-    formData.append("productTitle", log.productTitle);
+    formData.append('productTitle', log.productTitle);
     if (log.variantTitle) {
-      formData.append("variantTitle", log.variantTitle);
+      formData.append('variantTitle', log.variantTitle);
     }
-    formData.append("originalPrice", log.discountedPrice.toString());
-    formData.append("costPrice", log.costPrice?.toString() || "0");
-    formData.append("currencyCode", log.currencyCode || "USD");
+    formData.append('originalPrice', log.discountedPrice.toString());
+    formData.append('costPrice', log.costPrice?.toString() || '0');
+    formData.append('currencyCode', log.currencyCode || 'USD');
     
     // For reversions, savings should be zero (no savings on a reverted price)
-    formData.append("savingsAmount", "0");
-    formData.append("savingsPercentage", "0");
-    formData.append("discountPercentage", "0");
+    formData.append('savingsAmount', '0');
+    formData.append('savingsPercentage', '0');
+    formData.append('discountPercentage', '0');
     
     // Check if this is from an automated discount and preserve the type in notes
     // This will ensure reversion logs appear in the same section as the original discount
-    if (log.notes && log.notes.includes("Auto Discount")) {
-      formData.append("notes", "Auto Discount Reverted");
+    if (log.notes && log.notes.includes('Auto Discount')) {
+      formData.append('notes', 'Auto Discount Reverted');
     } else {
-      formData.append("notes", "Manual UI Discount Reverted");
+      formData.append('notes', 'Manual UI Discount Reverted');
     }
     
     // Close the confirmation dialog
     setConfirmRevert(null);
     
     // The revert action is just a regular price update back to the original price
-    submit(formData, { method: "post" });
+    submit(formData, { method: 'post' });
   };
   
   // Get a new random product
@@ -1766,9 +1780,7 @@ export default function DailyDiscounts() {
                   ) : (
                     <BlockStack gap="400">
                       {recentManualDiscountLogs.map((log) => (
-                        <Box key={log.id} padding="300" 
-                          background={log.notes && log.notes.includes("Reverted") ? "bg-surface-secondary" : "bg-subdued"} 
-                          borderRadius="200">
+                        <Box key={log.id} padding="300" background={log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id) ? "bg-surface-secondary" : "bg-subdued"} borderRadius="200">
                           <BlockStack gap="200">
                             <InlineStack gap="300" align="start" blockAlign="center">
                               {log.imageUrl && (
@@ -1784,7 +1796,7 @@ export default function DailyDiscounts() {
                                 <InlineStack gap="200" align="space-between">
                                   <InlineStack gap="200" align="start" blockAlign="center">
                                     <Text variant="headingSm" as="h3">{log.productTitle}</Text>
-                                    {log.notes && log.notes.includes("Reverted") && (
+                                    {(log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id)) && (
                                       <Badge tone="info">Reverted</Badge>
                                     )}
                                   </InlineStack>
@@ -1810,7 +1822,7 @@ export default function DailyDiscounts() {
                               <Text variant="bodySm" as="span">
                                 Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
                               </Text>
-                              {log.notes && log.notes.includes("Reverted") ? (
+                              {(log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id)) ? (
                                 <Text variant="bodySm" as="span">
                                   Savings: {formatCurrency(0, log.currencyCode)} (0.0%)
                                 </Text>
@@ -1822,13 +1834,13 @@ export default function DailyDiscounts() {
                             </InlineStack>
                             
                             <InlineStack align="end">
-                              <Button 
-                                size="micro" 
+                              <Button
+                                size="micro"
                                 tone="critical"
                                 onClick={() => handleRevertDiscount(log)}
-                                disabled={isReverting === log.id}
+                                disabled={isReverting === log.id || revertedItems.has(log.id)}
                               >
-                                {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
+                                {isReverting === log.id ? "Reverting..." : revertedItems.has(log.id) ? "Reverted" : "Revert to Original Price"}
                               </Button>
                             </InlineStack>
                           </BlockStack>
@@ -1889,9 +1901,7 @@ export default function DailyDiscounts() {
                   ) : (
                     <BlockStack gap="400">
                       {recentApiDiscountLogs.map((log) => (
-                        <Box key={log.id} padding="300" 
-                          background={log.notes && log.notes.includes("Reverted") ? "bg-surface-secondary" : "bg-subdued"} 
-                          borderRadius="200">
+                        <Box key={log.id} padding="300" background={log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id) ? "bg-surface-secondary" : "bg-subdued"} borderRadius="200">
                           <BlockStack gap="200">
                             <InlineStack gap="300" align="start" blockAlign="center">
                               {log.imageUrl && (
@@ -1907,7 +1917,7 @@ export default function DailyDiscounts() {
                                 <InlineStack gap="200" align="space-between">
                                   <InlineStack gap="200" align="start" blockAlign="center">
                                     <Text variant="headingSm" as="h3">{log.productTitle}</Text>
-                                    {log.notes && log.notes.includes("Reverted") && (
+                                    {(log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id)) && (
                                       <Badge tone="info">Reverted</Badge>
                                     )}
                                   </InlineStack>
@@ -1938,7 +1948,7 @@ export default function DailyDiscounts() {
                               <Text variant="bodySm" as="span">
                                 Discounted: {formatCurrency(log.discountedPrice, log.currencyCode)}
                               </Text>
-                              {log.notes && log.notes.includes("Reverted") ? (
+                              {(log.notes && log.notes.includes("Reverted") || revertedItems.has(log.id)) ? (
                                 <Text variant="bodySm" as="span">
                                   Savings: {formatCurrency(0, log.currencyCode)} (0.0%)
                                 </Text>
@@ -1950,13 +1960,13 @@ export default function DailyDiscounts() {
                             </InlineStack>
                             
                             <InlineStack align="end">
-                              <Button 
-                                size="micro" 
+                              <Button
+                                size="micro"
                                 tone="critical"
                                 onClick={() => handleRevertDiscount(log)}
-                                disabled={isReverting === log.id}
+                                disabled={isReverting === log.id || revertedItems.has(log.id)}
                               >
-                                {isReverting === log.id ? "Reverting..." : "Revert to Original Price"}
+                                {isReverting === log.id ? "Reverting..." : revertedItems.has(log.id) ? "Reverted" : "Revert to Original Price"}
                               </Button>
                             </InlineStack>
                           </BlockStack>
