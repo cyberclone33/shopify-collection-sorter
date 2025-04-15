@@ -412,7 +412,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     
     // Check if this is a revert action by looking at the notes
-    const isRevert = notes && notes.includes("Reverted discount");
+    const isRevert = notes && notes.includes("Reverted");
     
     // First step: Update the product variant with the new price
     // Using productVariantsBulkUpdate mutation for Shopify API 2025-01
