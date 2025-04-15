@@ -345,7 +345,7 @@
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       }
       
-      /* Simple horizontal scroll carousel styling */
+      /* Enhanced carousel styling with mobile slider and grid for large screens */
       .alpha-dog-carousel {
         margin: 40px 0;
         background-color: transparent;
@@ -354,6 +354,7 @@
         -webkit-overflow-scrolling: touch;
       }
       
+      /* Mobile slider with touch controls */
       .products-scroll {
         width: 100%;
         overflow-x: auto;
@@ -364,12 +365,45 @@
         scroll-snap-type: x mandatory;
         -webkit-overflow-scrolling: touch;
         padding: 10px 0 25px;
+        position: relative;
       }
       
       .products-scroll::-webkit-scrollbar {
         display: none; /* Chrome, Safari and Opera */
       }
       
+      /* Mobile slider indicators */
+      .scroll-indicators {
+        display: none;
+        text-align: center;
+        margin-top: 15px;
+      }
+      
+      .scroll-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #ddd;
+        margin: 0 4px;
+        transition: background-color 0.3s ease;
+      }
+      
+      .scroll-dot.active {
+        background-color: {{ block.settings.badge_bg_color }};
+      }
+      
+      /* Swipe instruction for mobile */
+      .swipe-instruction {
+        display: none;
+        text-align: center;
+        font-size: 12px;
+        color: #888;
+        margin-top: 10px;
+        padding: 5px;
+      }
+      
+      /* Product slide styling */
       .product-slide {
         display: inline-block;
         vertical-align: top;
@@ -379,6 +413,57 @@
         padding: 4px;
         margin-right: 10px;
         scroll-snap-align: start;
+      }
+      
+      /* Left and right slider controls for mobile */
+      .slider-controls {
+        display: none;
+        position: absolute;
+        top: 50%;
+        width: 100%;
+        transform: translateY(-50%);
+        z-index: 5;
+        pointer-events: none;
+      }
+      
+      .slider-control {
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        pointer-events: auto;
+      }
+      
+      .slider-prev {
+        left: 10px;
+      }
+      
+      .slider-next {
+        right: 10px;
+      }
+      
+      /* Large screen grid layout */
+      @media (min-width: 1024px) {
+        .products-scroll {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          grid-template-rows: repeat(2, auto);
+          gap: 20px;
+          white-space: normal;
+          overflow: visible;
+        }
+        
+        .product-slide {
+          width: 100%;
+          margin-right: 0;
+          display: block;
+        }
       }
       
       @media (hover: hover) {
@@ -392,57 +477,135 @@
         padding: 0 5px;
       }
       
-      /* Responsive adjustments for simple horizontal slider */
+      /* Enhanced responsive adjustments */
+      @media (min-width: 1024px) {
+        /* Desktop grid layout - 4 products per row, 2 rows */
+        .products-container {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        
+        .products-scroll {
+          overflow: visible;
+        }
+        
+        .slider-controls,
+        .scroll-indicators,
+        .swipe-instruction {
+          display: none !important;
+        }
+      }
+      
+      /* Tablet styles */
+      @media (min-width: 768px) and (max-width: 1023px) {
+        .products-scroll {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 15px;
+          white-space: normal;
+          overflow: visible;
+        }
+        
+        .product-slide {
+          width: 100%;
+          margin-right: 0;
+        }
+        
+        .product-card {
+          min-height: 340px;
+        }
+        
+        .product-image {
+          height: 200px;
+        }
+        
+        .slider-controls,
+        .scroll-indicators,
+        .swipe-instruction {
+          display: none !important;
+        }
+      }
+      
+      /* Mobile styles with enhanced slider */
       @media (max-width: 767px) {
+        .slider-controls {
+          display: block;
+        }
+        
+        .scroll-indicators {
+          display: block;
+        }
+        
+        .swipe-instruction {
+          display: block;
+        }
+        
         .product-slide {
           width: 240px;
         }
+        
         .product-card {
           min-height: 300px;
         }
+        
         .product-image {
           height: 160px;
         }
       }
       
+      /* Small mobile devices */
       @media (max-width: 480px) {
         .alpha-dog-carousel {
           padding: 5px;
         }
+        
         .product-slide {
           padding: 4px;
           width: 180px;
           margin-right: 8px;
         }
+        
         .product-card {
           min-height: 280px;
           border-radius: 6px;
         }
+        
         .product-image-container {
           height: 160px !important;
         }
+        
         .product-info {
           padding: 8px;
         }
+        
         .product-title {
           font-size: 12px;
           -webkit-line-clamp: 1;
           margin-bottom: 2px;
         }
+        
         .current-price {
           font-size: 11px;
           margin-right: 4px;
         }
+        
         .original-price {
           font-size: 10px;
         }
+        
         .product-bio {
           font-size: 10px;
           margin: 4px 0;
         }
+        
         .photo-indicator, .savings-badge {
           font-size: 9px;
           padding: 2px 4px;
+        }
+        
+        .slider-control {
+          width: 30px;
+          height: 30px;
         }
       }
       
@@ -567,8 +730,32 @@
       <p>{{ block.settings.subtitle_text }}</p>
     </div>
 
-    <!-- Simple Horizontal Scroll Container -->
-    <div class="products-scroll">
+    <!-- Enhanced Carousel with Mobile Slider and Desktop Grid -->
+    <div class="products-container">
+      <!-- Mobile Slider Controls -->
+      <div class="slider-controls">
+        <div class="slider-control slider-prev" onclick="slideCarousel('prev')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 6L9 12L15 18" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="slider-control slider-next" onclick="slideCarousel('next')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 6L15 12L9 18" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+      
+      <!-- Swipe Instruction for Mobile -->
+      <div class="swipe-instruction">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 5px;">
+          <path d="M14 6L18 10M18 10L14 14M18 10H6" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Swipe to see more products
+      </div>
+      
+      <!-- Products Scroll Container -->
+      <div class="products-scroll" id="products-scroll">
         {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
         {% assign max_products = block.settings.max_products | default: 12 %}
         {% assign counter = 0 %}
@@ -700,6 +887,12 @@
             {% endif %}
           {% endif %}
         {% endfor %}
+      </div>
+      
+      <!-- Scroll Indicators for Mobile -->
+      <div class="scroll-indicators" id="scroll-indicators">
+        <!-- Dots will be dynamically generated by JavaScript -->
+      </div>
     </div>
     
     {% if counter == 0 %}
@@ -757,6 +950,149 @@
   
   <!-- Simple "Add to cart" functionality -->
   <script>
+    // Mobile Slider Functions
+    document.addEventListener('DOMContentLoaded', function() {
+      const productsScroll = document.getElementById('products-scroll');
+      const scrollIndicators = document.getElementById('scroll-indicators');
+      
+      if (!productsScroll || !scrollIndicators) return;
+      
+      // Get all product slides
+      const slides = productsScroll.querySelectorAll('.product-slide');
+      const slideCount = slides.length;
+      
+      // Only initialize mobile slider if we have slides and we're on mobile
+      if (slideCount > 0 && window.innerWidth < 768) {
+        initMobileSlider(productsScroll, scrollIndicators, slides, slideCount);
+      }
+      
+      // Update on window resize
+      window.addEventListener('resize', function() {
+        if (window.innerWidth < 768) {
+          // Mobile view
+          if (scrollIndicators.children.length === 0 && slideCount > 0) {
+            initMobileSlider(productsScroll, scrollIndicators, slides, slideCount);
+          }
+        } else {
+          // Desktop/Tablet view - clear indicators
+          scrollIndicators.innerHTML = '';
+        }
+      });
+    });
+    
+    // Initialize the mobile slider
+    function initMobileSlider(productsScroll, scrollIndicators, slides, slideCount) {
+      // Create scroll indicators (dots)
+      scrollIndicators.innerHTML = '';
+      for (let i = 0; i < slideCount; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'scroll-dot';
+        if (i === 0) dot.classList.add('active');
+        dot.dataset.index = i;
+        dot.addEventListener('click', function() {
+          const index = parseInt(this.dataset.index);
+          const slideElement = slides[index];
+          if (slideElement) {
+            slideElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+          }
+        });
+        scrollIndicators.appendChild(dot);
+      }
+      
+      // Update active dot on scroll
+      let scrollTimeout;
+      productsScroll.addEventListener('scroll', function() {
+        if (scrollTimeout) {
+          clearTimeout(scrollTimeout);
+        }
+        
+        scrollTimeout = setTimeout(function() {
+          updateActiveDot(productsScroll, slides);
+        }, 50);
+      });
+      
+      // Initial dot update
+      updateActiveDot(productsScroll, slides);
+      
+      // Add touch tracking for swipe gestures
+      let touchStartX = 0;
+      let touchEndX = 0;
+      
+      productsScroll.addEventListener('touchstart', function(e) {
+        touchStartX = e.touches[0].clientX;
+      }, false);
+      
+      productsScroll.addEventListener('touchend', function(e) {
+        touchEndX = e.changedTouches[0].clientX;
+        handleSwipe();
+      }, false);
+      
+      function handleSwipe() {
+        const threshold = 50; // Minimum distance required for a swipe
+        
+        // Calculate direction
+        if (touchEndX < touchStartX - threshold) {
+          // Swipe left (next)
+          slideCarousel('next');
+        } else if (touchEndX > touchStartX + threshold) {
+          // Swipe right (prev)
+          slideCarousel('prev');
+        }
+      }
+    }
+    
+    // Update the active scroll indicator dot
+    function updateActiveDot(productsScroll, slides) {
+      const dots = document.querySelectorAll('.scroll-dot');
+      if (!dots.length) return;
+      
+      const scrollLeft = productsScroll.scrollLeft;
+      const containerWidth = productsScroll.clientWidth;
+      
+      // Find the slide that is most visible
+      let activeIndex = 0;
+      let bestVisibility = 0;
+      
+      slides.forEach((slide, index) => {
+        const slideLeft = slide.offsetLeft - productsScroll.offsetLeft;
+        const slideRight = slideLeft + slide.offsetWidth;
+        
+        // Calculate how much of the slide is visible in the container
+        const visibleLeft = Math.max(0, slideLeft);
+        const visibleRight = Math.min(slideRight, scrollLeft + containerWidth);
+        const visibleWidth = Math.max(0, visibleRight - visibleLeft);
+        
+        // Update if this slide is more visible than the previous best
+        if (visibleWidth > bestVisibility) {
+          bestVisibility = visibleWidth;
+          activeIndex = index;
+        }
+      });
+      
+      // Update active dot
+      dots.forEach((dot, index) => {
+        if (index === activeIndex) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+    }
+    
+    // Handle slider control clicks
+    function slideCarousel(direction) {
+      const productsScroll = document.getElementById('products-scroll');
+      if (!productsScroll) return;
+      
+      const slideWidth = productsScroll.querySelector('.product-slide')?.offsetWidth || 240;
+      const scrollAmount = direction === 'next' ? slideWidth : -slideWidth;
+      
+      productsScroll.scrollBy({
+        left: scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+    
     // Function to add product to cart
     function addToCart(variantId) {
       // Change button text to indicate loading
@@ -803,54 +1139,72 @@
     }
     
     {% if block.settings.autoplay %}
-    // Simple auto-scroll functionality for autoplay
+    // Enhanced auto-scroll functionality for autoplay (mobile only)
     document.addEventListener('DOMContentLoaded', function() {
-      const productsScroll = document.querySelector('.products-scroll');
-      if (productsScroll) {
-        let scrollAmount = 0;
-        const scrollStep = 1;
-        const scrollDelay = 30;
+      const productsScroll = document.getElementById('products-scroll');
+      if (productsScroll && window.innerWidth < 1024) { // Only autoplay on mobile and tablet
+        let currentIndex = 0;
+        const slides = productsScroll.querySelectorAll('.product-slide');
+        const slideCount = slides.length;
         const scrollPause = {{ block.settings.autoplay_delay }};
         
-        let scrollTimer = null;
-        let pauseTimer = null;
+        let autoplayTimer = null;
         
-        function startScrolling() {
-          if (scrollTimer) return;
+        function startAutoplay() {
+          if (autoplayTimer) return;
           
-          scrollTimer = setInterval(function() {
-            productsScroll.scrollLeft += scrollStep;
-            scrollAmount += scrollStep;
+          autoplayTimer = setInterval(function() {
+            currentIndex = (currentIndex + 1) % slideCount;
+            const targetSlide = slides[currentIndex];
             
-            if (scrollAmount >= productsScroll.scrollWidth - productsScroll.clientWidth) {
-              clearInterval(scrollTimer);
-              scrollTimer = null;
-              scrollAmount = 0;
+            if (targetSlide) {
+              targetSlide.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'start'
+              });
               
-              // Pause at the end
-              clearTimeout(pauseTimer);
-              pauseTimer = setTimeout(function() {
-                productsScroll.scrollLeft = 0;
-                startScrolling();
-              }, scrollPause);
+              // Update dots
+              const dots = document.querySelectorAll('.scroll-dot');
+              dots.forEach((dot, index) => {
+                if (index === currentIndex) {
+                  dot.classList.add('active');
+                } else {
+                  dot.classList.remove('active');
+                }
+              });
             }
-          }, scrollDelay);
+          }, scrollPause);
         }
         
-        // Pause scrolling when mouse is over the carousel
-        productsScroll.addEventListener('mouseenter', function() {
-          clearInterval(scrollTimer);
-          scrollTimer = null;
-          clearTimeout(pauseTimer);
-        });
+        // Pause autoplay on user interaction
+        function pauseAutoplay() {
+          clearInterval(autoplayTimer);
+          autoplayTimer = null;
+        }
         
-        // Resume scrolling when mouse leaves
-        productsScroll.addEventListener('mouseleave', function() {
-          startScrolling();
-        });
+        // Listeners for user interaction
+        productsScroll.addEventListener('mouseenter', pauseAutoplay);
+        productsScroll.addEventListener('touchstart', pauseAutoplay);
         
-        // Start scrolling after a delay
-        setTimeout(startScrolling, scrollPause);
+        // Don't auto-restart on desktop
+        if (window.innerWidth < 768) {
+          productsScroll.addEventListener('mouseleave', startAutoplay);
+        }
+        
+        // Start autoplay after initial delay
+        setTimeout(startAutoplay, scrollPause);
+        
+        // Update behavior when window is resized
+        window.addEventListener('resize', function() {
+          if (window.innerWidth >= 1024) {
+            // Stop autoplay on desktop
+            pauseAutoplay();
+          } else if (!autoplayTimer && window.innerWidth < 768) {
+            // Restart on mobile if stopped
+            startAutoplay();
+          }
+        });
       }
     });
     {% endif %}
