@@ -352,6 +352,15 @@
         padding: 10px 0 30px;
         position: relative;
         -webkit-overflow-scrolling: touch;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      
+      /* Products container for better organization */
+      .products-container {
+        width: 100%;
+        position: relative;
+        margin: 0 auto;
       }
       
       /* Mobile slider with touch controls */
@@ -413,6 +422,14 @@
         padding: 4px;
         margin-right: 10px;
         scroll-snap-align: start;
+        position: relative;
+      }
+      
+      /* Ensure proper width and layout on desktop */
+      @media (min-width: 1024px) {
+        .alpha-dog-carousel .carousel-container {
+          padding: 0 20px; 
+        }
       }
       
       /* Left and right slider controls for mobile */
@@ -448,21 +465,56 @@
         right: 10px;
       }
       
-      /* Large screen grid layout */
+      /* Large screen grid layout - fixed for desktop display */
       @media (min-width: 1024px) {
+        .alpha-dog-carousel {
+          overflow: visible;
+        }
+        
+        .products-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 15px;
+        }
+        
         .products-scroll {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          grid-template-rows: repeat(2, auto);
-          gap: 20px;
+          grid-template-rows: auto auto;
+          grid-gap: 20px;
           white-space: normal;
           overflow: visible;
+          padding: 0;
+          height: auto;
+          max-height: none;
         }
         
         .product-slide {
           width: 100%;
           margin-right: 0;
           display: block;
+          white-space: normal;
+          padding: 0;
+          height: 100%;
+        }
+        
+        /* Limit to 2 rows x 4 columns (8 items) */
+        .product-slide:nth-child(n+9) {
+          display: none;
+        }
+        
+        /* Ensure all items are properly positioned */
+        .alpha-dog-product-card,
+        .product-card {
+          height: 100%;
+          width: 100%;
+          max-height: none;
+          min-height: {{ block.settings.card_height }}px;
+        }
+        
+        /* Ensure consistent product card heights */
+        .product-image-container {
+          height: {{ block.settings.image_height }}px !important;
         }
       }
       
@@ -758,6 +810,7 @@
       <div class="products-scroll" id="products-scroll">
         {% assign custom_tag = block.settings.product_tag | default: 'DailyDiscount_每日優惠' %}
         {% assign max_products = block.settings.max_products | default: 12 %}
+        {% assign max_desktop_products = 8 %}
         {% assign counter = 0 %}
         {% assign total_products = 0 %}
         {% assign discounted_products = 0 %}
