@@ -20,14 +20,14 @@
       /* Product card design - fixed dimensions for uniformity */
       .product-card,.alpha-dog-product-card{position:relative;width:100%;height:380px !important;min-height:380px !important;max-height:380px !important;background-color:{{ block.settings.card_bg_color }};border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06);overflow:hidden;transition:all 0.4s cubic-bezier(0.22,1,0.36,1);cursor:pointer;display:flex;flex-direction:column;border:1px solid rgba(240,240,240,0.8);margin:0 auto;box-sizing:border-box}
       
-      /* Product image container - square format with consistent sizing */
-      .product-image-container{width:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:{{ block.settings.image_bg_color }};flex:0;margin:0;border-radius:8px 8px 0 0;height:260px !important;min-height:260px !important;max-height:260px !important;aspect-ratio:1/1 !important}
+      /* Product image container - square format with proper image sizing */
+      .product-image-container{width:100%;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background-color:{{ block.settings.image_bg_color }};flex:0;margin:0;border-radius:8px 8px 0 0;height:260px !important;min-height:260px !important;max-height:260px !important;aspect-ratio:1/1 !important;padding:10px}
       
       .product-card:hover,.alpha-dog-product-card:hover{transform:translateY(-6px);box-shadow:0 12px 24px rgba(0,0,0,0.08);border-color:rgba(220,220,220,0.8)}
       .product-card:active,.alpha-dog-product-card:active{transform:translateY(-2px);transition:all 0.2s}
       
       .product-image{width:100%;height:260px;position:relative;overflow:hidden;background-color:{{ block.settings.image_bg_color }};flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:10px;transition:all 0.4s ease;aspect-ratio:1/1}
-      .product-image img{width:100%;height:100%;object-fit:contain;display:block;transition:transform 0.7s cubic-bezier(0.22,1,0.36,1);max-height:260px;max-width:260px}
+      .product-image img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;display:block;transition:transform 0.7s cubic-bezier(0.22,1,0.36,1);margin:0 auto}
       .product-card:hover .product-image img{transform:scale(1.08)}
       .product-image::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.02);opacity:0;transition:opacity 0.5s ease}
       .product-card:hover .product-image::after{opacity:1}
@@ -252,7 +252,7 @@
                         {% if product.featured_image %}
                           <img src="{{ product.featured_image | image_url: width: 400 }}" 
                                alt="{{ product.title }}" 
-                               style="width: 100%; height: 100%; object-fit: contain; max-width: 100%; max-height: {{ block.settings.image_height }}px;" 
+                               style="width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; margin: 0 auto;" 
                                loading="lazy"
                                width="400" 
                                height="{{ block.settings.image_height }}">
