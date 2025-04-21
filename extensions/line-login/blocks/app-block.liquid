@@ -574,10 +574,53 @@
         body: JSON.stringify({id: vid, quantity: 1})
       })
       .then(r => r.json())
-      .then(d => {
+      .then(data => {
         btn.textContent = 'ADDED!';
         setTimeout(() => {btn.textContent = ot; btn.disabled = false;}, 2000);
-        if (typeof window.refreshCart === 'function') window.refreshCart();
+        
+        // Get cart drawer section ID
+        const cartDrawerSection = document.querySelector('cart-drawer')?.closest('.shopify-section')?.id;
+        
+        if (cartDrawerSection) {
+          const sectionId = cartDrawerSection.replace('shopify-section-', '');
+          
+          // First fetch the updated cart drawer content
+          fetch(`?sections=${sectionId},cart-icon-bubble`)
+            .then(response => response.json())
+            .then(sections => {
+              // Update cart drawer content
+              if (sections[sectionId]) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = sections[sectionId];
+                const newCartDrawer = tempDiv.querySelector('cart-drawer').innerHTML;
+                document.querySelector('cart-drawer').innerHTML = newCartDrawer;
+              }
+              
+              // Update cart icon bubble if available
+              if (sections['cart-icon-bubble']) {
+                const iconContainer = document.getElementById('cart-icon-bubble');
+                if (iconContainer) {
+                  iconContainer.innerHTML = sections['cart-icon-bubble'];
+                }
+              }
+              
+              // Now open the drawer after content is updated
+              setTimeout(() => {
+                document.dispatchEvent(new CustomEvent('dispatch:cart-drawer:open'));
+              }, 100);
+            })
+            .catch(error => {
+              console.error('Error updating cart sections:', error);
+              // Fallback to just opening the drawer
+              document.dispatchEvent(new CustomEvent('dispatch:cart-drawer:open'));
+            });
+        } else {
+          // Fallback if we can't find the section
+          document.dispatchEvent(new CustomEvent('dispatch:cart-drawer:refresh'));
+          setTimeout(() => {
+            document.dispatchEvent(new CustomEvent('dispatch:cart-drawer:open'));
+          }, 150);
+        }
       })
       .catch(e => {
         console.error('Error adding to cart:', e);
