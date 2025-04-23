@@ -279,7 +279,18 @@
           
           {% if should_display or block.settings.show_all_products %}
             {% if counter < desktop_limit %}
+              {% assign found_discounted_variant = false %}
               {% assign current_variant = product.selected_or_first_available_variant %}
+              
+              {% comment %} Look for the specific variant that's on sale {% endcomment %}
+              {% for variant in product.variants %}
+                {% if variant.compare_at_price > variant.price %}
+                  {% assign current_variant = variant %}
+                  {% assign found_discounted_variant = true %}
+                  {% break %}
+                {% endif %}
+              {% endfor %}
+              
               {% if current_variant.compare_at_price > current_variant.price or block.settings.show_non_discounted or counter < 8 %}
                 {% assign discounted_products = discounted_products | plus: 1 %}
                 {% assign savings_amount = current_variant.compare_at_price | minus: current_variant.price %}
