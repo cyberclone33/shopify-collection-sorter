@@ -216,6 +216,7 @@ export async function getEligibleProducts(
     // Calculate timing for filtering
     const filterTime = Date.now() - start;
     console.log(`[getEligibleProducts] Found ${productsWithData.length} eligible products after filtering (took ${filterTime}ms)`);
+    console.log(`[getEligibleProducts] ELIGIBLE POOL SIZE: ${productsWithData.length} products available for selection`);
     
     // Calculate some stats for monitoring
     const eligiblePercentage = (productsWithData.length / allProducts.length) * 100;
@@ -249,6 +250,7 @@ export async function getEligibleProducts(
     }
     
     console.log(`[getEligibleProducts] Randomly selected ${selectedProducts.length} products from pool of ${productsWithData.length}`);
+    console.log(`[getEligibleProducts] SELECTED PRODUCTS: ${selectedProducts.map(p => p.title).join(', ')}`);
     
     return {
       status: "success",
