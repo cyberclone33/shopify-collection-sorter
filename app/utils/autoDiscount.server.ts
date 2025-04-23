@@ -47,7 +47,7 @@ export async function getEligibleProducts(
                     url
                     altText
                   }
-                  variants(first: 1) {
+                  variants(first: 10) {
                     edges {
                       node {
                         id
@@ -86,7 +86,7 @@ export async function getEligibleProducts(
                     url
                     altText
                   }
-                  variants(first: 1) {
+                  variants(first: 10) {
                     edges {
                       node {
                         id
@@ -165,18 +165,26 @@ export async function getEligibleProducts(
     const productsWithData = allProducts
       .filter((edge: any) => {
         const product = edge.node;
-        const variant = product.variants.edges[0]?.node;
-        
-        // Require image, variant, and positive inventory but make cost optional
-        return (
-          product.featuredImage && 
-          variant &&
-          variant.inventoryQuantity > 0
+        // Check if product has at least one variant with positive inventory
+        const hasVariantWithInventory = product.variants.edges.some(
+          (variantEdge: any) => variantEdge.node.inventoryQuantity > 0
         );
+        
+        // Require image and at least one variant with positive inventory
+        return product.featuredImage && hasVariantWithInventory;
       })
       .map((edge: any) => {
         const product = edge.node;
-        const variant = product.variants.edges[0].node;
+        
+        // Filter variants to only those with positive inventory
+        const variantsWithInventory = product.variants.edges
+          .filter((variantEdge: any) => variantEdge.node.inventoryQuantity > 0);
+        
+        // Randomly select a variant with inventory
+        const randomIndex = Math.floor(Math.random() * variantsWithInventory.length);
+        const selectedVariantEdge = variantsWithInventory[randomIndex];
+        const variant = selectedVariantEdge.node;
+        
         const price = parseFloat(variant.price);
         
         // If cost is missing, estimate it as 50% of the selling price
@@ -200,7 +208,8 @@ export async function getEligibleProducts(
           variantId: variant.id,
           variantTitle: variant.title,
           currencyCode: currencyCode,
-          hasCostData: !!hasCost // Flag to indicate if cost was provided or estimated
+          hasCostData: !!hasCost, // Flag to indicate if cost was provided or estimated
+          allVariants: variantsWithInventory.map((v: any) => v.node) // Store all variants for debugging
         };
       });
     
