@@ -522,7 +522,7 @@
         dot.dataset.index = i;
         dot.addEventListener('click', function() {
           const index = parseInt(this.dataset.index);
-          if (slides[index]) slides[index].scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});
+          if (slides[index]) ps.scrollTo({left: slides[index].offsetLeft - ps.offsetLeft, behavior: 'smooth'});
         });
         si.appendChild(dot);
       }
@@ -656,7 +656,7 @@
             ci = (ci + 1) % sc;
             const ts = slides[ci];
             if (ts) {
-              ts.scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});
+              ps.scrollTo({left: ts.offsetLeft - ps.offsetLeft, behavior: 'smooth'});
               const dots = document.querySelectorAll('.scroll-dot');
               dots.forEach((dot, i) => {
                 if (i === ci) dot.classList.add('active');
