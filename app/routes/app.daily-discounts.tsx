@@ -19,7 +19,9 @@ import {
   TextField,
   Toast,
   Frame,
-  Modal
+  Modal,
+  ProgressBar,
+  Spinner
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -27,6 +29,56 @@ import { useState, useEffect } from "react";
 import prisma from "../db.server";
 import { getRandomProducts } from '../utils/productFetcher';
 import { shuffleArray } from '../utils/productCache';
+
+// Loading indicator component to show progress when fetching random products
+function LoadingOverlay({ progress, isLoading, error }: { progress: number, isLoading: boolean, error: string | null }) {
+  if (!isLoading && !error) return null;
+  
+  return (
+    <div style={{ 
+      padding: '20px', 
+      marginBottom: '20px', 
+      backgroundColor: 'var(--p-surface)',
+      borderRadius: 'var(--p-border-radius-2)',
+      border: `1px solid ${error ? 'var(--p-border-critical)' : 'var(--p-border-subdued)'}` 
+    }}>
+      {isLoading ? (
+        <BlockStack gap="400">
+          <Box paddingBlockEnd="300">
+            <InlineStack gap="400" align="center">
+              <Spinner size="small" accessibilityLabel="Loading random products" />
+              <Text as="p" variant="bodyMd">
+                Loading products for discount analysis... {progress}%
+              </Text>
+            </InlineStack>
+          </Box>
+          <ProgressBar
+            progress={progress}
+            size="small"
+            color={error ? "critical" : "highlight"}
+          />
+          <Text as="p" variant="bodySm" tone="subdued">
+            This may take a moment as we scan your entire inventory to find the best discount candidates.
+          </Text>
+        </BlockStack>
+      ) : null}
+      
+      {error ? (
+        <Banner
+          title="Error loading random products"
+          tone="critical"
+        >
+          <p>{error}</p>
+          <Box paddingBlockStart="300">
+            <Button onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          </Box>
+        </Banner>
+      ) : null}
+    </div>
+  );
+}
 
 // Interface for our product data
 interface ProductData {
@@ -191,36 +243,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
   
-  // Regular product fetch logic with caching
+  // CHANGE #1: Restructured the loader to load quickly, deferring heavy product fetching to client-side
   try {
-    // Get random products using our optimized utility
-    const { products, stats, cacheStatus } = await getRandomProducts(
-      NUM_RANDOM_PRODUCTS,
-      admin,
-      session.shop,
-      forceRefresh
-    );
-    
-    if (products.length === 0) {
-      return json({
-        status: "error",
-        message: "No products found meeting minimum requirements (image and positive inventory).",
-        randomProduct: null,
-        recentManualDiscountLogs,
-        recentApiDiscountLogs
-      });
-    }
-    
-    // The first product is our primary random product (for backward compatibility)
-    const randomProduct = products[0];
-    
-    // For detailed debugging, log the selected products
-    console.log(`Using ${products.length} random products for display`);
-    products.forEach((product, index) => {
-      console.log(`Selected random product ${index + 1}: ${product.title} (Variant ID: ${product.variantId.split('/').pop()})`);
-    });
-    
     // Fetch products with the DailyDiscount tag for UI display
+    // This is a lightweight query that runs quickly
     console.log(`Fetching products with tag "${DAILY_DISCOUNT_TAG}"...`);
     
     // Fetch a small number of tagged products for display (we only need to display a few)
@@ -305,27 +331,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     }).filter(Boolean); // Remove null entries
     
+    // CHANGE #2: Return early with minimal data rather than waiting for getRandomProducts
+    // This allows the page to load quickly
     return json({
       status: "success",
+      initialDataLoaded: true,  // Flag to indicate page can render immediately
+      randomProductsLoading: true,  // Signal to client that random products need to be loaded
       taggedProducts,
-      randomProduct,
-      multipleRandomProducts: products,
+      randomProduct: null,  // Will be loaded client-side
+      multipleRandomProducts: [],  // Will be loaded client-side
       recentManualDiscountLogs,
       recentApiDiscountLogs,
       tagName: DAILY_DISCOUNT_TAG,
-      productStats: stats,
-      totalProductsScanned: stats.total,
-      cacheStatus
+      // CHANGE #3: Pass session data needed for client-side API calls
+      adminSessionData: {
+        shop: session.shop,
+        accessToken: session.accessToken,
+        expires: session.expires
+      },
+      forceRefresh  // Pass through to client-side for API calls
     });
     
   } catch (error) {
-    console.error("Error fetching random product:", error);
+    console.error("Error fetching initial data:", error);
     return json({
       status: "error",
       message: error instanceof Error ? error.message : "An unknown error occurred",
       randomProduct: null,
-      recentManualDiscountLogs: [],
-      recentApiDiscountLogs: []
+      multipleRandomProducts: [],
+      recentManualDiscountLogs,
+      recentApiDiscountLogs,
+      // CHANGE #4: Still signal that random products need to be loaded
+      randomProductsLoading: true
     });
   }
 };
@@ -613,7 +650,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function DailyDiscounts() {
   const loaderData = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const { randomProduct, multipleRandomProducts, status, message, recentManualDiscountLogs, recentApiDiscountLogs, taggedProducts, tagName } = loaderData;
+  
+  // Extract variables from loader data, including new randomProductsLoading flag
+  const { 
+    status, 
+    message, 
+    recentManualDiscountLogs, 
+    recentApiDiscountLogs, 
+    taggedProducts, 
+    tagName,
+    randomProductsLoading = false,
+    adminSessionData,
+    forceRefresh = false
+  } = loaderData;
+  
+  // State for storing product data that will be loaded client-side
+  const [randomProduct, setRandomProduct] = useState(loaderData.randomProduct || null);
+  const [multipleRandomProducts, setMultipleRandomProducts] = useState(loaderData.multipleRandomProducts || []);
+  const [loadingRandomProducts, setLoadingRandomProducts] = useState(randomProductsLoading);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [productStats, setProductStats] = useState(loaderData.productStats || { total: 0, eligible: 0 });
+  
+  // Regular state variables from original component
   const [discount, setDiscount] = useState<DiscountData | null>(null);
   const [isGeneratingDiscount, setIsGeneratingDiscount] = useState(false);
   const [isPriceUpdated, setIsPriceUpdated] = useState(false);
@@ -657,11 +716,84 @@ export default function DailyDiscounts() {
   const [isResettingHistory, setIsResettingHistory] = useState(false);
   const submit = useSubmit();
   
+  // Effect for client-side loading of random products
+  useEffect(() => {
+    if (loadingRandomProducts) {
+      // Function to fetch random products via API
+      const fetchRandomProducts = async () => {
+        try {
+          setLoadingProgress(10); // Start loading indicator
+          
+          // Create URL with proper parameters
+          const apiUrl = new URL('/api/daily-discounts/products', window.location.origin);
+          if (adminSessionData?.shop) {
+            apiUrl.searchParams.append('shop', adminSessionData.shop);
+          }
+          apiUrl.searchParams.append('count', NUM_RANDOM_PRODUCTS.toString());
+          if (forceRefresh) {
+            apiUrl.searchParams.append('refresh', 'true');
+          }
+          
+          setLoadingProgress(20); // Update progress 
+          
+          // Add authentication if available
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json'
+          };
+          
+          if (adminSessionData?.accessToken) {
+            headers['Authorization'] = `Bearer ${adminSessionData.accessToken}`;
+          }
+          
+          setLoadingProgress(40); // Update progress
+          
+          // Make API request
+          const response = await fetch(apiUrl.toString(), { headers });
+          
+          setLoadingProgress(70); // Update progress
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API error: ${response.status} ${errorText}`);
+          }
+          
+          const data = await response.json();
+          
+          setLoadingProgress(90); // Almost done
+          
+          if (data.status === 'success' && data.products && data.products.length > 0) {
+            // Update state with the fetched products
+            setMultipleRandomProducts(data.products);
+            setRandomProduct(data.products[0]); // Set first product as primary
+            if (data.productStats) {
+              setProductStats(data.productStats);
+            }
+            setLoadingError(null);
+          } else {
+            setLoadingError(data.message || 'No products returned from the API');
+          }
+        } catch (error) {
+          console.error('Error fetching random products:', error);
+          setLoadingError(error instanceof Error ? error.message : 'Unknown error loading products');
+        } finally {
+          setLoadingProgress(100); // Complete
+          // Small delay before removing loading indicator to ensure progress animation completes
+          setTimeout(() => {
+            setLoadingRandomProducts(false);
+          }, 500);
+        }
+      };
+      
+      // Start the fetch operation
+      fetchRandomProducts();
+    }
+  }, [loadingRandomProducts, adminSessionData, forceRefresh]);
+  
   // Store authentication info in localStorage when the component loads
   useEffect(() => {
     // If we have session data from the loader, store it for API calls
-    if (loaderData && "session" in loaderData && loaderData.session) {
-      const { shop, accessToken, expires } = loaderData.session;
+    if (adminSessionData?.shop && adminSessionData?.accessToken) {
+      const { shop, accessToken, expires } = adminSessionData;
       
       try {
         // Store in localStorage for use by API calls
@@ -718,7 +850,7 @@ export default function DailyDiscounts() {
     };
     
     checkAuth();
-  }, []);
+  }, [adminSessionData]);
   
   // Function to generate a random discount
   const generateRandomDiscount = () => {
@@ -1432,23 +1564,45 @@ export default function DailyDiscounts() {
                 Random Products for Discount
               </Text>
               
-              {loaderData.totalProductsScanned && (
+              {/* Add loading overlay that displays while products are being fetched */}
+              <LoadingOverlay 
+                progress={loadingProgress} 
+                isLoading={loadingRandomProducts} 
+                error={loadingError} 
+              />
+              
+              {/* Show empty state when no products are loaded but loading has finished */}
+              {!loadingRandomProducts && (!multipleRandomProducts || multipleRandomProducts.length === 0) && !loadingError && (
+                <Banner tone="warning">
+                  <p>No eligible products found for discounting. Products need to have images, positive inventory, and cost data available.</p>
+                  <Box paddingBlockStart="300">
+                    <Button onClick={() => {
+                      setLoadingRandomProducts(true); // Restart the loading process
+                      setLoadingProgress(0);
+                    }}>
+                      Try Again
+                    </Button>
+                  </Box>
+                </Banner>
+              )}
+              
+              {productStats?.total > 0 && multipleRandomProducts.length > 0 && (
                 <Banner tone="info">
                   <BlockStack gap="200">
                     <Text variant="bodyMd">
-                      Randomly selected from {loaderData.totalProductsScanned} products in your store
-                      ({loaderData.productStats?.eligible || 0} eligible with images and inventory)
+                      Randomly selected from {productStats.total} products in your store
+                      ({productStats?.eligible || 0} eligible with images and inventory)
                     </Text>
                     
-                    {loaderData.productStats && (
+                    {productStats && (
                       <Text variant="bodySm" tone="subdued">
-                        Products not eligible: {loaderData.totalProductsScanned - (loaderData.productStats.eligible || 0)} 
-                        ({loaderData.totalProductsScanned - (loaderData.productStats.withImage || 0)} missing images, 
-                        {loaderData.totalProductsScanned - (loaderData.productStats.withInventory || 0)} out of stock)
+                        Products not eligible: {productStats.total - (productStats.eligible || 0)} 
+                        ({productStats.total - (productStats.withImage || 0)} missing images, 
+                        {productStats.total - (productStats.withInventory || 0)} out of stock)
                       </Text>
                     )}
                     
-                    {loaderData.cacheStatus && (
+                    {/* No need to show cache status during loading */ false && (
                       <InlineStack gap="200" align="start" blockAlign="center">
                         <Badge tone="success" progress="complete">
                           {loaderData.cacheStatus.isCached ? 'Data Cached' : 'Fresh Data'}
