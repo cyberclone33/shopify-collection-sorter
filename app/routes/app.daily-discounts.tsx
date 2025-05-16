@@ -371,6 +371,61 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   
+  // Check if this is a request to fetch random products
+  const action = formData.get("action")?.toString();
+  
+  if (action === "fetchRandomProducts") {
+    try {
+      // Parse count parameter with default value
+      const countParam = formData.get("count")?.toString();
+      const count = countParam ? parseInt(countParam, 10) : 6;
+      const forceRefresh = formData.get("forceRefresh") === "true";
+      
+      console.log(`Fetching ${count} random products via server action for shop: ${session.shop}`);
+      
+      // Use the existing utility to get random products
+      // This maintains the authenticated admin context
+      const { products, stats, cacheStatus } = await getRandomProducts(
+        count,
+        admin,
+        session.shop,
+        forceRefresh
+      );
+      
+      if (products.length === 0) {
+        return json({
+          fetchStatus: "error",
+          message: "No products found meeting minimum requirements (image and positive inventory).",
+          products: [],
+          stats: null
+        });
+      }
+      
+      // The first product is our primary random product (for backward compatibility)
+      const randomProduct = products[0];
+      
+      console.log(`Server action: Found ${products.length} random products`);
+      
+      // Return the products and stats
+      return json({
+        fetchStatus: "success",
+        products,
+        randomProduct,
+        stats,
+        totalProductsScanned: stats.total,
+        cacheStatus
+      });
+    } catch (error) {
+      console.error("Error fetching random products in server action:", error);
+      return json({
+        fetchStatus: "error",
+        message: error instanceof Error ? error.message : "An unknown error occurred",
+        products: []
+      });
+    }
+  }
+  
+  // Original price update action
   const variantId = formData.get("variantId")?.toString();
   const newPrice = formData.get("newPrice")?.toString();
   const compareAtPrice = formData.get("compareAtPrice")?.toString();
@@ -716,78 +771,74 @@ export default function DailyDiscounts() {
   const [isResettingHistory, setIsResettingHistory] = useState(false);
   const submit = useSubmit();
   
-  // Effect for client-side loading of random products
+  // Effect for client-side loading of random products using server action
   useEffect(() => {
     if (loadingRandomProducts) {
-      // Function to fetch random products via API
+      // Function to fetch random products via a server action
       const fetchRandomProducts = async () => {
         try {
           setLoadingProgress(10); // Start loading indicator
           
-          // Create URL with proper parameters
-          const apiUrl = new URL('/api/daily-discounts/products', window.location.origin);
-          if (adminSessionData?.shop) {
-            apiUrl.searchParams.append('shop', adminSessionData.shop);
-          }
-          apiUrl.searchParams.append('count', NUM_RANDOM_PRODUCTS.toString());
+          // Create form data for the server action
+          const formData = new FormData();
+          formData.append('action', 'fetchRandomProducts');
+          formData.append('count', NUM_RANDOM_PRODUCTS.toString());
           if (forceRefresh) {
-            apiUrl.searchParams.append('refresh', 'true');
+            formData.append('forceRefresh', 'true');
           }
           
-          setLoadingProgress(20); // Update progress 
+          setLoadingProgress(30); // Update progress
           
-          // Add authentication if available
-          const headers: HeadersInit = {
-            'Content-Type': 'application/json'
-          };
+          // Submit the form to the server action
+          // This preserves the authentication context
+          submit(formData, { 
+            method: 'post',
+            replace: false // Don't replace current entry in history
+          });
           
-          if (adminSessionData?.accessToken) {
-            headers['Authorization'] = `Bearer ${adminSessionData.accessToken}`;
-          }
+          setLoadingProgress(50); // Update progress
           
-          setLoadingProgress(40); // Update progress
+          // The actual data processing happens in the actionData effect below
+          // This is a more reliable pattern with Remix as it guarantees we catch the updates
           
-          // Make API request
-          const response = await fetch(apiUrl.toString(), { headers });
-          
-          setLoadingProgress(70); // Update progress
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API error: ${response.status} ${errorText}`);
-          }
-          
-          const data = await response.json();
-          
-          setLoadingProgress(90); // Almost done
-          
-          if (data.status === 'success' && data.products && data.products.length > 0) {
-            // Update state with the fetched products
-            setMultipleRandomProducts(data.products);
-            setRandomProduct(data.products[0]); // Set first product as primary
-            if (data.productStats) {
-              setProductStats(data.productStats);
-            }
-            setLoadingError(null);
-          } else {
-            setLoadingError(data.message || 'No products returned from the API');
-          }
         } catch (error) {
-          console.error('Error fetching random products:', error);
-          setLoadingError(error instanceof Error ? error.message : 'Unknown error loading products');
-        } finally {
-          setLoadingProgress(100); // Complete
-          // Small delay before removing loading indicator to ensure progress animation completes
-          setTimeout(() => {
-            setLoadingRandomProducts(false);
-          }, 500);
+          console.error('Error submitting product fetch request:', error);
+          setLoadingError(error instanceof Error ? error.message : 'Unknown error submitting request');
+          setLoadingRandomProducts(false);
         }
       };
       
       // Start the fetch operation
       fetchRandomProducts();
     }
-  }, [loadingRandomProducts, adminSessionData, forceRefresh]);
+  }, [loadingRandomProducts, forceRefresh, submit]);
+  
+  // Separate effect to handle action data updates
+  useEffect(() => {
+    // Process action data when it becomes available
+    if (actionData && 'fetchStatus' in actionData && loadingRandomProducts) {
+      setLoadingProgress(80); // Almost done
+      
+      if (actionData.fetchStatus === 'success' && actionData.products && actionData.products.length > 0) {
+        // Update state with the fetched products
+        setMultipleRandomProducts(actionData.products);
+        setRandomProduct(actionData.products[0]); // Set first product as primary
+        if (actionData.stats) {
+          setProductStats(actionData.stats);
+        }
+        setLoadingError(null);
+      } else {
+        setLoadingError(actionData.message || 'No products returned from the server');
+      }
+      
+      setLoadingProgress(100); // Complete
+      
+      // Small delay before removing loading indicator to ensure progress animation completes
+      setTimeout(() => {
+        setLoadingRandomProducts(false);
+      }, 500);
+    }
+  }, [actionData, loadingRandomProducts]);
   
   // Store authentication info in localStorage when the component loads
   useEffect(() => {
@@ -1577,8 +1628,21 @@ export default function DailyDiscounts() {
                   <p>No eligible products found for discounting. Products need to have images, positive inventory, and cost data available.</p>
                   <Box paddingBlockStart="300">
                     <Button onClick={() => {
-                      setLoadingRandomProducts(true); // Restart the loading process
+                      // Reset loading state
+                      setLoadingRandomProducts(true);
                       setLoadingProgress(0);
+                      setLoadingError(null);
+                      
+                      // Submit the form to fetch products
+                      const formData = new FormData();
+                      formData.append('action', 'fetchRandomProducts');
+                      formData.append('count', NUM_RANDOM_PRODUCTS.toString());
+                      formData.append('forceRefresh', 'true'); // Force refresh on retry
+                      
+                      submit(formData, { 
+                        method: 'post',
+                        replace: false
+                      });
                     }}>
                       Try Again
                     </Button>
